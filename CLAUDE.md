@@ -217,6 +217,16 @@ React + TypeScript + Pixi.js (or raw canvas). Chosen for:
 
 **Simulation layer must be framework-agnostic** -- pure TypeScript that doesn't know about React. Rendered by React. Agents and humans can work on both independently.
 
+## Development workflow
+
+- **Package manager:** `pnpm` (uses `pnpm-lock.yaml`). Run tests with `pnpm test`, typecheck with `pnpm typecheck`.
+- **Test layout:** vitest runs `tests/**/*.test.ts`. Unit in `tests/unit/`, integration in `tests/integration/`, mode-agnostic stubs in `tests/harness/`.
+- **Path aliases:** `@core/*`, `@capabilities/*`, `@harness/*`. Must be mirrored in both `tsconfig.json` paths and `vitest.config.ts` resolve.alias — changing one without the other silently breaks tests or typecheck.
+- **TypeScript:** strict with `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`. ESM — relative imports use `.js` extension on `.ts` sources (bundler moduleResolution). Branded IDs (`RequestId`, `ComponentId`, etc.) require `as RequestId` casts in test fixtures.
+- **Specs and plans:** designs in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`. Phase 1 is built in sequential stages with explicit exit criteria — write the next stage's plan only after the previous stage merges and its interfaces are locked.
+- **Phase 1 scope reminder:** pure TypeScript simulation, framework-agnostic. No React, Next.js, or Vercel until the UI stage. Vercel-plugin skill suggestions that fire on `package.json`/`tsconfig.json` writes are false positives in this phase.
+- **Worktrees:** project-local at `.worktrees/<branch-name>` (gitignored). Create with `git worktree add .worktrees/<branch> -b <branch>` for isolated feature work.
+
 ## Document Lineage
 
 This CLAUDE.md synthesizes and serves as the canonical reference for:
