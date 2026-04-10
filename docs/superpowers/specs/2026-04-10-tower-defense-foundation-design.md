@@ -57,11 +57,10 @@ type ConditionEffect =
   | { kind: "upkeep_multiplier"; factor: number };
 
 interface ConditionProfile {
-  degradedThreshold: number;
-  criticalThreshold: number;
-  decayRate: number;
-  recoveryRate: number;
-  triggerWindow: number;
+  degradedThreshold: number;     // condition below this → degraded tier
+  criticalThreshold: number;     // condition below this → critical tier
+  decayRate: number;             // max points lost per tick at signal=1.0
+  recoveryRate: number;          // points recovered per tick at signal=0
   degradedEffects: ConditionEffect[];
   criticalEffects: ConditionEffect[];
 }
@@ -112,13 +111,13 @@ interface InstanceDirectory {
      × conditionEffect("throughput_multiplier", default 1.0)
    ```
 
-3. Tick step 3 enforces the gate. The engine tracks `requestsProcessedThisTick` per component (reset in step 9). Before processing, it checks the gate. If at capacity, the engine treats it like a bandwidth rejection: routes to `EngineBufferable.enqueueForRetry()` if present, else drops with a new event type `OVERLOADED`.
+3. Tick step 3 enforces the gate. The engine tracks the per-tick processed count via `state.perComponentThisTick[componentId].processed` (reset in step 9). Before processing, it checks the gate. If at capacity, the engine treats it like a bandwidth rejection: routes to `EngineBufferable.enqueueForRetry()` if present, else drops with a new event type `OVERLOADED`.
 
 4. `OVERLOADED` is distinct from `BACKPRESSURED` so the diagnostics screen can tell the player whether their components are saturated or their wires are.
 
 5. INTERCEPT-only components (Cache, LoadBalancer, CDN) return `Infinity` from `getThroughputPerTick()`. They are gated by their connection bandwidths, not their own throughput. This matches reality: a load balancer's limit is its NIC, not its CPU.
 
-`AutoScaleCapability` now has a real signal to scale against: `requestsProcessedThisTick / getThroughputPerTick()`.
+`AutoScaleCapability` now has a real signal to scale against: `state.perComponentThisTick[id].processed / component.getThroughputPerTick(...)`.
 
 ### B2 — Re-emitted request identification without mutating Request
 
@@ -253,6 +252,9 @@ Rationale: aligns with the "earn while your architecture holds; stop earning whe
 **Resolution:** Introduce an explicit `SimulationState` class that is the single source of truth for all mutable runtime state.
 
 ```ts
+// Sketch — see the canonical definition under "TypeScript contracts" below
+// for the full field list (includes zoneTopology, activeChaos,
+// perComponentThisTick, etc.).
 class SimulationState {
   readonly components: Map<ComponentId, Component>;
   readonly connections: Map<ConnectionId, Connection>;
@@ -261,7 +263,7 @@ class SimulationState {
   readonly requestLog: Map<RequestId, RequestEvent[]>;
   currentTick: number;
   phase: "build" | "simulate" | "assess";
-  requestsProcessedThisTick: Map<ComponentId, number>;
+  perComponentThisTick: Map<ComponentId, PerComponentTickCounters>;
   connectionLoadThisTick: Map<ConnectionId, number>;
 
   // Explicit mutators — no direct Map access from outside
@@ -471,6 +473,53 @@ type ChaosEvent =
   | { kind: "connection_sever"; connectionId: ConnectionId; durationTicks: number }
   | { kind: "latency_injection"; connectionId: ConnectionId; extraLatency: number; durationTicks: number };
 
+// Stored in SimulationState.activeChaos for kinds that persist across ticks.
+// Keyed by a stable chaos key (e.g., `${kind}:${connectionId}`).
+// component_failure is instantaneous and does NOT create an activeChaos entry
+// (the condition mutation is the only effect).
+interface ActiveChaosEntry {
+  readonly event: ChaosEvent;
+  readonly expiresAtTick: number;
+}
+
+// src/core/types/zone.ts
+// Zone-pair latency table, owned by SimulationState and populated by the
+// current ModeController via getInitialZoneTopology() at level start.
+// Pure data — no class, no behavior. Pre-wave-9 single-zone games use an
+// empty topology; getZonePairLatency returns 0 for all pairs.
+interface ZoneTopology {
+  readonly zones: readonly string[];
+  // Keys are canonical unordered pairs: `${min(a,b)}|${max(a,b)}`.
+  // Same-zone is always 0 and is not stored in the map.
+  readonly pairLatency: ReadonlyMap<string, number>;
+}
+
+function zonePairKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+function getZonePairLatency(
+  topology: ZoneTopology,
+  a: string | null,
+  b: string | null
+): number {
+  if (a === null || b === null || a === b) return 0;
+  return topology.pairLatency.get(zonePairKey(a, b)) ?? 0;
+}
+
+// src/core/engine/per-component-counters.ts
+// Per-tick outcome counters maintained by the engine as side effects of
+// tick steps 3/4a/5. Read by step 6 (UPDATE CONDITION) to compute the
+// unhealthySignal, and by step 8 (RECORD METRICS) to build TickMetrics.
+// Reset in step 9.
+interface PerComponentTickCounters {
+  processed: number;        // successful RESPOND or FORWARD outcome
+  drops: number;            // DROP outcome
+  timeouts: number;         // timed out while this component was current
+  overloaded: number;       // rejected by throughput gate (OVERLOADED event)
+  backpressured: number;    // rejected by egress bandwidth (BACKPRESSURED event)
+}
+
 // src/core/mode/build-constraints.ts
 interface BuildConstraints {
   readonly availableComponentTypes: readonly string[];  // drives the palette
@@ -660,11 +709,10 @@ type ConditionEffect =
   | { kind: "upkeep_multiplier"; factor: number };
 
 interface ConditionProfile {
-  degradedThreshold: number;
-  criticalThreshold: number;
-  decayRate: number;
-  recoveryRate: number;
-  triggerWindow: number;
+  degradedThreshold: number;     // condition below this → degraded tier
+  criticalThreshold: number;     // condition below this → critical tier
+  decayRate: number;             // max points lost per tick at signal=1.0
+  recoveryRate: number;          // points recovered per tick at signal=0
   degradedEffects: ConditionEffect[];
   criticalEffects: ConditionEffect[];
 }
@@ -897,10 +945,11 @@ class SimulationState {
   readonly pending: Map<ComponentId, Request[]>;
   readonly activeStreams: Map<RequestId, ActiveStream>;
   readonly requestLog: Map<RequestId, RequestEvent[]>;
-  readonly activeChaos: Map<string, ChaosEvent & { expiresAtTick: number }>;
+  readonly activeChaos: Map<string, ActiveChaosEntry>;
+  readonly zoneTopology: ZoneTopology;  // set at construction, immutable thereafter
   currentTick: number;
   phase: "build" | "simulate" | "assess";
-  requestsProcessedThisTick: Map<ComponentId, number>;
+  readonly perComponentThisTick: Map<ComponentId, PerComponentTickCounters>;
   connectionLoadThisTick: Map<ConnectionId, number>;
 
   // Topology mutators (called by ModeController.tryPlace / tryUpgrade after
@@ -934,10 +983,12 @@ class SimulationState {
 interface SimulationStateReader {
   readonly components: ReadonlyMap<ComponentId, ComponentReader>;
   readonly connections: ReadonlyMap<ConnectionId, Readonly<Connection>>;
+  readonly zoneTopology: ZoneTopology;
   readonly currentTick: number;
   readonly phase: "build" | "simulate" | "assess";
   getEventsFor(requestId: RequestId): readonly RequestEvent[];
   getActiveStreamsOnConnection(connectionId: ConnectionId): readonly ActiveStream[];
+  getActiveChaos(): readonly ActiveChaosEntry[];
   // No mutators
 }
 ```
@@ -1041,15 +1092,258 @@ function applyConditionEffects(
 **Tick step 4a responsibilities** (canonical list — implementers should reference this when filling in `deliver-results.ts`):
 
 1. For each `ProcessResult` from step 3:
-   - **RESPOND (non-stream):** Credit `economy.creditRevenue(request, baseRevenue)` where `baseRevenue` comes from the request type definition. Resolve the request (write RESPONDED event). If the request has a `parentId`, check whether the parent can now resolve.
-   - **RESPOND (stream, i.e., `request.streamDuration != null`):** Do NOT credit lump-sum revenue. Register an `ActiveStream` entry in `SimulationState.activeStreams` with `remainingDuration = streamDuration`, `reservedBandwidth = streamBandwidth`, `connectionId` = the connection the request arrived on (or the first egress connection if the stream originates here). Per-tick revenue is credited by step 4b.
-   - **FORWARD:** Consult `EngineConsultable.selectConnection()` or fall back to round-robin. Attempt delivery. If the connection's effective bandwidth (`connection.bandwidth` minus sum of `reservedBandwidth` for active streams on that connection) is exceeded, the delivery is rejected: route to `EngineBufferable.enqueueForRetry()` on the sending component if present, else drop with a `BACKPRESSURED` event.
+   - **RESPOND (non-stream):** Credit `economy.creditRevenue(request, baseRevenue)` where `baseRevenue` comes from the request type definition. Deliver the response via the reply channel (see "Response transport" below). Append a single `RESPONDED` event to the request log with return-path metadata. If the request has a `parentId`, check whether the parent can now resolve.
+   - **RESPOND (stream, i.e., `request.streamDuration != null`):** Do NOT credit lump-sum revenue. Register an `ActiveStream` entry in `SimulationState.activeStreams` with `remainingDuration = streamDuration`, `reservedBandwidth = streamBandwidth`, `connectionId` = the connection the request arrived on (or the first egress connection if the stream originates here). Per-tick revenue is credited by step 4b. The `RESPONDED` event is appended at stream completion, not here.
+   - **FORWARD:** Consult `EngineConsultable.selectConnection()` or fall back to round-robin. Attempt delivery on the chosen connection. Compute per-traversal latency as `baseLatency + chaosExtraLatency + zonePairLatency` (see "Connection latency composition" below). If the connection's effective bandwidth (`connection.bandwidth` minus `reservedBandwidth` sum of active streams on that connection, further overridden to 0 if a `connection_sever` chaos is active on it) is exceeded, the delivery is rejected: route to `EngineBufferable.enqueueForRetry()` on the sending component if present, else drop with a `BACKPRESSURED` event. Successful delivery appends a `TRAVERSED` event whose `latencyAdded` is the composed latency.
    - **DROP:** Append `DROPPED` event with reason.
    - **QUEUE_HOLD:** Already handled — the request is inside `QueueCapability`'s awaiting-pipeline buffer.
 2. For each `SPAWN` side effect: create child Request with `parentId` set, `ttl = min(parentRemainingTtl, childTtl)`, enqueue in target component's pending. Blocking spawns (from PROCESS phase) register the parent as waiting.
-3. For each `SCALE` side effect: adjust `instanceCount` via `state.setInstanceCount()`, debit the cost difference via `economy.debitUpkeep()` delta (or a dedicated scaling fee).
+3. For each `SPAWN` emitted by a `ReplicationCapability` in the REPLICATE phase in response to a pub/sub event, see "Pub/sub fanout" below — the fanout rule determines which egress connections receive a SPAWN.
+4. For each `SCALE` side effect: adjust `instanceCount` via `state.setInstanceCount()`, debit the cost difference via `economy.debitUpkeep()` delta (or a dedicated scaling fee).
+5. Increment `state.perComponentThisTick[componentId]` counters based on outcome: `processed` for RESPOND/FORWARD, `drops` for DROP, `backpressured` for rejected FORWARDs. Condition update (step 6) reads these.
 
 **Insolvency application** (referenced by step 7): when `economy.resolveInsolvency(state.asReader())` returns component IDs, the engine applies accelerated degradation to each — specifically, it sets their `condition` directly to the component's `conditionProfile.criticalThreshold`, triggering the critical-tier condition effects for the following tick. This is a single site and matches the existing condition mechanism rather than introducing a new degradation path.
+
+### Connection latency composition (used in step 4a)
+
+Every time the engine delivers a FORWARD across a connection, the latency recorded on the TRAVERSED event is the sum of three sources, each with a single lookup site:
+
+```ts
+// Inside deliver-results.ts
+const baseLatency = connection.latency;
+const chaosAdjustments = getConnectionChaosAdjustments(state, connection.id, currentTick);
+const sourceZone = state.components.get(connection.source.componentId)!.zone;
+const targetZone = state.components.get(connection.target.componentId)!.zone;
+const zonePairLatency = getZonePairLatency(state.zoneTopology, sourceZone, targetZone);
+const totalLatency = baseLatency + chaosAdjustments.extraLatency + zonePairLatency;
+const effectiveBandwidth = chaosAdjustments.bandwidthOverride ?? connection.bandwidth;
+```
+
+`getConnectionChaosAdjustments` is a small helper in `src/core/engine/chaos-effects.ts`:
+```ts
+function getConnectionChaosAdjustments(
+  state: SimulationStateReader,
+  connectionId: ConnectionId,
+  currentTick: number
+): { bandwidthOverride?: number; extraLatency: number } {
+  let extraLatency = 0;
+  let bandwidthOverride: number | undefined;
+  for (const entry of state.getActiveChaos()) {
+    if (entry.expiresAtTick < currentTick) continue;
+    if (entry.event.kind === "latency_injection" && entry.event.connectionId === connectionId) {
+      extraLatency += entry.event.extraLatency;
+    } else if (entry.event.kind === "connection_sever" && entry.event.connectionId === connectionId) {
+      bandwidthOverride = 0;
+    }
+  }
+  return { bandwidthOverride, extraLatency };
+}
+```
+
+This is the only place zone topology and connection chaos are consumed during delivery. The reply channel and diagnostic views read these composed latencies from the event log after the fact — they never re-compute.
+
+### Response transport (reply channel)
+
+When a `RESPOND` primary outcome flows through step 4a for a non-stream request (or through step 4b at stream completion for a stream), the engine delivers the response via a dedicated reply channel with these invariants:
+
+**Invariants:**
+1. **Response delivery never fails.** Once a request gets RESPOND, the response is guaranteed to reach the origin. This is asserted in integration tests.
+2. **No bandwidth consumption.** Return transport does not consume `Connection.currentLoad`. Bandwidth contention applies only on the forward path.
+3. **No TTL interaction.** Return latency does not count against TTL. A request that gets RESPOND before TTL expires is successful regardless of return latency.
+4. **Return path is reconstructed, not stored.** The request remains an immutable creation snapshot; the path is derived from the event log.
+
+**Algorithm:**
+```ts
+// src/core/engine/response-transport.ts
+function reconstructReturnPath(events: readonly RequestEvent[]): {
+  connectionIds: ConnectionId[];
+  totalLatency: number;
+} {
+  const traversed = events.filter(e => e.type === "TRAVERSED");
+  return {
+    connectionIds: traversed.map(e => e.connectionId!).reverse(),
+    totalLatency: traversed.reduce((sum, e) => sum + e.latencyAdded, 0),
+  };
+}
+```
+
+The engine calls `reconstructReturnPath` once per RESPOND in step 4a (or once per stream completion in step 4b), then appends a `RESPONDED` event to the request log with:
+- `componentId` = the component that issued the RESPOND
+- `capabilityId` = the capability that produced the RESPOND (or null for engine-issued)
+- `latencyAdded` = the computed return-path total latency (zone modifiers included because they were folded into the TRAVERSED events' `latencyAdded` at delivery time)
+- `metadata` = `{ returnPath: connectionIds, destinationComponentId: request.origin }`
+
+**`totalLatency` for a request** = sum of `latencyAdded` across every event in the log, including the `RESPONDED` event. The diagnostics renderer can split forward vs return visually by reading `metadata.returnPath` on the RESPONDED event, but the single-sum rule means there's no separate accounting.
+
+### Chaos application (tick step 6b)
+
+Chaos application mirrors the condition-effects pattern from item B4: a single helper that interprets every `ChaosEvent` kind, called from exactly one tick step.
+
+```ts
+// src/core/engine/chaos-effects.ts
+// THE only place ChaosEvent kinds are interpreted.
+function applyChaosEvent(state: SimulationState, event: ChaosEvent, currentTick: number): void {
+  switch (event.kind) {
+    case "component_failure": {
+      const comp = state.components.get(event.componentId);
+      if (!comp) return;
+      state.setCondition(event.componentId, comp.conditionProfile.criticalThreshold);
+      // Instantaneous — no activeChaos entry. The condition mechanism takes over.
+      return;
+    }
+    case "zone_outage": {
+      for (const [id, c] of state.components) {
+        if (c.zone === event.zone) {
+          state.setCondition(id, c.conditionProfile.criticalThreshold);
+        }
+      }
+      state.activeChaos.set(
+        `zone_outage:${event.zone}`,
+        { event, expiresAtTick: currentTick + event.durationTicks }
+      );
+      return;
+    }
+    case "connection_sever": {
+      state.activeChaos.set(
+        `connection_sever:${event.connectionId}`,
+        { event, expiresAtTick: currentTick + event.durationTicks }
+      );
+      return;
+    }
+    case "latency_injection": {
+      state.activeChaos.set(
+        `latency_injection:${event.connectionId}`,
+        { event, expiresAtTick: currentTick + event.durationTicks }
+      );
+      return;
+    }
+  }
+}
+```
+
+**Tick step 6b algorithm:**
+1. Sweep `state.activeChaos` for expired entries (`expiresAtTick < currentTick`) and remove them.
+2. Call `modeController.getScheduledChaos(currentTick)` to get newly-scheduled events.
+3. For each event, call `applyChaosEvent(state, event, currentTick)`.
+
+Consumption sites for persistent chaos:
+- `connection_sever` → consumed in step 4a's delivery logic via `getConnectionChaosAdjustments` (bandwidth override to 0)
+- `latency_injection` → consumed in step 4a's delivery logic via `getConnectionChaosAdjustments` (extra latency added)
+- `component_failure` → no consumption site; the condition mechanism handles the cascade
+- `zone_outage` → same; plus the condition persists because `activeChaos` suppresses recovery until expiry (see condition update mechanics below)
+
+Adding a new chaos kind is a single new `case` branch in `applyChaosEvent` + an optional new consumption site if persistent. Same extensibility rule as `ConditionEffect`.
+
+### Condition update mechanics (tick step 6)
+
+Condition is a float in `[0.0, 1.0]` driven by a single per-tick signal: the ratio of bad outcomes to total outcomes for this component in this tick.
+
+**Signal formula:**
+```
+unhealthySignal = (drops + timeouts + overloaded + backpressured) / totalTouched
+totalTouched = drops + timeouts + overloaded + backpressured + processed
+```
+
+If `totalTouched == 0`, signal is 0 (idle components gently recover).
+
+**Update rule:**
+```ts
+// src/core/engine/tick-steps/update-condition.ts
+function updateCondition(state: SimulationState): void {
+  for (const [componentId, component] of state.components) {
+    const counters = state.perComponentThisTick.get(componentId) ?? emptyCounters;
+    const bad = counters.drops + counters.timeouts + counters.overloaded + counters.backpressured;
+    const total = bad + counters.processed;
+
+    let delta: number;
+    if (total === 0 || bad === 0) {
+      delta = component.conditionProfile.recoveryRate;
+    } else {
+      const unhealthySignal = bad / total;
+      delta = -component.conditionProfile.decayRate * unhealthySignal;
+    }
+
+    const newCondition = Math.max(0, Math.min(1, component.condition + delta));
+    state.setCondition(componentId, newCondition);
+  }
+
+  // Zone outage suppression: components in an outaged zone cannot recover
+  // while the chaos is active — their condition is clamped at
+  // criticalThreshold until the outage expires.
+  for (const entry of state.activeChaos.values()) {
+    if (entry.event.kind === "zone_outage") {
+      for (const [id, c] of state.components) {
+        if (c.zone === entry.event.zone) {
+          state.setCondition(id, Math.min(c.condition, c.conditionProfile.criticalThreshold));
+        }
+      }
+    }
+  }
+}
+```
+
+**Condition tier is derived, not stored:**
+```ts
+// src/core/engine/condition-tier.ts
+function getConditionTier(
+  condition: number,
+  profile: ConditionProfile
+): "healthy" | "degraded" | "critical" {
+  if (condition <= profile.criticalThreshold) return "critical";
+  if (condition <= profile.degradedThreshold) return "degraded";
+  return "healthy";
+}
+```
+
+Called by `applyConditionEffects` at each of the four application sites (item B4). The effects list is selected based on the tier: `healthy` → none, `degraded` → `profile.degradedEffects`, `critical` → `profile.criticalEffects`.
+
+**Counter incrementing requirements** (added to Stage 2 step 19):
+- Tick step 3 (process pending) increments `processed` on successful PROCESS phase outcome, `overloaded` on throughput gate rejection, `drops` on DROP outcome
+- Tick step 4a (deliver results) increments `backpressured` on connection rejection
+- Tick step 5 (check TTL) increments `timeouts` on the component where the request was current when it timed out
+- Tick step 9 (reset per-tick state) clears all counters to zero
+
+### Pub/sub fanout via REPLICATE + port-type filter
+
+Pub/sub events are handled by `ReplicationCapability` in the REPLICATE phase. The subscription topology is **the set of egress connections the player wired** — there is no separate subscription registry.
+
+**Fanout rule:** when `ReplicationCapability.process()` is called with a request whose type matches its fanout criteria (typically `request.type === "event"`), it emits one non-blocking SPAWN side effect per **port-compatible egress connection** on its component. A connection is port-compatible if the target component's ingress port has a `dataType` matching the request type (e.g., `"event"`).
+
+The port-compatibility check already exists in the placement tool — it's the same rule that allows or rejects wiring. At fanout time, the same check narrows the set of legitimate subscribers.
+
+**Pseudocode:**
+```ts
+class ReplicationCapability implements Capability {
+  readonly phase = "REPLICATE";
+
+  canHandle(): boolean { return true; }  // REPLICATE phase always runs
+
+  process(request: Request, context: ProcessContext): ProcessResult {
+    // Non-event replication (e.g., write replication to replica Databases)
+    // is handled by a different branch — see component-specific notes.
+    if (request.type !== "event") {
+      return { outcome: { kind: "PASS" }, sideEffects: [], events: [] };
+    }
+    const component = context.state.components.get(context.componentId)!;
+    const fanoutConnections = collectPortCompatibleEgress(component, "event", context.state);
+    const spawns: SideEffect[] = fanoutConnections.map(conn => ({
+      kind: "SPAWN",
+      request: /* child event request with parentId = request.id, ttl = request.remainingTtl */,
+      blocking: false,
+    }));
+    return { outcome: { kind: "PASS" }, sideEffects: spawns, events: [] };
+  }
+}
+```
+
+**Tier progression:**
+- **Tier 1:** Blind fanout to all port-compatible egress connections. If a subscriber is down, the event is lost (or queued if the subscriber has a `QueueCapability` in front of it — handled by the normal backpressure path).
+- **Tier 2:** Health-aware fanout. Consults `context.directories` (any capability implementing `InstanceDirectory`) and skips subscribers whose registered condition is critical.
+- **Tier 3:** Zone-aware fanout. Prefers same-zone subscribers; replicates cross-zone asynchronously via additional SPAWNs with higher composed latency.
+
+**Teaching moment intact:** "Subscriptions are just connections. Adding a new subscriber means wiring one."
+
+**Deprecated:** the `fanout: true` flag previously declared on the `event` request type is dropped. Fanout is a REPLICATE-phase behavior driven by the capability, not a property of the request. This is more extensible — a future `broadcast_metric` type can fan out via a different capability without touching the request schema.
 
 ### Mode and economy interfaces (abstract only in Phase 1)
 
@@ -1074,6 +1368,12 @@ interface ModeController {
   evaluateOutcome(metrics: readonly TickMetrics[]): OutcomeReport;
   getPhase(): "build" | "simulate" | "assess";
   advancePhase(): void;
+
+  // Supplies the zone-pair latency table at level start. Returned topology
+  // becomes SimulationState.zoneTopology and is immutable for the duration
+  // of the simulation. Single-zone levels return an empty topology:
+  //   { zones: [], pairLatency: new Map() }
+  getInitialZoneTopology(): ZoneTopology;
 
   // Build-phase guarded mutators. The ONLY public code path for component
   // placement and upgrades. UI calls these; they internally:
