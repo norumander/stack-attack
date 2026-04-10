@@ -117,7 +117,7 @@ interface InstanceDirectory {
 
 5. INTERCEPT-only components (Cache, LoadBalancer, CDN) return `Infinity` from `getThroughputPerTick()`. They are gated by their connection bandwidths, not their own throughput. This matches reality: a load balancer's limit is its NIC, not its CPU.
 
-`AutoScaleCapability` now has a real signal to scale against: `state.perComponentThisTick[id].processed / component.getThroughputPerTick(...)`.
+`AutoScaleCapability` now has a real signal to scale against: `state.perComponentThisTick.get(id)?.processed / component.getThroughputPerTick(...)`.
 
 ### B2 — Re-emitted request identification without mutating Request
 
@@ -232,14 +232,17 @@ Rationale: aligns with the "earn while your architecture holds; stop earning whe
    ```
    loop:
      progressed = false
-     for each component in visitation order:
-       while component.pending is non-empty AND throughput-gate allows:
-         process one request from component.pending
-         deliver result (FORWARD/SPAWN may add to another component's pending)
+     for each componentId in visitation order:
+       let pending = state.pending.get(componentId) ?? []
+       while pending is non-empty AND throughputGateAllows(state, componentId):
+         request = state.dequeuePending(componentId)
+         result = engine.processComponentTick(state, component, modeController, request)
+         engine.deliverResults(state, modeController, result)  // may enqueuePending on other components
          progressed = true
      if not progressed: break
-     if iterationCount > componentCount × 4: warn + break  // safety cap
+     if iterationCount > state.components.size × 4: warn + break  // safety cap
    ```
+   All pending queues are owned by `SimulationState.pending` (a `Map<ComponentId, Request[]>`). Components never hold their own pending queues.
 
 3. Cycles terminate because either (a) throughput gates saturate, (b) TTL expires, (c) a capability short-circuits with RESPOND/DROP/QUEUE_HOLD.
 
@@ -311,7 +314,7 @@ interface Capability {
 
 **Registry validation rule:** At component registration, a capability must either have `phase` OR implement at least one engine sub-interface. A capability with neither throws a registration error at load time.
 
-### C3 — `Component.getEffectiveTier()` is the single source of tier truth
+### C3 — Standalone `getEffectiveTier` function is the single source of tier truth
 
 **Problem:** Two authorities decide tier: `capabilityTiers[id]` (player upgrade) and `ModeController.getTierCap()` (mode cap). If any call site computes `min()` its own way, tiers drift.
 
@@ -337,23 +340,13 @@ export function getEffectiveTier(
 **Per-tick caching:** The engine calls `computeEffectiveTiers(component, modeController)` once per component at the start of step 3, building a full `ReadonlyMap<CapabilityId, number>`. The cached map is threaded through `ProcessContext.effectiveTiers` so capabilities never re-compute during pipeline execution.
 
 **Call sites that must use it:**
-1. Pipeline runner (passes `effectiveTier` to `capability.process()`)
+1. Pipeline runner (passes `effectiveTier` to `capability.process()` via `ProcessContext`)
 2. Upkeep calculation (`capability.getUpkeepCost(effectiveTier)`)
 3. Throughput gate (`capability.getThroughputPerTick(effectiveTier)`)
 4. UI upgrade panel (shows both `playerTier` and `effectiveTier` as a teaching signal)
-5. Renderer (picks visual based on effective tier)
-6. Diagnostics screen
+5. Diagnostics screen
 
-**New ModeController method:**
-```ts
-interface ModeController {
-  // ...
-  getTierCap(component: Component, capabilityId: CapabilityId): number;
-  // Returns Infinity if no cap
-}
-```
-
-SandboxModeController always returns `Infinity`. TDModeController returns per-wave caps.
+**New ModeController method:** `getTierCap(component: ComponentReader, capabilityId: CapabilityId): number`. Returns `Infinity` if no cap. SandboxModeController always returns `Infinity`; TDModeController returns per-wave caps.
 
 ### C5 — Extract `EconomyStrategy` from day 1
 
@@ -365,7 +358,7 @@ SandboxModeController always returns `Infinity`. TDModeController returns per-wa
 interface EconomyStrategy {
   getBudget(): number;
   canAfford(cost: number): boolean;
-  creditRevenue(request: Request, amount: number): void;
+  creditRevenue(request: Request): number;  // amount computed internally by the mode
   debitUpkeep(totalUpkeep: number): void;
   debitPlacement(component: Component): void;
   debitUpgrade(component: Component, capabilityId: CapabilityId): void;
@@ -511,14 +504,22 @@ function getZonePairLatency(
 // Per-tick outcome counters maintained by the engine as side effects of
 // tick steps 3/4a/5. Read by step 6 (UPDATE CONDITION) to compute the
 // unhealthySignal, and by step 8 (RECORD METRICS) to build TickMetrics.
-// Reset in step 9.
+// Reset in step 9. Entries are lazily created when first incremented;
+// the engine uses `state.perComponentThisTick.get(id) ?? EMPTY_COUNTERS`
+// where EMPTY_COUNTERS is an exported zero-filled singleton.
 interface PerComponentTickCounters {
-  processed: number;        // successful RESPOND or FORWARD outcome
-  drops: number;            // DROP outcome
-  timeouts: number;         // timed out while this component was current
-  overloaded: number;       // rejected by throughput gate (OVERLOADED event)
-  backpressured: number;    // rejected by egress bandwidth (BACKPRESSURED event)
+  processed: number;        // incremented ONCE per request, in step 4a (delivery),
+                            // on RESPOND or FORWARD outcome. Step 3 does not
+                            // increment it — this prevents double-counting.
+  drops: number;            // DROP outcome (step 3 or 4a)
+  timeouts: number;         // timed out while this component was current (step 5)
+  overloaded: number;       // rejected by throughput gate (step 3)
+  backpressured: number;    // rejected by egress bandwidth (step 4a)
 }
+
+const EMPTY_COUNTERS: Readonly<PerComponentTickCounters> = {
+  processed: 0, drops: 0, timeouts: 0, overloaded: 0, backpressured: 0,
+};
 
 // src/core/mode/build-constraints.ts
 interface BuildConstraints {
@@ -591,10 +592,13 @@ interface ComponentConstructorArgs {
   readonly zone: string | null;
   readonly placementTick: number;
   readonly conditionProfile: ConditionProfile;
+  // Defaults (set by Component constructor if not provided):
+  readonly initialInstanceCount?: number;   // default 1
+  readonly initialCondition?: number;       // default 1.0
 }
 ```
 
-### Engine sub-interface discovery (replaces `SubInterfaceTag`)
+### Engine sub-interface discovery
 
 The engine discovers which capabilities implement which sub-interfaces via **structural predicate functions**, not runtime tags. Each sub-interface has a unique method name, so method presence is a safe and type-narrowing check:
 
@@ -786,10 +790,12 @@ interface EngineBufferable {
   // Called by EnginePullable holders (e.g., BatchProcessingCapability on
   // a Worker) during step 2. Pulls up to n requests from a SEPARATE internal
   // buffer (awaitingWorkerPull) that is NEVER touched by emitReady.
-  // A QueueCapability decides which buffer a request goes into at hold time
-  // based on the request's type and the queue's configured mode. A given
-  // request is in exactly one buffer for its entire lifecycle inside the
-  // queue — there is no path by which a request can be delivered twice.
+  // A given request is in exactly one buffer for its entire lifecycle
+  // inside the queue — there is no path by which a request can be delivered
+  // twice. The routing rule at hold time: a request enters awaitingWorkerPull
+  // if the Queue is configured in "worker-pull mode" (a constructor option
+  // on QueueCapability). Other requests enter awaitingPipeline (proactive
+  // hold for re-emission into the Queue's own component pipeline).
   dequeueBatch(n: number): Request[];
 }
 
@@ -811,6 +817,10 @@ interface InstanceDirectory {
   }): ComponentRef[];
 }
 
+// Snapshot returned by InstanceDirectory.listCandidates. `condition` is a
+// live read at call time, not a cached value — directories consult
+// state.components on each query. Consumers treat the ref as a short-lived
+// value, not a handle to subscribe to.
 interface ComponentRef {
   readonly componentId: ComponentId;
   readonly componentType: string;
@@ -1092,15 +1102,16 @@ function applyConditionEffects(
 **Tick step 4a responsibilities** (canonical list — implementers should reference this when filling in `deliver-results.ts`):
 
 1. For each `ProcessResult` from step 3:
-   - **RESPOND (non-stream):** Credit `economy.creditRevenue(request, baseRevenue)` where `baseRevenue` comes from the request type definition. Deliver the response via the reply channel (see "Response transport" below). Append a single `RESPONDED` event to the request log with return-path metadata. If the request has a `parentId`, check whether the parent can now resolve.
-   - **RESPOND (stream, i.e., `request.streamDuration != null`):** Do NOT credit lump-sum revenue. Register an `ActiveStream` entry in `SimulationState.activeStreams` with `remainingDuration = streamDuration`, `reservedBandwidth = streamBandwidth`, `connectionId` = the connection the request arrived on (or the first egress connection if the stream originates here). Per-tick revenue is credited by step 4b. The `RESPONDED` event is appended at stream completion, not here.
-   - **FORWARD:** Consult `EngineConsultable.selectConnection()` or fall back to round-robin. Attempt delivery on the chosen connection. Compute per-traversal latency as `baseLatency + chaosExtraLatency + zonePairLatency` (see "Connection latency composition" below). If the connection's effective bandwidth (`connection.bandwidth` minus `reservedBandwidth` sum of active streams on that connection, further overridden to 0 if a `connection_sever` chaos is active on it) is exceeded, the delivery is rejected: route to `EngineBufferable.enqueueForRetry()` on the sending component if present, else drop with a `BACKPRESSURED` event. Successful delivery appends a `TRAVERSED` event whose `latencyAdded` is the composed latency.
-   - **DROP:** Append `DROPPED` event with reason.
-   - **QUEUE_HOLD:** Already handled — the request is inside `QueueCapability`'s awaiting-pipeline buffer.
-2. For each `SPAWN` side effect: create child Request with `parentId` set, `ttl = min(parentRemainingTtl, childTtl)`, enqueue in target component's pending. Blocking spawns (from PROCESS phase) register the parent as waiting.
-3. For each `SPAWN` emitted by a `ReplicationCapability` in the REPLICATE phase in response to a pub/sub event, see "Pub/sub fanout" below — the fanout rule determines which egress connections receive a SPAWN.
-4. For each `SCALE` side effect: adjust `instanceCount` via `state.setInstanceCount()`, debit the cost difference via `economy.debitUpkeep()` delta (or a dedicated scaling fee).
-5. Increment `state.perComponentThisTick[componentId]` counters based on outcome: `processed` for RESPOND/FORWARD, `drops` for DROP, `backpressured` for rejected FORWARDs. Condition update (step 6) reads these.
+   - **RESPOND (non-stream):** Credit via `economy.creditRevenue(request)` (amount computed internally by the mode). Deliver the response via the reply channel (see "Response transport" below). Append a single `RESPONDED` event to the request log with return-path metadata. If the request has a `parentId`, check whether the parent can now resolve. Increment `perComponentThisTick[componentId].processed` once.
+   - **RESPOND (stream, i.e., `request.streamDuration != null`):** Do NOT credit lump-sum revenue. Register an `ActiveStream` entry in `SimulationState.activeStreams` with `remainingDuration = streamDuration`, `reservedBandwidth = streamBandwidth`, `connectionId` = the connection the request arrived on. Per-tick revenue is credited by step 4b. The `RESPONDED` event is appended at stream completion, not here. Increment `processed` once at registration time.
+   - **FORWARD:** Consult `EngineConsultable.selectConnection()` or fall back to round-robin. Attempt delivery on the chosen connection. Compute per-traversal latency via `getConnectionChaosAdjustments` + `getZonePairLatency` (see "Connection latency composition" below). If effective bandwidth is exceeded, reject: route to `EngineBufferable.enqueueForRetry()` on the sending component if present, else drop with a `BACKPRESSURED` event. On successful delivery, append a `TRAVERSED` event and increment `processed`. On rejection, increment `backpressured` and do NOT increment `processed`.
+   - **DROP:** Append `DROPPED` event with reason. Increment `drops`.
+   - **QUEUE_HOLD:** Already handled — the request is inside `QueueCapability`'s awaiting-pipeline buffer. No counter increment.
+2. For each `SPAWN` side effect: create child Request with `parentId` set and `ttl = min(parent's (createdAt + ttl - currentTick), childDefinedTtl)` (the remaining wall-clock TTL of the parent relative to the current tick, not a stored field). Enqueue in the target component's `state.pending[targetComponentId]`. Blocking spawns (from PROCESS phase) register the parent as waiting.
+3. For `SPAWN` side effects emitted by `ReplicationCapability` in the REPLICATE phase, see "Pub/sub fanout" below — the fanout rule determines which egress connections receive a SPAWN.
+4. For each `SCALE` side effect: adjust `instanceCount` via `state.setInstanceCount()`. **Do not debit the delta here** — step 7 recomputes total upkeep from `Component.getUpkeepCost()` which already reflects the new `instanceCount`, so the scaling cost is automatically captured on the next upkeep deduction without double-charging. A one-time scaling fee (if the mode's economy defines one) is the only additional charge at this site.
+
+**Counter-increment rule (authoritative):** Each request outcome increments exactly ONE counter on exactly ONE component per tick, at the site listed above. Step 3 does NOT increment `processed` on PROCESS success — the increment waits until delivery in 4a. This prevents the double-count that would occur if a request counted at step 3 was later backpressured at 4a.
 
 **Insolvency application** (referenced by step 7): when `economy.resolveInsolvency(state.asReader())` returns component IDs, the engine applies accelerated degradation to each — specifically, it sets their `condition` directly to the component's `conditionProfile.criticalThreshold`, triggering the critical-tier condition effects for the following tick. This is a single site and matches the existing condition mechanism rather than introducing a new degradation path.
 
@@ -1167,6 +1178,8 @@ function reconstructReturnPath(events: readonly RequestEvent[]): {
 }
 ```
 
+A request that resolves at the same component where it entered (never traversed a connection) has `connectionIds: []` and `totalLatency: 0`. This is valid: diagnostics show "return: 0 ticks, 0 hops" for such requests. The invariant "response delivery never fails" is satisfied trivially.
+
 The engine calls `reconstructReturnPath` once per RESPOND in step 4a (or once per stream completion in step 4b), then appends a `RESPONDED` event to the request log with:
 - `componentId` = the component that issued the RESPOND
 - `capabilityId` = the capability that produced the RESPOND (or null for engine-issued)
@@ -1188,7 +1201,11 @@ function applyChaosEvent(state: SimulationState, event: ChaosEvent, currentTick:
       const comp = state.components.get(event.componentId);
       if (!comp) return;
       state.setCondition(event.componentId, comp.conditionProfile.criticalThreshold);
-      // Instantaneous — no activeChaos entry. The condition mechanism takes over.
+      // Persist for 1 tick so the cascade registers before recovery kicks in.
+      state.activeChaos.set(
+        `component_failure:${event.componentId}`,
+        { event, expiresAtTick: currentTick + 1 }
+      );
       return;
     }
     case "zone_outage": {
@@ -1222,15 +1239,15 @@ function applyChaosEvent(state: SimulationState, event: ChaosEvent, currentTick:
 ```
 
 **Tick step 6b algorithm:**
-1. Sweep `state.activeChaos` for expired entries (`expiresAtTick < currentTick`) and remove them.
+1. Sweep `state.activeChaos` for expired entries (`expiresAtTick <= currentTick`) and remove them. The `<=` is deliberate: an event with `durationTicks: 1` scheduled at tick T has `expiresAtTick = T + 1`, and at tick T+1 it should no longer affect the simulation.
 2. Call `modeController.getScheduledChaos(currentTick)` to get newly-scheduled events.
 3. For each event, call `applyChaosEvent(state, event, currentTick)`.
 
 Consumption sites for persistent chaos:
-- `connection_sever` → consumed in step 4a's delivery logic via `getConnectionChaosAdjustments` (bandwidth override to 0)
-- `latency_injection` → consumed in step 4a's delivery logic via `getConnectionChaosAdjustments` (extra latency added)
-- `component_failure` → no consumption site; the condition mechanism handles the cascade
-- `zone_outage` → same; plus the condition persists because `activeChaos` suppresses recovery until expiry (see condition update mechanics below)
+- `connection_sever` → consumed in step 4a's delivery logic via `getConnectionChaosAdjustments` (bandwidth override to 0). Consumer uses the same `<= currentTick` expiry check as the sweep.
+- `latency_injection` → consumed in step 4a's delivery logic via `getConnectionChaosAdjustments` (extra latency added). Same expiry check.
+- `component_failure` → **persisted as an `activeChaos` entry with `durationTicks: 1`**, not instantaneous. This ensures the failed component's condition stays at critical for at least one full tick of cascade effects before normal recovery resumes. Without this, the condition-recovery step would heal the failure before any downstream damage could register.
+- `zone_outage` → recorded in `activeChaos`; condition update mechanics (step 6) holds condition at `criticalThreshold` for all components in the zone while the outage persists.
 
 Adding a new chaos kind is a single new `case` branch in `applyChaosEvent` + an optional new consumption site if persistent. Same extensibility rule as `ConditionEffect`.
 
@@ -1250,8 +1267,27 @@ If `totalTouched == 0`, signal is 0 (idle components gently recover).
 ```ts
 // src/core/engine/tick-steps/update-condition.ts
 function updateCondition(state: SimulationState): void {
+  // Build the set of component IDs suppressed by active chaos — these
+  // components skip the normal update and are pinned at criticalThreshold.
+  const suppressed = new Set<ComponentId>();
+  for (const entry of state.activeChaos.values()) {
+    if (entry.expiresAtTick <= state.currentTick) continue;
+    if (entry.event.kind === "zone_outage") {
+      for (const [id, c] of state.components) {
+        if (c.zone === entry.event.zone) suppressed.add(id);
+      }
+    } else if (entry.event.kind === "component_failure") {
+      suppressed.add(entry.event.componentId);
+    }
+  }
+
   for (const [componentId, component] of state.components) {
-    const counters = state.perComponentThisTick.get(componentId) ?? emptyCounters;
+    if (suppressed.has(componentId)) {
+      state.setCondition(componentId, component.conditionProfile.criticalThreshold);
+      continue;
+    }
+
+    const counters = state.perComponentThisTick.get(componentId) ?? EMPTY_COUNTERS;
     const bad = counters.drops + counters.timeouts + counters.overloaded + counters.backpressured;
     const total = bad + counters.processed;
 
@@ -1266,21 +1302,10 @@ function updateCondition(state: SimulationState): void {
     const newCondition = Math.max(0, Math.min(1, component.condition + delta));
     state.setCondition(componentId, newCondition);
   }
-
-  // Zone outage suppression: components in an outaged zone cannot recover
-  // while the chaos is active — their condition is clamped at
-  // criticalThreshold until the outage expires.
-  for (const entry of state.activeChaos.values()) {
-    if (entry.event.kind === "zone_outage") {
-      for (const [id, c] of state.components) {
-        if (c.zone === entry.event.zone) {
-          state.setCondition(id, Math.min(c.condition, c.conditionProfile.criticalThreshold));
-        }
-      }
-    }
-  }
 }
 ```
+
+**Suppression set invariant:** a component in the `suppressed` set has its condition pinned at exactly `criticalThreshold` (not a floor, not a ceiling — an exact assignment). This matches the intent of "condition persists at critical until the chaos expires." Once the chaos expires and the sweep removes it from `activeChaos`, the component drops out of the suppression set on the next tick and normal recovery resumes.
 
 **Condition tier is derived, not stored:**
 ```ts
@@ -1297,11 +1322,11 @@ function getConditionTier(
 
 Called by `applyConditionEffects` at each of the four application sites (item B4). The effects list is selected based on the tier: `healthy` → none, `degraded` → `profile.degradedEffects`, `critical` → `profile.criticalEffects`.
 
-**Counter incrementing requirements** (added to Stage 2 step 19):
-- Tick step 3 (process pending) increments `processed` on successful PROCESS phase outcome, `overloaded` on throughput gate rejection, `drops` on DROP outcome
-- Tick step 4a (deliver results) increments `backpressured` on connection rejection
-- Tick step 5 (check TTL) increments `timeouts` on the component where the request was current when it timed out
-- Tick step 9 (reset per-tick state) clears all counters to zero
+**Counter incrementing requirements:**
+- **Tick step 3** (process pending): increments `overloaded` on throughput-gate rejection, `drops` on DROP outcome. Does NOT increment `processed` — that happens at delivery in step 4a to avoid double-counting requests that pass the pipeline but then get rejected on delivery.
+- **Tick step 4a** (deliver results): increments `processed` on successful RESPOND/FORWARD delivery, `backpressured` on connection rejection, `drops` on DROP outcome that originated at this step.
+- **Tick step 5** (check TTL): increments `timeouts` on the component where the request was current when it timed out.
+- **Tick step 9** (reset per-tick state): clears `state.perComponentThisTick` to an empty map. Fresh counter entries are created lazily by each incrementing step.
 
 ### Pub/sub fanout via REPLICATE + port-type filter
 
@@ -1313,22 +1338,51 @@ The port-compatibility check already exists in the placement tool — it's the s
 
 **Pseudocode:**
 ```ts
+// src/capabilities/replication/replication-capability.ts
 class ReplicationCapability implements Capability {
   readonly phase = "REPLICATE";
 
   canHandle(): boolean { return true; }  // REPLICATE phase always runs
 
   process(request: Request, context: ProcessContext): ProcessResult {
-    // Non-event replication (e.g., write replication to replica Databases)
-    // is handled by a different branch — see component-specific notes.
     if (request.type !== "event") {
       return { outcome: { kind: "PASS" }, sideEffects: [], events: [] };
     }
     const component = context.state.components.get(context.componentId)!;
-    const fanoutConnections = collectPortCompatibleEgress(component, "event", context.state);
-    const spawns: SideEffect[] = fanoutConnections.map(conn => ({
+
+    // Inline filter — no external helper. Walks the component's egress ports,
+    // collects connections whose TARGET component has an ingress port with
+    // matching dataType.
+    const fanoutConnectionIds: ConnectionId[] = [];
+    for (const port of component.ports) {
+      if (port.direction !== "egress") continue;
+      for (const connId of port.connections) {
+        const conn = context.state.connections.get(connId);
+        if (!conn) continue;
+        const target = context.state.components.get(conn.target.componentId);
+        if (!target) continue;
+        const targetIngress = target.ports.find(
+          p => p.direction === "ingress" && (p.dataType === "event" || p.dataType === "any")
+        );
+        if (targetIngress) fanoutConnectionIds.push(connId);
+      }
+    }
+
+    const remainingTtl = Math.max(0, (request.createdAt + request.ttl) - context.currentTick);
+    const spawns: SideEffect[] = fanoutConnectionIds.map(connId => ({
       kind: "SPAWN",
-      request: /* child event request with parentId = request.id, ttl = request.remainingTtl */,
+      request: {
+        ...makeChildRequestId(),
+        parentId: request.id,
+        type: "event",
+        payload: request.payload,
+        origin: context.componentId,
+        createdAt: context.currentTick,
+        ttl: remainingTtl,
+        originZone: request.originZone,
+        streamDuration: null,
+        streamBandwidth: null,
+      },
       blocking: false,
     }));
     return { outcome: { kind: "PASS" }, sideEffects: spawns, events: [] };
@@ -1383,6 +1437,9 @@ interface ModeController {
   //   4. Call SimulationState.placeComponent() or Component.upgrade() — the
   //      low-level mutators, which are never called directly from UI or engine
   //   5. Return a PlacementResult / UpgradeResult
+  // Build-phase only. tryPlace returns { ok: false, reason: "disallowed_by_mode" }
+  // if called while getPhase() !== "build". Matches CLAUDE.md's "build → watch
+  // → assess → repeat" principle: no mid-wave intervention.
   tryPlace(
     state: SimulationState,
     type: string,
@@ -1396,35 +1453,53 @@ interface ModeController {
   ): UpgradeResult;
 
   // Chaos injection — engine calls in step 6b. Returns events scheduled
-  // for the current tick. The engine applies them by mutating SimulationState
-  // (e.g., setting condition to criticalThreshold, overriding connection
-  // bandwidth, injecting latency) in a single chaos-application helper
-  // analogous to applyConditionEffects.
+  // for the current tick. The engine applies them via applyChaosEvent.
   getScheduledChaos(currentTick: number): readonly ChaosEvent[];
+
+  // Optional per-tick observation hook. Engine calls this in step 10
+  // (ADVANCE TICK), after all tick work but before checking wave-over
+  // condition. Modes use it to react to dynamic simulation state —
+  // e.g., a scripted-failure mode triggering an explainer when a specific
+  // component first hits critical condition. Most modes do not implement it.
+  // The mode receives a read-only view; it cannot mutate state from here.
+  onTick?(state: SimulationStateReader): void;
 }
 
 // src/core/mode/economy-strategy.ts
 interface EconomyStrategy {
   getBudget(): number;
   canAfford(cost: number): boolean;
-  creditRevenue(request: Request, amount: number): void;
+
+  // The mode's economy computes the amount from request.type internally —
+  // no Phase 1 RequestTypeRegistry exists. Returns the credited amount for
+  // metrics aggregation. A sandbox-style "observation only" economy may
+  // return 0 without actually mutating budget.
+  creditRevenue(request: Request): number;
+
   debitUpkeep(totalUpkeep: number): void;
-  debitPlacement(component: Component): void;
-  debitUpgrade(component: Component, capabilityId: CapabilityId): void;
+  debitPlacement(component: ComponentReader): void;
+  debitUpgrade(component: ComponentReader, capabilityId: CapabilityId): void;
   resolveInsolvency(state: SimulationStateReader): ComponentId[];
 }
 
 // src/core/mode/traffic-source.ts
 interface TrafficSource {
-  readonly targetEntryPointId: ComponentId;
+  // null for composite sources that hold per-zone sub-sources; consumers
+  // must check for null and iterate sub-sources instead.
+  readonly targetEntryPointId: ComponentId | null;
   generate(tick: number): Request[];
+  // For composite sources; atomic sources return [this].
+  getSubSources?(): readonly TrafficSource[];
 }
 
 // src/core/mode/composite-traffic-source.ts
-// Mode-agnostic utility: wraps N sub-sources, one per entry point
+// Mode-agnostic utility: wraps N sub-sources, one per entry point.
+// targetEntryPointId is null; engine consumes via getSubSources().
 class CompositeTrafficSource implements TrafficSource {
+  readonly targetEntryPointId: null;
   constructor(sources: TrafficSource[]);
-  // targetEntryPointId throws — use sub-sources
+  generate(tick: number): Request[];  // concatenates all sub-source outputs
+  getSubSources(): readonly TrafficSource[];
 }
 
 // src/core/mode/mode-definition.ts
@@ -1475,7 +1550,15 @@ interface RenderSnapshot {
   };
 }
 
-function getRenderSnapshot(state: SimulationStateReader, economy: EconomyStrategy): RenderSnapshot;
+// Visual data lives on ComponentRegistryEntry, not Component, so the
+// snapshot extractor must be given access to the registry. This is the
+// only outside dependency — the function otherwise reads only from state
+// and economy.
+function getRenderSnapshot(
+  state: SimulationStateReader,
+  economy: EconomyStrategy,
+  registry: ComponentRegistry
+): RenderSnapshot;
 ```
 
 ---
@@ -1521,6 +1604,10 @@ src/
 │   │   │   ├── record-metrics.ts
 │   │   │   └── reset-per-tick-state.ts
 │   │   ├── condition-effects.ts
+│   │   ├── chaos-effects.ts
+│   │   ├── condition-tier.ts
+│   │   ├── response-transport.ts
+│   │   ├── per-component-counters.ts
 │   │   ├── throughput-gate.ts
 │   │   ├── visitation-order.ts
 │   │   └── rng.ts
@@ -1671,7 +1758,7 @@ TypeScript is configured strict: `strict: true`, `noImplicitAny: true`, `exactOp
 1. Core value types: Request, RequestEvent, Port, Connection, ProcessResult, PrimaryOutcome, SideEffect, ConditionEffect, branded IDs, Phase
 2. `Capability` interface + all four sub-interfaces
 3. `ProcessContext` + `DeterministicRng`
-4. `Component` class — constructor, `getEffectiveTier`, pipeline runner skeleton
+4. `Component` class — constructor, `getPlayerTier`, pipeline runner skeleton, `ComponentReader` interface, and the standalone `getEffectiveTier` + `computeEffectiveTiers` functions in `src/core/component/effective-tier.ts`
 5. `SimulationState` + `SimulationStateReader`
 6. `CapabilityRegistry` + `ComponentRegistry` with registration-time validation
 7. Abstract `ModeController`, `EconomyStrategy`, `TrafficSource`, `ModeDefinition` interfaces
@@ -1808,9 +1895,9 @@ ESLint blocks imports from/into these boundaries. `CLAUDE.md` markers in each fo
 4. Assert observable engine behavior is unchanged when modes are swapped (same tick counter advancement, same component visitation order, same pipeline phase order)
 
 **Static portion (ensures "the engine never names a specific mode"):**
-5. Read every `.ts` file under `src/core/` and `src/capabilities/` and `src/components/`
-6. Assert none of them contain the strings `"TDMode"`, `"SandboxMode"`, `"TDEconomy"`, `"SandboxEconomy"`, or any identifier matching the pattern `/[A-Z]\w*Mode(Controller|Economy)?/` other than the abstract `ModeController` / `ModeDefinition` / `EconomyStrategy` types
-7. Assert none of them import from `src/modes/` (ESLint already enforces this, but the test provides a second check in case the ESLint config is ever weakened)
+5. Read every `.ts` file under `src/core/`, `src/capabilities/`, and `src/components/`
+6. For each file, assert there are no identifiers matching `/\b[A-Z]\w*Mode(Controller)?\b/` or `/\b[A-Z]\w*Economy\b/` EXCEPT for an explicit allowlist: `ModeController`, `ModeDefinition`, `EconomyStrategy`, `NoOpModeController`, `NoOpEconomy`. Concretely: tokenize, filter out allowlisted identifiers, assert the remaining set is empty.
+7. Assert none of them import from `src/modes/` (ESLint already enforces this at build time; the test provides a second check in case the ESLint config is ever weakened)
 
 If both portions are green, any new mode that correctly implements the four interfaces will drop into the engine without requiring core modifications.
 
@@ -1862,7 +1949,7 @@ You are an agent building [TD mode | Sandbox mode | other].
 - **Refactor cascade.** Adding a component is a registry entry. Adding a capability is an interface implementation. Adding an effect kind is 5 lines in one file. None of these modify the engine.
 - **Mode coupling.** `ModeController`, `EconomyStrategy`, and `TrafficSource` are abstract interfaces in Phase 1. The engine only calls through them. Modes never see each other.
 - **Rendering coupling.** Simulation produces `SimulationState`. `getRenderSnapshot()` extracts a pure data shape. Renderer reads the snapshot. Sim and renderer never call each other.
-- **Ownership ambiguity.** `SimulationState` is the single source of truth for runtime state. `Component.getEffectiveTier()` is the single source for tier. `applyConditionEffects` is the single interpreter of effects. `EconomyStrategy` is the single economy. No dual-authority bugs.
+- **Ownership ambiguity.** `SimulationState` is the single source of truth for runtime state. The standalone `getEffectiveTier` function in `src/core/component/effective-tier.ts` is the single source for tier. `applyConditionEffects` is the single interpreter of effects. `EconomyStrategy` is the single economy. No dual-authority bugs.
 - **Tier drift.** `capabilityTiers` is private. All call sites go through `getEffectiveTier`.
 - **Immutable request mutations.** `Request` stays immutable. Per-tick state that looks like request metadata (re-emission flags) lives in the capability that owns the state.
 - **Parallel-work collisions.** Phase 2 agents work in isolated subfolders enforced by ESLint and `CLAUDE.md` markers. Zero merge surface after Phase 1.
@@ -1875,7 +1962,7 @@ You are an agent building [TD mode | Sandbox mode | other].
 - **Component:** Named bundle of capabilities. Generic pipeline runner. No subclasses.
 - **Pipeline phase:** One of INTERCEPT, PROCESS, REPLICATE, OBSERVE. Fixed order. Capabilities declare their phase (optional for sub-interface-only capabilities).
 - **Engine sub-interface:** An opt-in interface a capability can implement to interact with the engine beyond the standard pipeline. `EngineConsultable`, `EngineBufferable`, `EnginePullable`, `InstanceDirectory`.
-- **Effective tier:** `min(playerTier, modeTierCap)`. Computed by `Component.getEffectiveTier()`. The ONLY valid tier value for any call site.
+- **Effective tier:** `min(playerTier, modeTierCap)`. Computed by the standalone `getEffectiveTier` function in `src/core/component/effective-tier.ts`. The ONLY valid tier value for any call site.
 - **Visitation order:** Stable-per-wave ordering of components, used by the fixed-point loop in tick step 3. Sorted by `(zone, placementTick, componentId)`.
 - **Condition effect:** A structured effect applied by the engine when a component is degraded or critical. Closed discriminated union, interpreted only by `applyConditionEffects`.
 - **SimulationState:** The single source of truth for all mutable runtime state.
