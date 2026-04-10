@@ -313,21 +313,26 @@ interface Capability {
 
 **Problem:** Two authorities decide tier: `capabilityTiers[id]` (player upgrade) and `ModeController.getTierCap()` (mode cap). If any call site computes `min()` its own way, tiers drift.
 
-**Resolution:**
+**Resolution:** `getEffectiveTier` is a **standalone function**, not a method on `Component`. `Component` holds no reference to `ModeController` — it stays a pure pipeline runner. The function takes the component, the capability ID, and the mode controller explicitly:
 
 ```ts
-class Component {
-  private capabilityTiers: Map<CapabilityId, number>;  // private, no getter
-
-  getEffectiveTier(capabilityId: CapabilityId): number {
-    const playerTier = this.capabilityTiers.get(capabilityId) ?? 0;
-    const modeCap = this.modeController.getTierCap(this, capabilityId);
-    return Math.min(playerTier, modeCap);
-  }
+// src/core/component/effective-tier.ts
+export function getEffectiveTier(
+  component: ComponentReader,
+  capabilityId: CapabilityId,
+  modeController: ModeController
+): number {
+  const playerTier = component.getPlayerTier(capabilityId);
+  const modeCap = modeController.getTierCap(component, capabilityId);
+  return Math.min(playerTier, modeCap);
 }
 ```
 
-**Rule:** Every site that uses tier calls `getEffectiveTier`. No direct access to `capabilityTiers`. Enforced by making the field private with no getter. The only public read path is `getEffectiveTier`.
+`Component` exposes `getPlayerTier(capabilityId): number` — a single read path for the player-upgraded tier only, reading the private `capabilityTiers` map. It does NOT have a `getEffectiveTier` method. Every caller that needs an effective tier imports the standalone function.
+
+**Rule:** Every site that uses effective tier imports `getEffectiveTier` from `src/core/component/effective-tier.ts`. No direct access to `capabilityTiers`. No ad-hoc `Math.min(playerTier, modeCap)` anywhere else in the codebase. Enforced by making `capabilityTiers` private and `getEffectiveTier` the single exported function.
+
+**Per-tick caching:** The engine calls `computeEffectiveTiers(component, modeController)` once per component at the start of step 3, building a full `ReadonlyMap<CapabilityId, number>`. The cached map is threaded through `ProcessContext.effectiveTiers` so capabilities never re-compute during pipeline execution.
 
 **Call sites that must use it:**
 1. Pipeline runner (passes `effectiveTier` to `capability.process()`)
@@ -417,6 +422,153 @@ Phase 1 contains everything both modes depend on and neither mode owns. If somet
 ## TypeScript contracts
 
 The shapes below are the stable contracts for Phase 1. Agent implementers should reference these, not reinvent them. Where TypeScript syntax is used, treat it as the authoritative signature.
+
+### Supplementary types (referenced throughout the spec)
+
+These are the small "glue" types referenced by signatures in later subsections. They're grouped here so there's one place to find them.
+
+```ts
+// src/core/types/position.ts
+interface Position {
+  readonly x: number;
+  readonly y: number;
+}
+
+// src/core/engine/rng.ts
+// Deterministic PRNG seeded with a string composed of
+// (tick, componentId, requestId, purposeTag). Used by the engine for
+// any randomness that must be replay-safe (condition drop_probability,
+// eviction policy ties, etc.). Capabilities never allocate their own
+// RNG — they receive one through ProcessContext.
+interface DeterministicRng {
+  next(): number;                 // returns float in [0, 1)
+  nextInt(maxExclusive: number): number;
+  fork(purposeTag: string): DeterministicRng;  // child RNG for isolated sub-uses
+}
+
+// src/core/types/stream.ts
+// Entry in SimulationState.activeStreams. Created by the engine in
+// step 4a when a StreamingCapability returns RESPOND with streamDuration > 0.
+// Iterated by step 4b to decrement duration, credit revenue, and release
+// bandwidth on completion.
+interface ActiveStream {
+  readonly requestId: RequestId;
+  readonly connectionId: ConnectionId;   // connection holding the reservation
+  readonly originComponentId: ComponentId;
+  readonly baseRevenue: number;          // credited per tick via economy
+  remainingDuration: number;             // mutated by step 4b
+  reservedBandwidth: number;             // may be reduced by adaptive streaming
+}
+
+// src/core/mode/chaos.ts
+// Mode-agnostic chaos event vocabulary. Modes schedule these via
+// ModeController.getScheduledChaos(); the engine applies them in step 6b.
+// Closed union — adding a new kind is a single interpretation site in the
+// engine's chaos application helper (same pattern as ConditionEffect in A2).
+type ChaosEvent =
+  | { kind: "component_failure"; componentId: ComponentId }
+  | { kind: "zone_outage"; zone: string; durationTicks: number }
+  | { kind: "connection_sever"; connectionId: ConnectionId; durationTicks: number }
+  | { kind: "latency_injection"; connectionId: ConnectionId; extraLatency: number; durationTicks: number };
+
+// src/core/mode/build-constraints.ts
+interface BuildConstraints {
+  readonly availableComponentTypes: readonly string[];  // drives the palette
+  readonly maxPlacements?: number;
+  readonly zoneAllowlist?: readonly string[];
+}
+
+// src/core/mode/placement-result.ts
+type PlacementResult =
+  | { ok: true; componentId: ComponentId }
+  | {
+      ok: false;
+      reason: "insufficient_budget" | "invalid_position" | "invalid_zone" | "disallowed_by_mode" | "registry_unknown_type";
+      detail?: string;
+    };
+
+type UpgradeResult =
+  | { ok: true; newPlayerTier: number }
+  | {
+      ok: false;
+      reason: "insufficient_budget" | "max_tier_reached" | "disallowed_by_mode" | "capability_not_found";
+      detail?: string;
+    };
+
+// src/core/engine/metrics.ts
+interface TickMetrics {
+  readonly tick: number;
+  readonly requestsProcessed: number;
+  readonly requestsResolved: number;   // successful RESPOND
+  readonly requestsDropped: number;
+  readonly requestsOverloaded: number; // distinct from dropped/backpressured
+  readonly requestsBackpressured: number;
+  readonly requestsTimedOut: number;
+  readonly revenueEarned: number;
+  readonly upkeepPaid: number;
+  readonly avgLatency: number;
+  readonly perComponent: ReadonlyMap<ComponentId, {
+    processed: number;
+    dropped: number;
+    overloaded: number;
+    backpressured: number;
+    condition: number;
+  }>;
+}
+
+// src/core/mode/outcome.ts
+interface OutcomeReport {
+  readonly verdict: "win" | "lose" | "neutral";
+  readonly score: {
+    readonly cost: number;
+    readonly performance: number;
+    readonly reliability: number;
+    readonly composite: number;
+  };
+  readonly notes: readonly string[];
+}
+
+// src/core/component/component-args.ts
+interface ComponentConstructorArgs {
+  readonly id: ComponentId;
+  readonly type: string;
+  readonly name: string;
+  readonly description: string;
+  readonly capabilities: ReadonlyMap<CapabilityId, Capability>;
+  readonly initialTiers: ReadonlyMap<CapabilityId, number>;  // seeds the private capabilityTiers map
+  readonly ports: readonly Port[];
+  readonly placementCost: number;
+  readonly position: Position;
+  readonly zone: string | null;
+  readonly placementTick: number;
+  readonly conditionProfile: ConditionProfile;
+}
+```
+
+### Engine sub-interface discovery (replaces `SubInterfaceTag`)
+
+The engine discovers which capabilities implement which sub-interfaces via **structural predicate functions**, not runtime tags. Each sub-interface has a unique method name, so method presence is a safe and type-narrowing check:
+
+```ts
+// src/core/capability/engine-interfaces.ts
+function isEngineConsultable(c: Capability): c is Capability & EngineConsultable {
+  return typeof (c as unknown as EngineConsultable).selectConnection === "function";
+}
+
+function isEngineBufferable(c: Capability): c is Capability & EngineBufferable {
+  return typeof (c as unknown as EngineBufferable).enqueueForRetry === "function";
+}
+
+function isEnginePullable(c: Capability): c is Capability & EnginePullable {
+  return typeof (c as unknown as EnginePullable).pullPending === "function";
+}
+
+function isInstanceDirectory(c: Capability): c is Capability & InstanceDirectory {
+  return typeof (c as unknown as InstanceDirectory).listCandidates === "function";
+}
+```
+
+`Component.getCapabilityByInterface<T>(predicate)` takes a predicate of the above shape and returns `(Capability & T) | null`. The engine never names a specific capability class.
 
 ### Core value types
 
@@ -525,10 +677,12 @@ interface ConditionProfile {
 interface ProcessContext {
   readonly state: SimulationStateReader;
   readonly componentId: ComponentId;
-  readonly effectiveTier: number;
+  readonly effectiveTier: number;                          // pre-computed by engine for THIS capability
+  readonly effectiveTiers: ReadonlyMap<CapabilityId, number>;  // full map for the component
+  readonly activeCapabilityIds: ReadonlySet<CapabilityId>; // filtered by ModeController
   readonly currentTick: number;
-  readonly rng: DeterministicRng;  // seeded per (tick, componentId, requestId)
-  readonly directories: InstanceDirectory[];  // from item A3
+  readonly rng: DeterministicRng;                          // seeded per (tick, componentId, requestId)
+  readonly directories: readonly InstanceDirectory[];      // from item A3
 }
 
 // src/core/capability/capability.ts
@@ -561,12 +715,34 @@ interface EngineConsultable {
 }
 
 interface EngineBufferable {
+  // Called by the engine in step 4a when a Connection rejects an outbound
+  // FORWARD delivery. The buffered entry remembers the pre-computed
+  // ProcessResult so re-delivery does NOT re-run the pipeline.
+  // Returns false if the buffer is at capacity — the engine then drops.
   enqueueForRetry(request: Request, result: ProcessResult): boolean;
+
+  // Called by the engine in step 2 (RE-EMIT QUEUED). Returns everything
+  // ready to re-enter the system on the component owning this capability:
+  //   - awaitingPipeline: requests that were proactively held (QUEUE_HOLD
+  //     during INTERCEPT). These re-enter their own component's pipeline
+  //     from the top. QueueCapability's re-emission tag (item B2) ensures
+  //     they PASS on the second visit.
+  //   - awaitingDelivery: requests that were backpressure-held via
+  //     enqueueForRetry. These bypass the pipeline entirely — the engine
+  //     retries delivery directly with the preserved ProcessResult.
   emitReady(): {
     awaitingPipeline: Request[];
     awaitingDelivery: { request: Request; result: ProcessResult }[];
   };
-  dequeueBatch(n: number): Request[];  // called by EnginePullable holders
+
+  // Called by EnginePullable holders (e.g., BatchProcessingCapability on
+  // a Worker) during step 2. Pulls up to n requests from a SEPARATE internal
+  // buffer (awaitingWorkerPull) that is NEVER touched by emitReady.
+  // A QueueCapability decides which buffer a request goes into at hold time
+  // based on the request's type and the queue's configured mode. A given
+  // request is in exactly one buffer for its entire lifecycle inside the
+  // queue — there is no path by which a request can be delivered twice.
+  dequeueBatch(n: number): Request[];
 }
 
 interface EnginePullable {
@@ -595,72 +771,173 @@ interface ComponentRef {
 }
 ```
 
-### Component class
+### Component class and effective-tier function
 
 ```ts
 // src/core/component/component.ts
-class Component {
+class Component implements ComponentReader {
   readonly id: ComponentId;
   readonly type: string;
   readonly name: string;
   readonly description: string;
-  readonly capabilities: Map<CapabilityId, Capability>;
-  private capabilityTiers: Map<CapabilityId, number>;  // private — item C3
-  readonly ports: Port[];
+  readonly capabilities: ReadonlyMap<CapabilityId, Capability>;
+  private capabilityTiers: Map<CapabilityId, number>;   // private, only upgrade() writes
+  readonly ports: readonly Port[];
   readonly placementCost: number;
-  position: { x: number; y: number };
+  readonly placementTick: number;                        // used by visitation order (item B6)
+  position: Position;
   zone: string | null;
   instanceCount: number;
   condition: number;
+  readonly conditionProfile: ConditionProfile;
 
-  constructor(config: ComponentConstructorArgs);
+  constructor(args: ComponentConstructorArgs);
 
-  // THE ONLY public tier read path — item C3
-  getEffectiveTier(capabilityId: CapabilityId): number;
+  // Single read path for the player's upgraded tier. Does NOT consult the mode.
+  // For the effective tier (min of player tier and mode cap), use the standalone
+  // getEffectiveTier function in src/core/component/effective-tier.ts.
+  getPlayerTier(capabilityId: CapabilityId): number;
 
   getCapabilitiesByPhase(phase: Phase): Capability[];
-  getCapabilityByInterface<T>(iface: SubInterfaceTag): T | null;
+  getCapabilityByInterface<T>(
+    predicate: (c: Capability) => c is Capability & T
+  ): (Capability & T) | null;
 
-  getThroughputPerTick(): number;  // item B1
-  getUpkeepCost(): number;
+  // These methods take activeCapabilityIds + effectiveTiers as arguments because
+  // Component has no ambient reference to ModeController — it's a pure pipeline runner.
+  getThroughputPerTick(
+    activeCapabilityIds: ReadonlySet<CapabilityId>,
+    effectiveTiers: ReadonlyMap<CapabilityId, number>
+  ): number;  // item B1
+  getUpkeepCost(
+    activeCapabilityIds: ReadonlySet<CapabilityId>,
+    effectiveTiers: ReadonlyMap<CapabilityId, number>
+  ): number;
 
+  // Runs the pipeline. Engine pre-computes activeCapabilityIds + effectiveTiers
+  // and passes them via ProcessContext; the pipeline runner filters each phase
+  // by activeCapabilityIds before invoking capabilities.
   process(request: Request, context: ProcessContext): ProcessResult;
-  upgrade(capabilityId: CapabilityId): void;
-  resetPerTickState(): void;  // item B2 — iterates all capabilities
+
+  // Low-level tier mutator. Called by ModeController.tryUpgrade() AFTER economy
+  // checks have passed. UI code never calls this directly.
+  upgrade(capabilityId: CapabilityId, registryMaxTier: number): void;
+
+  // Iterates all capabilities and calls resetPerTickState() on any that
+  // implement it (item B2). Called by engine in tick step 9.
+  resetPerTickState(): void;
+}
+
+// src/core/component/effective-tier.ts
+// THE single source of truth for effective tier (item C3). Every call site
+// that needs an effective tier — pipeline, upkeep, throughput gate, UI inspector,
+// renderer, diagnostics — imports and uses this function. Component itself
+// exposes only getPlayerTier; no method on Component returns effectiveTier.
+export function getEffectiveTier(
+  component: ComponentReader,
+  capabilityId: CapabilityId,
+  modeController: ModeController
+): number {
+  const playerTier = component.getPlayerTier(capabilityId);
+  const modeCap = modeController.getTierCap(component, capabilityId);
+  return Math.min(playerTier, modeCap);
+}
+
+// Convenience: compute the full effective-tier map for a component. Engine
+// calls this once per component per tick and passes the result through
+// ProcessContext so capabilities never re-compute.
+export function computeEffectiveTiers(
+  component: ComponentReader,
+  modeController: ModeController
+): ReadonlyMap<CapabilityId, number>;
+```
+
+### ComponentReader (read-only view exposed to capabilities)
+
+`SimulationStateReader` exposes components through `ComponentReader`, not `Component`. A `ComponentReader` has every readable field but no mutators — capabilities cannot call `upgrade()`, cannot modify `position`, cannot mutate `condition`. Mutations flow only through `SimulationState`'s explicit mutators and `ModeController`'s guarded flows.
+
+```ts
+// src/core/component/component-reader.ts
+interface ComponentReader {
+  readonly id: ComponentId;
+  readonly type: string;
+  readonly name: string;
+  readonly description: string;
+  readonly ports: readonly Port[];
+  readonly placementCost: number;
+  readonly placementTick: number;
+  readonly position: Readonly<Position>;
+  readonly zone: string | null;
+  readonly instanceCount: number;      // readonly view — engine mutates via SimulationState
+  readonly condition: number;          // readonly view — engine mutates via SimulationState
+  readonly conditionProfile: ConditionProfile;
+
+  getPlayerTier(capabilityId: CapabilityId): number;
+  getCapabilityIds(): readonly CapabilityId[];
+  getCapabilityByInterface<T>(
+    predicate: (c: Capability) => c is Capability & T
+  ): (Capability & T) | null;
 }
 ```
+
+`Component` implements `ComponentReader`. `SimulationState` exposes `Component` instances directly (engine can mutate); `SimulationStateReader` narrows the same instances to `ComponentReader`. This is a compile-time guarantee — TypeScript's structural typing prevents a capability from calling `upgrade()` on a `ComponentReader` even though the underlying object is a full `Component`.
 
 ### SimulationState
 
 ```ts
 // src/core/state/simulation-state.ts
+// THE single source of truth for mutable runtime state. Engine mutates during
+// tick. ModeController mutates economy and build-phase topology via its
+// guarded tryPlace/tryUpgrade flows. Capabilities never mutate directly —
+// they receive a SimulationStateReader (which narrows components to
+// ComponentReader) and produce ProcessResult.
 class SimulationState {
-  readonly components: ReadonlyMap<ComponentId, Component>;
-  readonly connections: ReadonlyMap<ConnectionId, Connection>;
-  readonly pending: ReadonlyMap<ComponentId, Request[]>;
-  readonly activeStreams: ReadonlyMap<RequestId, ActiveStream>;
-  readonly requestLog: ReadonlyMap<RequestId, RequestEvent[]>;
+  readonly components: Map<ComponentId, Component>;
+  readonly connections: Map<ConnectionId, Connection>;
+  readonly pending: Map<ComponentId, Request[]>;
+  readonly activeStreams: Map<RequestId, ActiveStream>;
+  readonly requestLog: Map<RequestId, RequestEvent[]>;
+  readonly activeChaos: Map<string, ChaosEvent & { expiresAtTick: number }>;
   currentTick: number;
   phase: "build" | "simulate" | "assess";
-  requestsProcessedThisTick: ReadonlyMap<ComponentId, number>;
-  connectionLoadThisTick: ReadonlyMap<ConnectionId, number>;
+  requestsProcessedThisTick: Map<ComponentId, number>;
+  connectionLoadThisTick: Map<ConnectionId, number>;
 
-  // Mutators — only these change state
+  // Topology mutators (called by ModeController.tryPlace / tryUpgrade after
+  // economy checks, never by capabilities or the engine tick loop directly)
   placeComponent(c: Component): void;
   removeComponent(id: ComponentId): void;
   addConnection(c: Connection): void;
   removeConnection(id: ConnectionId): void;
+
+  // Runtime mutators (engine-only, called during tick execution)
   appendEvent(requestId: RequestId, event: RequestEvent): void;
   enqueuePending(componentId: ComponentId, request: Request): void;
-  // ... etc
+  dequeuePending(componentId: ComponentId): Request | undefined;
+  registerActiveStream(stream: ActiveStream): void;
+  releaseActiveStream(requestId: RequestId): void;
+  incrementProcessedCount(componentId: ComponentId): void;
+  incrementConnectionLoad(connectionId: ConnectionId, amount: number): void;
+  setCondition(componentId: ComponentId, value: number): void;
+  setInstanceCount(componentId: ComponentId, count: number): void;
+  advanceTick(): void;
+
+  // Read-only view exposed to capabilities via ProcessContext
+  asReader(): SimulationStateReader;
 }
 
 // src/core/state/state-reader.ts
+// Narrows the full SimulationState to read-only access. Capabilities receive
+// this via ProcessContext; they cannot mutate the simulation directly.
+// Note: components are exposed as ComponentReader, not Component — this prevents
+// capabilities from calling upgrade(), mutating position/condition, etc.
 interface SimulationStateReader {
-  readonly components: ReadonlyMap<ComponentId, Component>;
-  readonly connections: ReadonlyMap<ConnectionId, Connection>;
+  readonly components: ReadonlyMap<ComponentId, ComponentReader>;
+  readonly connections: ReadonlyMap<ConnectionId, Readonly<Connection>>;
   readonly currentTick: number;
+  readonly phase: "build" | "simulate" | "assess";
   getEventsFor(requestId: RequestId): readonly RequestEvent[];
+  getActiveStreamsOnConnection(connectionId: ConnectionId): readonly ActiveStream[];
   // No mutators
 }
 ```
@@ -669,10 +946,16 @@ interface SimulationStateReader {
 
 ```ts
 // src/core/registry/capability-registry.ts
+// Sub-interface implementation is NOT declared in the registry — it's
+// discovered structurally at runtime via the isEngineConsultable /
+// isEngineBufferable / isEnginePullable / isInstanceDirectory predicate
+// functions. The registry only holds the factory and the capability's ID.
 interface CapabilityRegistryEntry {
   id: CapabilityId;
   factory: () => Capability;
-  implementsSubInterfaces: SubInterfaceTag[];
+  // Optional human-readable declaration for documentation / validation only.
+  // The engine never consults this field — it uses the predicate functions.
+  documentsSubInterfaces?: readonly ("EngineConsultable" | "EngineBufferable" | "EnginePullable" | "InstanceDirectory")[];
 }
 
 class CapabilityRegistry {
@@ -714,30 +997,59 @@ class ComponentRegistry {
 class Engine {
   tick(state: SimulationState, modeController: ModeController): void;
 
-  // Each private method corresponds to a numbered tick step
+  // Each private method corresponds to a numbered tick step. Step 4 is split
+  // into 4a (deliver results + credit one-shot revenue on RESPOND + reserve
+  // stream bandwidth on streaming RESPOND) and 4b (update active streams +
+  // credit per-tick stream revenue, item B5).
   private injectTraffic(state, modeController): void;         // step 1
-  private reEmitQueued(state): void;                           // step 2
-  private processPending(state, modeController): void;        // step 3 (fixed-point loop)
-  private deliverResults(state, results): void;               // step 4
+  private reEmitQueued(state): void;                          // step 2
+  private processPending(state, modeController): void;        // step 3 (fixed-point loop, item B6)
+  private deliverResults(state, modeController, results): void; // step 4a
   private updateActiveStreams(state, modeController): void;   // step 4b (per-tick stream revenue)
-  private checkTtl(state): void;                               // step 5
+  private checkTtl(state): void;                              // step 5
   private updateCondition(state): void;                       // step 6
   private injectChaos(state, modeController): void;           // step 6b
   private deductUpkeep(state, modeController): void;          // step 7
   private recordMetrics(state): void;                         // step 8
   private resetPerTickState(state): void;                     // step 9
   private advanceTick(state, modeController): void;           // step 10
+
+  // Internal helper invoked at the start of step 3 for each component.
+  // Pre-computes the per-tick activeCapabilityIds set (via modeController
+  // .getActiveCapabilities) and the full effectiveTiers map (via
+  // computeEffectiveTiers) and caches them for the duration of the tick.
+  // These cached values are threaded into every ProcessContext passed to
+  // Component.process() for the component during the tick.
+  private buildProcessContext(
+    state: SimulationState,
+    component: Component,
+    modeController: ModeController,
+    request: Request
+  ): ProcessContext;
 }
 
 // src/core/engine/condition-effects.ts
-// The ONLY place ConditionEffect kinds are interpreted
+// The ONLY place ConditionEffect kinds are interpreted.
 function applyConditionEffects(
-  component: Component,
+  component: ComponentReader,
   phase: "pre_process" | "throughput_gate" | "post_process_event" | "upkeep",
   input: unknown,
   ctx: { rng: DeterministicRng; currentTick: number; requestId?: RequestId }
 ): unknown;
 ```
+
+**Tick step 4a responsibilities** (canonical list — implementers should reference this when filling in `deliver-results.ts`):
+
+1. For each `ProcessResult` from step 3:
+   - **RESPOND (non-stream):** Credit `economy.creditRevenue(request, baseRevenue)` where `baseRevenue` comes from the request type definition. Resolve the request (write RESPONDED event). If the request has a `parentId`, check whether the parent can now resolve.
+   - **RESPOND (stream, i.e., `request.streamDuration != null`):** Do NOT credit lump-sum revenue. Register an `ActiveStream` entry in `SimulationState.activeStreams` with `remainingDuration = streamDuration`, `reservedBandwidth = streamBandwidth`, `connectionId` = the connection the request arrived on (or the first egress connection if the stream originates here). Per-tick revenue is credited by step 4b.
+   - **FORWARD:** Consult `EngineConsultable.selectConnection()` or fall back to round-robin. Attempt delivery. If the connection's effective bandwidth (`connection.bandwidth` minus sum of `reservedBandwidth` for active streams on that connection) is exceeded, the delivery is rejected: route to `EngineBufferable.enqueueForRetry()` on the sending component if present, else drop with a `BACKPRESSURED` event.
+   - **DROP:** Append `DROPPED` event with reason.
+   - **QUEUE_HOLD:** Already handled — the request is inside `QueueCapability`'s awaiting-pipeline buffer.
+2. For each `SPAWN` side effect: create child Request with `parentId` set, `ttl = min(parentRemainingTtl, childTtl)`, enqueue in target component's pending. Blocking spawns (from PROCESS phase) register the parent as waiting.
+3. For each `SCALE` side effect: adjust `instanceCount` via `state.setInstanceCount()`, debit the cost difference via `economy.debitUpkeep()` delta (or a dedicated scaling fee).
+
+**Insolvency application** (referenced by step 7): when `economy.resolveInsolvency(state.asReader())` returns component IDs, the engine applies accelerated degradation to each — specifically, it sets their `condition` directly to the component's `conditionProfile.criticalThreshold`, triggering the critical-tier condition effects for the following tick. This is a single site and matches the existing condition mechanism rather than introducing a new degradation path.
 
 ### Mode and economy interfaces (abstract only in Phase 1)
 
@@ -746,19 +1058,49 @@ function applyConditionEffects(
 interface ModeController {
   readonly economy: EconomyStrategy;
 
-  getActiveCapabilities(component: Component): Set<CapabilityId>;
-  getTierCap(component: Component, capabilityId: CapabilityId): number;
+  // Filters which capabilities on a component are active in the current
+  // mode/phase/wave. The engine calls this once per component at the start
+  // of each tick and caches the result in ProcessContext.activeCapabilityIds
+  // for the duration of that tick. A capability not in the returned set is
+  // skipped by Component.process() in every phase and does not accrue upkeep.
+  getActiveCapabilities(component: ComponentReader): ReadonlySet<CapabilityId>;
+
+  // Returns Infinity if no cap is imposed. Consumed by the standalone
+  // getEffectiveTier() function in src/core/component/effective-tier.ts.
+  getTierCap(component: ComponentReader, capabilityId: CapabilityId): number;
+
   getBuildConstraints(): BuildConstraints;
   getTrafficSource(): TrafficSource;
-  evaluateOutcome(metrics: TickMetrics[]): OutcomeReport;
+  evaluateOutcome(metrics: readonly TickMetrics[]): OutcomeReport;
   getPhase(): "build" | "simulate" | "assess";
   advancePhase(): void;
 
-  tryPlace(type: string, position: Position, zone: string | null): PlacementResult;
-  tryUpgrade(componentId: ComponentId, capabilityId: CapabilityId): UpgradeResult;
+  // Build-phase guarded mutators. The ONLY public code path for component
+  // placement and upgrades. UI calls these; they internally:
+  //   1. Validate against getBuildConstraints()
+  //   2. Check economy.canAfford(cost)
+  //   3. Debit economy (debitPlacement / debitUpgrade)
+  //   4. Call SimulationState.placeComponent() or Component.upgrade() — the
+  //      low-level mutators, which are never called directly from UI or engine
+  //   5. Return a PlacementResult / UpgradeResult
+  tryPlace(
+    state: SimulationState,
+    type: string,
+    position: Position,
+    zone: string | null
+  ): PlacementResult;
+  tryUpgrade(
+    state: SimulationState,
+    componentId: ComponentId,
+    capabilityId: CapabilityId
+  ): UpgradeResult;
 
-  // Chaos injection — called by engine in step 6b
-  getScheduledChaos(currentTick: number): ChaosEvent[];
+  // Chaos injection — engine calls in step 6b. Returns events scheduled
+  // for the current tick. The engine applies them by mutating SimulationState
+  // (e.g., setting condition to criticalThreshold, overriding connection
+  // bandwidth, injecting latency) in a single chaos-application helper
+  // analogous to applyConditionEffects.
+  getScheduledChaos(currentTick: number): readonly ChaosEvent[];
 }
 
 // src/core/mode/economy-strategy.ts
@@ -1034,7 +1376,10 @@ TypeScript is configured strict: `strict: true`, `noImplicitAny: true`, `exactOp
 6. `CapabilityRegistry` + `ComponentRegistry` with registration-time validation
 7. Abstract `ModeController`, `EconomyStrategy`, `TrafficSource`, `ModeDefinition` interfaces
 8. Stub `ProcessingCapability` (always PASS)
-9. Stub `NoOpModeController` + `NoOpEconomy` + `FixedIntensityTrafficSource`
+9. Stub implementations for the Phase 1 test harness (live under `tests/harness/` so they never ship to production):
+   - `NoOpModeController` — implements `ModeController`, returns empty constraints, no tier caps, a no-op economy, and a single `FixedIntensityTrafficSource`
+   - `NoOpEconomy` — implements `EconomyStrategy`, all debits are no-ops, `getBudget()` returns `Infinity`, `resolveInsolvency()` returns `[]`
+   - `FixedIntensityTrafficSource` — implements `TrafficSource`. Constructor takes `{ targetEntryPointId, intensity, requestType }`. `generate(tick)` returns an array of `intensity` requests of the given type with sequential IDs, `ttl: 10`, no zone, no streaming properties. Used for deterministic integration tests.
 10. First integration test: place Client + Server, wire them, inject 10 requests, run 5 ticks, assert RequestLog contents
 
 **Exit criterion:** The smoke-test integration test passes. Every core interface is committed and exported.
@@ -1154,14 +1499,20 @@ ESLint blocks imports from/into these boundaries. `CLAUDE.md` markers in each fo
 
 ### The mode-swap integration test
 
-`tests/integration/mode-swap.test.ts` is the proof that the seam is clean:
+`tests/integration/mode-swap.test.ts` is the proof that the seam is clean. It combines a runtime swap with a static-source assertion:
 
+**Runtime portion:**
 1. Instantiate `SimulationState` twice with identical initial topology
 2. Run one tick loop with `NoOpModeController`, one with `ExampleModeController`
-3. Assert both produce valid (though different) tick outcomes
-4. Assert the engine never named either mode explicitly
+3. Assert both produce valid tick outcomes and both call through the same `Engine` instance without error
+4. Assert observable engine behavior is unchanged when modes are swapped (same tick counter advancement, same component visitation order, same pipeline phase order)
 
-If this test is green, any new mode that correctly implements the four interfaces will drop into the engine without requiring core modifications.
+**Static portion (ensures "the engine never names a specific mode"):**
+5. Read every `.ts` file under `src/core/` and `src/capabilities/` and `src/components/`
+6. Assert none of them contain the strings `"TDMode"`, `"SandboxMode"`, `"TDEconomy"`, `"SandboxEconomy"`, or any identifier matching the pattern `/[A-Z]\w*Mode(Controller|Economy)?/` other than the abstract `ModeController` / `ModeDefinition` / `EconomyStrategy` types
+7. Assert none of them import from `src/modes/` (ESLint already enforces this, but the test provides a second check in case the ESLint config is ever weakened)
+
+If both portions are green, any new mode that correctly implements the four interfaces will drop into the engine without requiring core modifications.
 
 ### Phase 2 onboarding doc format
 
