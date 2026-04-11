@@ -11,6 +11,7 @@ import type { Request } from "@core/types/request";
 import type { ProcessContext } from "@core/capability/process-context";
 import type { ProcessResult, SideEffect } from "@core/types/result";
 import type { CapabilityId, ComponentId, RequestId } from "@core/types/ids";
+import type { EngineBufferable } from "@core/capability/engine-interfaces";
 
 /** Always produces a FORWARD outcome. Throughput is unbounded (no getThroughputPerTick). */
 export class ForwardingCapability implements Capability {
@@ -121,4 +122,44 @@ export class BlockingDbCapability implements Capability {
   getStats() {
     return {};
   }
+}
+
+/**
+ * Test-only INTERCEPT-phase capability that implements EngineBufferable with an
+ * in-memory awaitingDelivery buffer. Does NOT intercept pipeline flow
+ * (canHandle=false), so upstream-processed requests fall through to the
+ * PROCESS phase. Used by backpressure integration tests to catch buffered
+ * delivery and let step 2 reEmitQueued re-stage them next tick.
+ */
+export class TestQueueCapability implements Capability, EngineBufferable {
+  readonly phase = "INTERCEPT" as const;
+  private buffer: { request: Request; result: ProcessResult }[] = [];
+  constructor(
+    readonly id: CapabilityId,
+    private readonly capacity: number = 64,
+  ) {}
+  canHandle(_requestType: string): boolean {
+    return false; // skip — don't intercept normal pipeline flow
+  }
+  process(_req: Request, _ctx: ProcessContext): ProcessResult {
+    return { outcome: { kind: "PASS" }, sideEffects: [], events: [] };
+  }
+  getUpkeepCost(_tier: number): number { return 0; }
+  getStats() { return {}; }
+
+  // EngineBufferable
+  enqueueForRetry(request: Request, result: ProcessResult): boolean {
+    if (this.buffer.length >= this.capacity) return false;
+    this.buffer.push({ request, result });
+    return true;
+  }
+  emitReady(): {
+    awaitingPipeline: Request[];
+    awaitingDelivery: { request: Request; result: ProcessResult }[];
+  } {
+    const out = this.buffer.slice();
+    this.buffer.length = 0;
+    return { awaitingPipeline: [], awaitingDelivery: out };
+  }
+  dequeueBatch(_n: number): Request[] { return []; }
 }
