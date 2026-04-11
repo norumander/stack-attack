@@ -3,6 +3,7 @@ import type { StagedOutcome } from "./staged-outcome.js";
 import type { Capability } from "../capability/capability.js";
 import type { EngineBufferable } from "../capability/engine-interfaces.js";
 import type { Request } from "../types/request.js";
+import type { BlockedParentEntry } from "./blocked-parent.js";
 import { getOrInitCounters } from "./metrics-counters.js";
 import { selectEgressConnection } from "./egress-selection.js";
 import { getEffectiveBandwidth } from "./effective-bandwidth.js";
@@ -17,11 +18,9 @@ export function deliverStaged(
   const { sourceComponentId, request, result } = staged;
   for (const e of result.events) state.appendEvent(request.id, e);
 
-  // Process SPAWN side effects before the primary outcome. Non-blocking only
-  // in this task — blocking SPAWNs land in Task 16 and will be handled here too.
+  // Process SPAWN side effects before the primary outcome.
   for (const se of result.sideEffects) {
     if (se.kind !== "SPAWN") continue;
-    if (se.blocking) continue; // Task 16 will handle blocking
 
     const parentRemainingTtl = request.createdAt + request.ttl - state.currentTick;
     const inheritedTtl = Math.max(0, Math.min(parentRemainingTtl, se.request.ttl));
@@ -51,8 +50,27 @@ export function deliverStaged(
       connectionId: null,
       type: "SPAWNED_SUB",
       latencyAdded: 0,
-      metadata: { childId: child.id, blocking: false },
+      metadata: { childId: child.id, blocking: se.blocking },
     });
+
+    if (se.blocking) {
+      // Register the parent as blocked, waiting on this child to complete.
+      let entry = state.blockedParents.get(request.id);
+      if (!entry) {
+        const newEntry: BlockedParentEntry = {
+          request,
+          originComponentId: sourceComponentId,
+          blockedOn: new Set(),
+          childResponses: new Map(),
+        };
+        state.blockedParents.set(request.id, newEntry);
+        entry = newEntry;
+      }
+      entry.blockedOn.add(child.id);
+      // Reverse lookup: child → parent
+      state.childToParent.set(child.id, request.id);
+      // Do NOT re-enqueue parent — it is waiting.
+    }
   }
 
   switch (result.outcome.kind) {
