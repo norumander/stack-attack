@@ -171,6 +171,7 @@ export class Engine {
       currentTick: state.currentTick,
       rng: createRng(`${state.currentTick}:${componentId}:${request.id}`),
       directories: [],
+      childResponses: new Map(),
     };
   }
 

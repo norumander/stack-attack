@@ -30,6 +30,7 @@ function ctx(): ProcessContext {
     currentTick: 0,
     rng: createRng("t"),
     directories: [],
+    childResponses: new Map(),
   };
 }
 
