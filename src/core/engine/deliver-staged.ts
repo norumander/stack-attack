@@ -4,6 +4,7 @@ import type { Capability } from "../capability/capability.js";
 import type { EngineBufferable } from "../capability/engine-interfaces.js";
 import type { Request } from "../types/request.js";
 import type { BlockedParentEntry } from "./blocked-parent.js";
+import type { ChildResponseSnapshot } from "./blocked-parent.js";
 import { getOrInitCounters } from "./metrics-counters.js";
 import { selectEgressConnection } from "./egress-selection.js";
 import { getEffectiveBandwidth } from "./effective-bandwidth.js";
@@ -89,6 +90,53 @@ export function deliverStaged(
           forwardLatency: path.forwardLatency,
         },
       });
+
+      const parentId = state.childToParent.get(request.id);
+      if (parentId != null) {
+        const entry = state.blockedParents.get(parentId);
+        if (!entry) {
+          // Late-arriving: parent already removed (CHILD_FAILED via sibling, or parent timed out).
+          // Clean up childToParent for this child and return moved = true.
+          state.childToParent.delete(request.id);
+          return true;
+        }
+
+        // Normal: record the child response snapshot on the parent, remove the child from
+        // blockedOn and from childToParent.
+        const snapshot: ChildResponseSnapshot = {
+          outcome: result.outcome,
+          events: [...(state.requestLog.get(request.id) ?? [])],
+          returnLatency: path.returnLatency,
+        };
+        entry.childResponses.set(request.id, snapshot);
+        entry.blockedOn.delete(request.id);
+        state.childToParent.delete(request.id);
+
+        // Append CHILD_RESOLVED event on the parent's log at the parent's originComponentId.
+        state.appendEvent(parentId, {
+          tick: state.currentTick,
+          componentId: entry.originComponentId,
+          capabilityId: null,
+          connectionId: null,
+          type: "CHILD_RESOLVED",
+          latencyAdded: 0,
+          metadata: { childId: request.id },
+        });
+
+        // If all blocking children have resolved, unblock the parent.
+        if (entry.blockedOn.size === 0) {
+          state.blockedParents.delete(parentId);
+          // Front-insert the parent into its origin component's pending so the next
+          // iteration of the fixed-point loop picks it up before any FIFO newcomers.
+          const queue = state.pending.get(entry.originComponentId);
+          if (queue) {
+            queue.unshift(entry.request);
+          } else {
+            state.pending.set(entry.originComponentId, [entry.request]);
+          }
+        }
+      }
+
       return true;
     }
     case "DROP":
