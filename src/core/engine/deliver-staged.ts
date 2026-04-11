@@ -3,6 +3,7 @@ import type { StagedOutcome } from "./staged-outcome.js";
 import { getOrInitCounters } from "./metrics-counters.js";
 import { selectEgressConnection } from "./egress-selection.js";
 import { getEffectiveBandwidth } from "./effective-bandwidth.js";
+import { reconstructReturnPath } from "./return-path.js";
 
 export function deliverStaged(
   state: SimulationState,
@@ -12,6 +13,23 @@ export function deliverStaged(
   for (const e of result.events) state.appendEvent(request.id, e);
 
   switch (result.outcome.kind) {
+    case "RESPOND": {
+      const path = reconstructReturnPath(state, request.id);
+      state.appendEvent(request.id, {
+        tick: state.currentTick,
+        componentId: request.origin,
+        capabilityId: null,
+        connectionId: null,
+        type: "RESPONDED",
+        latencyAdded: 0,
+        metadata: {
+          returnLatency: path.returnLatency,
+          returnPath: path.reverseConnectionIds,
+          forwardLatency: path.forwardLatency,
+        },
+      });
+      return true;
+    }
     case "DROP":
       state.appendEvent(request.id, {
         tick: state.currentTick,
