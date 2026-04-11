@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { Engine } from "@core/engine/engine";
 import { SimulationState } from "@core/state/simulation-state";
-import type { CapabilityId, ComponentId, RequestId } from "@core/types/ids";
+import type {
+  CapabilityId,
+  ComponentId,
+  ConnectionId,
+  RequestId,
+} from "@core/types/ids";
 import type { Request } from "@core/types/request";
 import { makeComponent } from "@harness/fixtures";
 import { RespondingCapability } from "@harness/test-capabilities";
@@ -108,5 +113,85 @@ describe("revenue crediting at RESPONDED", () => {
     expect(economy.creditLog.length).toBe(1);
     expect(economy.creditLog[0]?.amount).toBe(3);
     expect(state.revenueEarnedThisTick).toBe(0);
+  });
+});
+
+describe("revenue crediting at STREAM_COMPLETED", () => {
+  it("credits stream revenue when remainingDuration hits zero", () => {
+    const state = new SimulationState({ zones: [], pairLatency: new Map() });
+    const comp = makeRespondingComp("origin");
+    state.placeComponent(comp);
+    const req = makeReq("stream1", comp.id);
+    state.registerActiveStream({
+      requestId: req.id,
+      connectionId: "conn1" as ConnectionId,
+      originComponentId: comp.id,
+      baseRevenue: 42,
+      request: req,
+      remainingDuration: 1,
+      reservedBandwidth: 0,
+    });
+    const economy = new TestEconomyStrategy({
+      budget: 0,
+      revenuePerRequest: 42,
+    });
+    const mc = new TestChaosController({ economy });
+
+    new Engine(state).tick(mc);
+
+    expect(economy.creditLog.length).toBe(1);
+    expect(economy.creditLog[0]?.amount).toBe(42);
+    expect(economy.creditLog[0]?.requestId).toBe(req.id);
+  });
+
+  it("does NOT credit a still-running stream", () => {
+    const state = new SimulationState({ zones: [], pairLatency: new Map() });
+    const comp = makeRespondingComp("origin");
+    state.placeComponent(comp);
+    const req = makeReq("stream2", comp.id);
+    state.registerActiveStream({
+      requestId: req.id,
+      connectionId: "conn1" as ConnectionId,
+      originComponentId: comp.id,
+      baseRevenue: 42,
+      request: req,
+      remainingDuration: 5,
+      reservedBandwidth: 0,
+    });
+    const economy = new TestEconomyStrategy({
+      budget: 0,
+      revenuePerRequest: 42,
+    });
+    const mc = new TestChaosController({ economy });
+
+    new Engine(state).tick(mc);
+
+    expect(economy.creditLog.length).toBe(0);
+  });
+
+  it("does NOT credit a child stream", () => {
+    const state = new SimulationState({ zones: [], pairLatency: new Map() });
+    const comp = makeRespondingComp("origin");
+    state.placeComponent(comp);
+    const req = makeReq("childStream", comp.id);
+    state.registerActiveStream({
+      requestId: req.id,
+      connectionId: "conn1" as ConnectionId,
+      originComponentId: comp.id,
+      baseRevenue: 42,
+      request: req,
+      remainingDuration: 1,
+      reservedBandwidth: 0,
+    });
+    state.childToParent.set(req.id, "parent" as RequestId);
+    const economy = new TestEconomyStrategy({
+      budget: 0,
+      revenuePerRequest: 42,
+    });
+    const mc = new TestChaosController({ economy });
+
+    new Engine(state).tick(mc);
+
+    expect(economy.creditLog.length).toBe(0);
   });
 });

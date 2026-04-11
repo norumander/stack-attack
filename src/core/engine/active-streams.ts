@@ -3,7 +3,7 @@ import type { ModeController } from "../mode/mode-controller.js";
 
 export function updateActiveStreams(
   state: SimulationState,
-  _modeController: ModeController,
+  modeController: ModeController,
 ): void {
   // Snapshot entries up front so releaseActiveStream can safely delete during iteration.
   const streams = [...state.activeStreams.values()];
@@ -19,6 +19,10 @@ export function updateActiveStreams(
         type: "STREAM_COMPLETED",
         latencyAdded: 0,
       });
+      if (!state.childToParent.has(stream.requestId)) {
+        const credited = modeController.economy.creditRevenue(stream.request);
+        state.revenueEarnedThisTick += credited;
+      }
     }
   }
 }
