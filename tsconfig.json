@@ -18,7 +18,8 @@
     "paths": {
       "@core/*": ["src/core/*"],
       "@capabilities/*": ["src/capabilities/*"],
-      "@harness/*": ["tests/harness/*"]
+      "@harness/*": ["tests/harness/*"],
+      "@modes/*": ["src/modes/*"]
     }
   },
   "include": ["src/**/*", "tests/**/*"]
