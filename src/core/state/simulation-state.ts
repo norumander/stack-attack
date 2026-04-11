@@ -8,6 +8,9 @@ import { Component } from "../component/component.js";
 import type { ComponentReader } from "../component/component-reader.js";
 import type { SimulationStateReader } from "./state-reader.js";
 import type { PerComponentTickCounters } from "../engine/per-component-counters.js";
+import type { StagedOutcome } from "../engine/staged-outcome.js";
+import type { BlockedParentEntry } from "../engine/blocked-parent.js";
+import type { TickMetrics } from "../types/metrics.js";
 
 export class SimulationState {
   readonly components: Map<ComponentId, Component> = new Map();
@@ -21,6 +24,12 @@ export class SimulationState {
   phase: "build" | "simulate" | "assess" = "build";
   readonly perComponentThisTick: Map<ComponentId, PerComponentTickCounters> = new Map();
   connectionLoadThisTick: Map<ConnectionId, number> = new Map();
+  readonly visitOrder: ComponentId[] = [];
+  readonly stagedOutcomes: StagedOutcome[] = [];
+  readonly blockedParents: Map<RequestId, BlockedParentEntry> = new Map();
+  readonly childToParent: Map<RequestId, RequestId> = new Map();
+  readonly roundRobinCursor: Map<ComponentId, number> = new Map();
+  readonly metricsHistory: TickMetrics[] = [];
 
   constructor(zoneTopology: ZoneTopology) {
     this.zoneTopology = zoneTopology;
