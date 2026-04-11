@@ -29,6 +29,19 @@ interface ScheduledChaos {
   readonly atTick: number;
 }
 
+export interface MetricsSnapshot {
+  readonly ticks: number;
+  readonly totalProcessed: number;
+  readonly totalResolved: number;
+  readonly totalDropped: number;
+  readonly totalTimedOut: number;
+  readonly totalBackpressured: number;
+  readonly totalOverloaded: number;
+  readonly avgLatency: number;
+  readonly reliability: number;
+  readonly perTickHistory: readonly TickMetrics[];
+}
+
 /**
  * ModeController for Sandbox mode.
  *
@@ -177,6 +190,63 @@ export class SandboxModeController implements ModeController {
 
   getTrafficSources(): readonly SandboxTrafficSource[] {
     return this.trafficSources;
+  }
+
+  getMetricsSnapshot(state: SimulationState): MetricsSnapshot {
+    const history = state.metricsHistory;
+    if (history.length === 0) {
+      return {
+        ticks: 0,
+        totalProcessed: 0,
+        totalResolved: 0,
+        totalDropped: 0,
+        totalTimedOut: 0,
+        totalBackpressured: 0,
+        totalOverloaded: 0,
+        avgLatency: 0,
+        reliability: 1,
+        perTickHistory: history,
+      };
+    }
+
+    let totalProcessed = 0;
+    let totalResolved = 0;
+    let totalDropped = 0;
+    let totalTimedOut = 0;
+    let totalBackpressured = 0;
+    let totalOverloaded = 0;
+    let weightedLatencySum = 0;
+    let totalResolvedForLatency = 0;
+
+    for (const m of history) {
+      totalProcessed += m.requestsProcessed;
+      totalResolved += m.requestsResolved;
+      totalDropped += m.requestsDropped;
+      totalTimedOut += m.requestsTimedOut;
+      totalBackpressured += m.requestsBackpressured;
+      totalOverloaded += m.requestsOverloaded;
+      weightedLatencySum += m.avgLatency * m.requestsResolved;
+      totalResolvedForLatency += m.requestsResolved;
+    }
+
+    const totalTerminal = totalResolved + totalDropped + totalTimedOut;
+    const reliability = totalTerminal > 0 ? totalResolved / totalTerminal : 1;
+    const avgLatency = totalResolvedForLatency > 0
+      ? weightedLatencySum / totalResolvedForLatency
+      : 0;
+
+    return {
+      ticks: history.length,
+      totalProcessed,
+      totalResolved,
+      totalDropped,
+      totalTimedOut,
+      totalBackpressured,
+      totalOverloaded,
+      avgLatency,
+      reliability,
+      perTickHistory: history,
+    };
   }
 
   onTick(_state: SimulationStateReader): void {
