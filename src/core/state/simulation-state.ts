@@ -9,7 +9,7 @@ import type { ComponentReader } from "../component/component-reader.js";
 import type { SimulationStateReader } from "./state-reader.js";
 import type { PerComponentTickCounters } from "../engine/per-component-counters.js";
 import type { StagedOutcome } from "../engine/staged-outcome.js";
-import type { BlockedParentEntry } from "../engine/blocked-parent.js";
+import type { BlockedParentEntry, ChildResponseSnapshot } from "../engine/blocked-parent.js";
 import type { TickMetrics } from "../types/metrics.js";
 
 export class SimulationState {
@@ -30,6 +30,7 @@ export class SimulationState {
   readonly childToParent: Map<RequestId, RequestId> = new Map();
   readonly roundRobinCursor: Map<ComponentId, number> = new Map();
   readonly metricsHistory: TickMetrics[] = [];
+  readonly pendingChildResponses: Map<RequestId, Map<RequestId, ChildResponseSnapshot>> = new Map();
 
   constructor(zoneTopology: ZoneTopology) {
     this.zoneTopology = zoneTopology;
