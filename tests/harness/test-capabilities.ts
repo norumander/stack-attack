@@ -163,3 +163,78 @@ export class TestQueueCapability implements Capability, EngineBufferable {
   }
   dequeueBatch(_n: number): Request[] { return []; }
 }
+
+/**
+ * Two-phase capability that spawns TWO blocking children on first pass,
+ * targeting two different components (dbAComponentId and dbBComponentId).
+ * On re-entry (childResponses.size > 0), RESPONDs.
+ */
+export class TwoBlockingSpawnsCapability implements Capability {
+  readonly phase = "PROCESS" as const;
+  private counter = 0;
+
+  constructor(
+    readonly id: CapabilityId,
+    private readonly dbAComponentId: ComponentId,
+    private readonly dbBComponentId: ComponentId,
+  ) {}
+
+  canHandle(_: string): boolean { return true; }
+
+  process(req: Request, ctx: ProcessContext): ProcessResult {
+    if (ctx.childResponses.size > 0) {
+      return { outcome: { kind: "RESPOND" }, sideEffects: [], events: [] };
+    }
+    this.counter += 1;
+    const childAId = `${req.id}-child-a-${this.counter}` as RequestId;
+    const childBId = `${req.id}-child-b-${this.counter}` as RequestId;
+    const makeChild = (id: RequestId, targetId: ComponentId): Request => ({
+      id,
+      parentId: req.id,
+      type: "api_read",
+      payload: null,
+      origin: targetId,
+      createdAt: 0,
+      ttl: 100,
+      originZone: null,
+      streamDuration: null,
+      streamBandwidth: null,
+    });
+    const spawnA: SideEffect = {
+      kind: "SPAWN",
+      request: makeChild(childAId, this.dbAComponentId),
+      blocking: true,
+    };
+    const spawnB: SideEffect = {
+      kind: "SPAWN",
+      request: makeChild(childBId, this.dbBComponentId),
+      blocking: true,
+    };
+    return { outcome: { kind: "PASS" }, sideEffects: [spawnA, spawnB], events: [] };
+  }
+
+  getUpkeepCost(_tier: number): number { return 0; }
+  getStats() { return {}; }
+}
+
+/**
+ * Always DROPs with a configurable reason. Used in cascade tests to model
+ * a component that unconditionally rejects every request.
+ */
+export class DroppingCapability implements Capability {
+  readonly phase = "PROCESS" as const;
+
+  constructor(
+    readonly id: CapabilityId,
+    private readonly reason: string = "test-drop",
+  ) {}
+
+  canHandle(_: string): boolean { return true; }
+
+  process(_req: Request, _ctx: ProcessContext): ProcessResult {
+    return { outcome: { kind: "DROP", reason: this.reason }, sideEffects: [], events: [] };
+  }
+
+  getUpkeepCost(_tier: number): number { return 0; }
+  getStats() { return {}; }
+}
