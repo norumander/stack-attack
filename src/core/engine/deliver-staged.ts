@@ -7,7 +7,7 @@ import type { BlockedParentEntry } from "./blocked-parent.js";
 import type { ChildResponseSnapshot } from "./blocked-parent.js";
 import { getOrInitCounters } from "./metrics-counters.js";
 import { selectEgressConnection } from "./egress-selection.js";
-import { getEffectiveBandwidth } from "./effective-bandwidth.js";
+import { getEffectiveBandwidth, getEffectiveLatency } from "./effective-bandwidth.js";
 import { reconstructReturnPath, pickStreamConnection } from "./return-path.js";
 import { isEngineBufferable } from "../capability/engine-interfaces.js";
 import { IllegalStateError } from "./errors.js";
@@ -300,7 +300,7 @@ export function deliverStaged(
         capabilityId: null,
         connectionId,
         type: "TRAVERSED",
-        latencyAdded: conn.latency,
+        latencyAdded: getEffectiveLatency(state, connectionId),
       });
       state.appendEvent(request.id, {
         tick: state.currentTick,

@@ -1,5 +1,6 @@
 import type { SimulationState } from "../state/simulation-state.js";
 import type { ComponentId, ConnectionId, RequestId } from "../types/ids.js";
+import { getEffectiveLatency } from "./effective-bandwidth.js";
 
 export interface ReturnPath {
   readonly reverseConnectionIds: ConnectionId[];
@@ -22,8 +23,8 @@ export function reconstructReturnPath(
   const reverse = forward.slice().reverse();
   let returnLatency = 0;
   for (const e of reverse) {
-    const conn = state.connections.get(e.connectionId);
-    returnLatency += conn?.latency ?? 0;
+    const reverseId = e.connectionId;
+    returnLatency += getEffectiveLatency(state, reverseId);
   }
   return {
     reverseConnectionIds: reverse.map((e) => e.connectionId),

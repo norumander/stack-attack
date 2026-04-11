@@ -111,4 +111,24 @@ describe("getEffectiveLatency", () => {
     // No placed component — multiplier should default to 1.
     expect(getEffectiveLatency(state, cid)).toBe(10);
   });
+
+  it("all engine-internal latency reads go through getEffectiveLatency (grep invariant)", async () => {
+    // This test documents the rule by grepping source. It is a cheap guard
+    // against future drift. The implementation rule: no file under
+    // src/core/engine/ should read `.latency` on a Connection except
+    // effective-bandwidth.ts itself.
+    const { readFileSync, readdirSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const dir = "src/core/engine";
+    const offenders: string[] = [];
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith(".ts")) continue;
+      if (name === "effective-bandwidth.ts") continue;
+      const content = readFileSync(join(dir, name), "utf8");
+      // match `.latency` that is not part of `.latencyAdded`
+      const re = /\.latency(?!Added)\b/g;
+      if (re.test(content)) offenders.push(name);
+    }
+    expect(offenders).toEqual([]);
+  });
 });
