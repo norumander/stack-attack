@@ -36,11 +36,40 @@ export class ForwardingCapability implements Capability {
   }
 }
 
-/** Always produces a RESPOND outcome. Throughput is unbounded. */
+export interface RespondingCapabilityOptions {
+  /**
+   * When set, contributes `throughputPerTier * tier` to the per-tick
+   * throughput budget. When omitted, `getThroughputPerTick` is left
+   * unset so the component reports unbounded throughput (the historical
+   * default).
+   */
+  throughputPerTier?: number;
+}
+
+/**
+ * Always produces a RESPOND outcome. Throughput is unbounded unless
+ * `throughputPerTier` is provided, in which case it contributes
+ * `throughputPerTier * tier` per tick.
+ */
 export class RespondingCapability implements Capability {
   readonly phase = "PROCESS" as const;
 
-  constructor(readonly id: CapabilityId) {}
+  constructor(
+    readonly id: CapabilityId,
+    private readonly options: RespondingCapabilityOptions = {},
+  ) {
+    if (options.throughputPerTier !== undefined) {
+      const perTier = options.throughputPerTier;
+      this.getThroughputPerTick = (tier: number) => perTier * tier;
+    }
+  }
+
+  /**
+   * Optional; only defined when `throughputPerTier` is configured. Matches
+   * the `Capability.getThroughputPerTick?` contract — omitting it signals
+   * unbounded throughput to `componentThroughputPerTick`.
+   */
+  getThroughputPerTick?: (tier: number) => number;
 
   canHandle(_requestType: string): boolean {
     return true;
