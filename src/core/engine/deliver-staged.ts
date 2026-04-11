@@ -163,6 +163,9 @@ export function deliverStaged(
 
         // If all blocking children have resolved, unblock the parent.
         if (entry.blockedOn.size === 0) {
+          // Stash the accumulated child responses so processPending sees them on
+          // re-entry (bridges Task 17 unblock logic with the Task 20 context builder).
+          state.pendingChildResponses.set(parentId, entry.childResponses);
           state.blockedParents.delete(parentId);
           // Front-insert the parent into its origin component's pending so the next
           // iteration of the fixed-point loop picks it up before any FIFO newcomers.
