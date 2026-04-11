@@ -137,6 +137,20 @@ describe("SimulationState", () => {
     expect(state.components.get("c-a" as ComponentId)!.instanceCount).toBe(3);
   });
 
+  it("initializes revenueEarnedThisTick and upkeepPaidThisTick to zero", () => {
+    const state = new SimulationState({ zones: [], pairLatency: new Map() });
+    expect(state.revenueEarnedThisTick).toBe(0);
+    expect(state.upkeepPaidThisTick).toBe(0);
+  });
+
+  it("allows mutating the transient revenue/upkeep accumulators", () => {
+    const state = new SimulationState({ zones: [], pairLatency: new Map() });
+    state.revenueEarnedThisTick = 42;
+    state.upkeepPaidThisTick = 17;
+    expect(state.revenueEarnedThisTick).toBe(42);
+    expect(state.upkeepPaidThisTick).toBe(17);
+  });
+
   it("asReader narrows components to ComponentReader", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
     state.placeComponent(makeComp("c-a"));

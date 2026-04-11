@@ -133,4 +133,13 @@ describe("resetPerTickState (step 9)", () => {
     expect(() => resetPerTickState(state)).not.toThrow();
     expect(state.perComponentThisTick.size).toBe(0);
   });
+
+  it("zeros revenueEarnedThisTick and upkeepPaidThisTick", () => {
+    const state = new SimulationState(topo);
+    state.revenueEarnedThisTick = 123;
+    state.upkeepPaidThisTick = 456;
+    resetPerTickState(state);
+    expect(state.revenueEarnedThisTick).toBe(0);
+    expect(state.upkeepPaidThisTick).toBe(0);
+  });
 });

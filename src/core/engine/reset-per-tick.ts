@@ -24,4 +24,9 @@ export function resetPerTickState(state: SimulationState): void {
   for (const conn of state.connections.values()) {
     conn.currentLoad = 0;
   }
+
+  // (5) Clear per-tick revenue/upkeep accumulators. Metrics step 8 has
+  // already read them into metricsHistory by the time we get here.
+  state.revenueEarnedThisTick = 0;
+  state.upkeepPaidThisTick = 0;
 }

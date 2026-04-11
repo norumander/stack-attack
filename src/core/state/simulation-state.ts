@@ -22,6 +22,8 @@ export class SimulationState {
   readonly zoneTopology: ZoneTopology;
   currentTick = 0;
   phase: "build" | "simulate" | "assess" = "build";
+  revenueEarnedThisTick = 0;
+  upkeepPaidThisTick = 0;
   readonly perComponentThisTick: Map<ComponentId, PerComponentTickCounters> = new Map();
   connectionLoadThisTick: Map<ConnectionId, number> = new Map();
   readonly visitOrder: ComponentId[] = [];
