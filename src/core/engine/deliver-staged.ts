@@ -2,6 +2,7 @@ import type { SimulationState } from "../state/simulation-state.js";
 import type { StagedOutcome } from "./staged-outcome.js";
 import type { Capability } from "../capability/capability.js";
 import type { EngineBufferable } from "../capability/engine-interfaces.js";
+import type { Request } from "../types/request.js";
 import { getOrInitCounters } from "./metrics-counters.js";
 import { selectEgressConnection } from "./egress-selection.js";
 import { getEffectiveBandwidth } from "./effective-bandwidth.js";
@@ -15,6 +16,44 @@ export function deliverStaged(
 ): boolean {
   const { sourceComponentId, request, result } = staged;
   for (const e of result.events) state.appendEvent(request.id, e);
+
+  // Process SPAWN side effects before the primary outcome. Non-blocking only
+  // in this task — blocking SPAWNs land in Task 16 and will be handled here too.
+  for (const se of result.sideEffects) {
+    if (se.kind !== "SPAWN") continue;
+    if (se.blocking) continue; // Task 16 will handle blocking
+
+    const parentRemainingTtl = request.createdAt + request.ttl - state.currentTick;
+    const inheritedTtl = Math.max(0, Math.min(parentRemainingTtl, se.request.ttl));
+
+    const child: Request = {
+      ...se.request,
+      createdAt: state.currentTick,
+      ttl: inheritedTtl,
+      parentId: request.id,
+    };
+
+    const target = child.origin ?? sourceComponentId;
+    state.requestLog.set(child.id, []);
+    state.enqueuePending(target, child);
+    state.appendEvent(child.id, {
+      tick: state.currentTick,
+      componentId: target,
+      capabilityId: null,
+      connectionId: null,
+      type: "ENTERED",
+      latencyAdded: 0,
+    });
+    state.appendEvent(request.id, {
+      tick: state.currentTick,
+      componentId: sourceComponentId,
+      capabilityId: null,
+      connectionId: null,
+      type: "SPAWNED_SUB",
+      latencyAdded: 0,
+      metadata: { childId: child.id, blocking: false },
+    });
+  }
 
   switch (result.outcome.kind) {
     case "RESPOND": {
