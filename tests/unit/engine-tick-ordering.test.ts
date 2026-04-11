@@ -9,9 +9,11 @@ describe("Engine.tick — 12-step ordering", () => {
   it("invokes all 12 step functions in spec order and then advances the tick", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
     const order: string[] = [];
-    const record = (name: string) => () => {
-      order.push(name);
-    };
+    const record =
+      (name: string) =>
+      (..._args: unknown[]): void => {
+        order.push(name);
+      };
 
     const engine = new Engine(state, {
       injectTraffic: record("injectTraffic"),

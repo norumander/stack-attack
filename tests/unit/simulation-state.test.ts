@@ -110,11 +110,24 @@ describe("SimulationState", () => {
 
   it("registerActiveStream and releaseActiveStream manage streams", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
+    const streamRequest: Request = {
+      id: "r-1" as RequestId,
+      parentId: null,
+      type: "api_read",
+      payload: null,
+      origin: "c-a" as ComponentId,
+      createdAt: 0,
+      ttl: 100,
+      originZone: null,
+      streamDuration: 5,
+      streamBandwidth: 2,
+    };
     const s: ActiveStream = {
       requestId: "r-1" as RequestId,
       connectionId: "cx-1" as ConnectionId,
       originComponentId: "c-a" as ComponentId,
       baseRevenue: 1,
+      request: streamRequest,
       remainingDuration: 5,
       reservedBandwidth: 2,
     };

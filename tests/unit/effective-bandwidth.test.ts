@@ -3,6 +3,7 @@ import { getEffectiveBandwidth, getEffectiveLatency } from "@core/engine/effecti
 import { SimulationState } from "@core/state/simulation-state";
 import { makeConnection } from "@harness/fixtures";
 import type { ConnectionId, RequestId, ComponentId } from "@core/types/ids";
+import type { Request } from "@core/types/request";
 
 describe("getEffectiveBandwidth / getEffectiveLatency", () => {
   const topo = { zones: [], pairLatency: new Map() };
@@ -21,11 +22,24 @@ describe("getEffectiveBandwidth / getEffectiveLatency", () => {
     state.connectionLoadThisTick.set("cx" as ConnectionId, 30);
     expect(getEffectiveBandwidth(state, "cx" as ConnectionId)).toBe(70);
 
+    const streamRequest: Request = {
+      id: "s1" as RequestId,
+      parentId: null,
+      type: "api_read",
+      payload: null,
+      origin: "a" as ComponentId,
+      createdAt: 0,
+      ttl: 100,
+      originZone: null,
+      streamDuration: 10,
+      streamBandwidth: 20,
+    };
     state.registerActiveStream({
       requestId: "s1" as RequestId,
       connectionId: "cx" as ConnectionId,
       originComponentId: "a" as ComponentId,
       baseRevenue: 0,
+      request: streamRequest,
       remainingDuration: 10,
       reservedBandwidth: 20,
     });

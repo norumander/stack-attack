@@ -24,7 +24,7 @@ export interface EngineSteps {
   reEmitQueued: (state: SimulationState) => void;
   runFixedPointLoop: (state: SimulationState, mc: ModeController) => void;
   sweepOverloaded: (state: SimulationState) => void;
-  updateActiveStreams: (state: SimulationState) => void;
+  updateActiveStreams: (state: SimulationState, mc: ModeController) => void;
   checkTTL: (state: SimulationState) => void;
   updateCondition: (state: SimulationState, mc: ModeController) => void;
   injectChaos: (state: SimulationState, mc: ModeController) => void;
@@ -71,7 +71,7 @@ export class Engine {
     this.steps.reEmitQueued(this.state);                         // step 2
     this.steps.runFixedPointLoop(this.state, modeController);    // step 3 (fixed-point)
     this.steps.sweepOverloaded(this.state);                      // step 3b (post-loop sweep)
-    this.steps.updateActiveStreams(this.state);                  // step 4b
+    this.steps.updateActiveStreams(this.state, modeController);  // step 4b
     this.steps.checkTTL(this.state);                             // step 5
     this.steps.updateCondition(this.state, modeController);      // step 6  (stub)
     this.steps.injectChaos(this.state, modeController);          // step 6b (stub)

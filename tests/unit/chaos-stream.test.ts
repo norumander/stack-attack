@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { ChaosEvent, ActiveChaosEntry } from "@core/types/chaos";
 import type { ActiveStream } from "@core/types/stream";
+import type { Request } from "@core/types/request";
 import type { ComponentId, ConnectionId, RequestId } from "@core/types/ids";
 
 describe("ChaosEvent and ActiveStream", () => {
@@ -32,11 +33,24 @@ describe("ChaosEvent and ActiveStream", () => {
   });
 
   it("builds an ActiveStream with mutable duration and bandwidth", () => {
+    const request: Request = {
+      id: "r-1" as RequestId,
+      parentId: null,
+      type: "api_read",
+      payload: null,
+      origin: "c-1" as ComponentId,
+      createdAt: 0,
+      ttl: 100,
+      originZone: null,
+      streamDuration: 20,
+      streamBandwidth: 5,
+    };
     const stream: ActiveStream = {
       requestId: "r-1" as RequestId,
       connectionId: "cx-1" as ConnectionId,
       originComponentId: "c-1" as ComponentId,
       baseRevenue: 2,
+      request,
       remainingDuration: 20,
       reservedBandwidth: 5,
     };

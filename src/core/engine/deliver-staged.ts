@@ -100,6 +100,7 @@ export function deliverStaged(
           connectionId: streamConnectionId,
           originComponentId: request.origin,
           baseRevenue: 0,
+          request,
           remainingDuration: request.streamDuration,
           reservedBandwidth: request.streamBandwidth ?? 0,
         });

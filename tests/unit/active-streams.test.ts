@@ -2,14 +2,41 @@ import { describe, it, expect } from "vitest";
 import { updateActiveStreams } from "@core/engine/active-streams";
 import { SimulationState } from "@core/state/simulation-state";
 import type { ActiveStream } from "@core/types/stream";
+import type { Request } from "@core/types/request";
 import type { ComponentId, ConnectionId, RequestId } from "@core/types/ids";
+import { NoOpModeController } from "@harness/noop-mode-controller";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
+
+function makeRequest(id: string, origin: string): Request {
+  return {
+    id: id as RequestId,
+    parentId: null,
+    type: "api_read",
+    payload: null,
+    origin: origin as ComponentId,
+    createdAt: 0,
+    ttl: 100,
+    originZone: null,
+    streamDuration: 3,
+    streamBandwidth: 10,
+  };
+}
 
 function makeStream(overrides: Partial<ActiveStream> = {}): ActiveStream {
+  const requestId = (overrides.requestId ?? ("r-1" as RequestId)) as RequestId;
+  const originComponentId =
+    (overrides.originComponentId ?? ("c-origin" as ComponentId)) as ComponentId;
   return {
-    requestId: "r-1" as RequestId,
+    requestId,
     connectionId: "cx" as ConnectionId,
-    originComponentId: "c-origin" as ComponentId,
+    originComponentId,
     baseRevenue: 0,
+    request: makeRequest(requestId, originComponentId),
     remainingDuration: 3,
     reservedBandwidth: 10,
     ...overrides,
@@ -25,7 +52,7 @@ describe("updateActiveStreams (step 4b)", () => {
     state.registerActiveStream(stream);
     state.requestLog.set(stream.requestId, []);
 
-    updateActiveStreams(state);
+    updateActiveStreams(state, mc);
     expect(stream.remainingDuration).toBe(2);
     expect(state.activeStreams.has(stream.requestId)).toBe(true);
     expect(state.requestLog.get(stream.requestId)!.some((e) => e.type === "STREAM_COMPLETED")).toBe(false);
@@ -37,9 +64,9 @@ describe("updateActiveStreams (step 4b)", () => {
     state.registerActiveStream(stream);
     state.requestLog.set(stream.requestId, []);
 
-    updateActiveStreams(state); // 3 -> 2
-    updateActiveStreams(state); // 2 -> 1
-    updateActiveStreams(state); // 1 -> 0, release + STREAM_COMPLETED
+    updateActiveStreams(state, mc); // 3 -> 2
+    updateActiveStreams(state, mc); // 2 -> 1
+    updateActiveStreams(state, mc); // 1 -> 0, release + STREAM_COMPLETED
 
     expect(state.activeStreams.has(stream.requestId)).toBe(false);
     const evs = state.requestLog.get(stream.requestId)!;
@@ -64,7 +91,7 @@ describe("updateActiveStreams (step 4b)", () => {
     state.requestLog.set(s1.requestId, []);
     state.requestLog.set(s2.requestId, []);
 
-    updateActiveStreams(state); // s1: 1->0 release, s2: 2->1
+    updateActiveStreams(state, mc); // s1: 1->0 release, s2: 2->1
 
     expect(state.activeStreams.has(s1.requestId)).toBe(false);
     expect(state.activeStreams.has(s2.requestId)).toBe(true);
@@ -75,7 +102,7 @@ describe("updateActiveStreams (step 4b)", () => {
 
   it("is a no-op when there are no active streams", () => {
     const state = new SimulationState(topo);
-    expect(() => updateActiveStreams(state)).not.toThrow();
+    expect(() => updateActiveStreams(state, mc)).not.toThrow();
     expect(state.activeStreams.size).toBe(0);
   });
 });
