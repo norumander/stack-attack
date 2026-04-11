@@ -284,4 +284,58 @@ describe("SandboxModeController", () => {
       ).toThrow(/Unknown traffic preset/);
     });
   });
+
+  describe("clearTrafficSources", () => {
+    it("empties the sources array", () => {
+      const ctrl = new SandboxModeController();
+      ctrl.addTrafficSource({
+        targetEntryPointId: "c-entry" as ComponentId,
+        requestType: "api_read",
+        intensity: 10,
+        pattern: "steady",
+      });
+      ctrl.addTrafficSource({
+        targetEntryPointId: "c-entry" as ComponentId,
+        requestType: "api_write",
+        intensity: 5,
+        pattern: "spike",
+      });
+      expect(ctrl.getTrafficSources()).toHaveLength(2);
+
+      ctrl.clearTrafficSources();
+      expect(ctrl.getTrafficSources()).toHaveLength(0);
+    });
+  });
+
+  describe("clearChaosQueue", () => {
+    it("empties the chaos queue", () => {
+      const ctrl = new SandboxModeController();
+      ctrl.scheduleChaos(
+        { kind: "component_failure", componentId: "c-1" as ComponentId },
+        5,
+      );
+      ctrl.scheduleChaos(
+        { kind: "zone_outage", zone: "us-east", durationTicks: 3 },
+        10,
+      );
+      expect(ctrl.getChaosQueue()).toHaveLength(2);
+
+      ctrl.clearChaosQueue();
+      expect(ctrl.getChaosQueue()).toHaveLength(0);
+    });
+  });
+
+  describe("getChaosQueue", () => {
+    it("returns the full chaos queue", () => {
+      const ctrl = new SandboxModeController();
+      ctrl.scheduleChaos(
+        { kind: "component_failure", componentId: "c-1" as ComponentId },
+        5,
+      );
+      const queue = ctrl.getChaosQueue();
+      expect(queue).toHaveLength(1);
+      expect(queue[0]!.event.kind).toBe("component_failure");
+      expect(queue[0]!.atTick).toBe(5);
+    });
+  });
 });

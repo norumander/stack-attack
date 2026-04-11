@@ -9,7 +9,7 @@ import type {
 import type { TickMetrics } from "../../core/types/metrics.js";
 import type { OutcomeReport } from "../../core/types/outcome.js";
 import type { ChaosEvent } from "../../core/types/chaos.js";
-import type { ZoneTopology } from "../../core/types/zone.js";
+import { type ZoneTopology, zonePairKey } from "../../core/types/zone.js";
 import type { Position } from "../../core/types/position.js";
 import type { SimulationState } from "../../core/state/simulation-state.js";
 import type { SimulationStateReader } from "../../core/state/state-reader.js";
@@ -55,6 +55,8 @@ export class SandboxModeController implements ModeController {
   private readonly trafficSources: SandboxTrafficSource[] = [];
   private readonly chaosQueue: ScheduledChaos[] = [];
   private placementCounter = 0;
+  private readonly _zones: string[] = ["default"];
+  private readonly _pairLatency: Map<string, number> = new Map();
 
   getActiveCapabilities(component: ComponentReader): ReadonlySet<CapabilityId> {
     return new Set(component.getCapabilityIds());
@@ -124,7 +126,7 @@ export class SandboxModeController implements ModeController {
   }
 
   getInitialZoneTopology(): ZoneTopology {
-    return { zones: ["default"], pairLatency: new Map() };
+    return { zones: this._zones, pairLatency: this._pairLatency };
   }
 
   tryPlace(
@@ -190,6 +192,70 @@ export class SandboxModeController implements ModeController {
 
   getTrafficSources(): readonly SandboxTrafficSource[] {
     return this.trafficSources;
+  }
+
+  // --- Zone management ---
+
+  addZone(name: string): boolean {
+    if (this._zones.includes(name)) return false;
+    this._zones.push(name);
+    return true;
+  }
+
+  removeZone(name: string): boolean {
+    if (this._zones.length <= 1) return false;
+    const idx = this._zones.indexOf(name);
+    if (idx === -1) return false;
+    this._zones.splice(idx, 1);
+    // Remove all pair latencies involving this zone
+    for (const key of [...this._pairLatency.keys()]) {
+      const [a, b] = key.split("|");
+      if (a === name || b === name) {
+        this._pairLatency.delete(key);
+      }
+    }
+    return true;
+  }
+
+  setZonePairLatency(zoneA: string, zoneB: string, latency: number): boolean {
+    if (!this._zones.includes(zoneA) || !this._zones.includes(zoneB)) return false;
+    if (zoneA === zoneB) return false;
+    this._pairLatency.set(zonePairKey(zoneA, zoneB), latency);
+    return true;
+  }
+
+  removeZonePairLatency(zoneA: string, zoneB: string): boolean {
+    const key = zonePairKey(zoneA, zoneB);
+    return this._pairLatency.delete(key);
+  }
+
+  getZones(): readonly string[] {
+    return this._zones;
+  }
+
+  getZonePairLatencies(): ReadonlyMap<string, number> {
+    return this._pairLatency;
+  }
+
+  // --- Scenario support ---
+
+  getChaosQueue(): readonly { event: ChaosEvent; atTick: number }[] {
+    return this.chaosQueue;
+  }
+
+  clearTrafficSources(): void {
+    this.trafficSources.length = 0;
+  }
+
+  clearChaosQueue(): void {
+    this.chaosQueue.length = 0;
+  }
+
+  setZones(zones: readonly string[], pairLatencies: ReadonlyMap<string, number>): void {
+    this._zones.length = 0;
+    for (const z of zones) this._zones.push(z);
+    this._pairLatency.clear();
+    for (const [key, val] of pairLatencies) this._pairLatency.set(key, val);
   }
 
   getMetricsSnapshot(state: SimulationState): MetricsSnapshot {

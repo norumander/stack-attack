@@ -14,6 +14,13 @@ export {
   type TrafficPresetName,
 } from "./sandbox-traffic-presets.js";
 export { SandboxModeController, type MetricsSnapshot } from "./sandbox-mode-controller.js";
+export {
+  exportScenario,
+  applyScenario,
+  serializeScenario,
+  parseScenario,
+  type SandboxScenario,
+} from "./sandbox-scenario.js";
 
 export const sandboxMode: ModeDefinition = {
   id: "sandbox",
