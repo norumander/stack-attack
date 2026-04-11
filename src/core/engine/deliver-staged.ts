@@ -210,18 +210,44 @@ export function deliverStaged(
       const cost = 1;
       const effective = getEffectiveBandwidth(state, connectionId);
       if (cost > effective) {
-        // Real backpressure path lands in Task 19 — for now, stub as a drop so
-        // tests can assert the branch is reached without leaking pending state.
+        const targetComponentId = conn.target.componentId;
+        const targetComponent = state.components.get(targetComponentId);
+
+        // Find the target's first EngineBufferable capability (if any).
+        let bufferable: (Capability & EngineBufferable) | null = null;
+        if (targetComponent) {
+          for (const cap of targetComponent.capabilities.values()) {
+            if (isEngineBufferable(cap)) {
+              bufferable = cap;
+              break;
+            }
+          }
+        }
+
+        if (bufferable && bufferable.enqueueForRetry(request, result)) {
+          state.appendEvent(request.id, {
+            tick: state.currentTick,
+            componentId: targetComponentId,
+            capabilityId: null,
+            connectionId,
+            type: "BACKPRESSURED",
+            latencyAdded: 0,
+          });
+          getOrInitCounters(state, targetComponentId).backpressured += 1;
+          return true;
+        }
+
+        // No bufferable OR bufferable rejected: drop at target with reason BACKPRESSURED.
         state.appendEvent(request.id, {
           tick: state.currentTick,
-          componentId: sourceComponentId,
+          componentId: targetComponentId,
           capabilityId: null,
           connectionId,
           type: "DROPPED",
           latencyAdded: 0,
-          metadata: { reason: "BACKPRESSURED_STUB" },
+          metadata: { reason: "BACKPRESSURED" },
         });
-        getOrInitCounters(state, sourceComponentId).drops += 1;
+        getOrInitCounters(state, targetComponentId).drops += 1;
         return true;
       }
 

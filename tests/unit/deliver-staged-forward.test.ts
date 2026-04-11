@@ -54,32 +54,4 @@ describe("deliverStaged — FORWARD", () => {
     expect(drop?.metadata?.reason).toBe("NO_EGRESS");
     expect(state.perComponentThisTick.get("c-src" as ComponentId)?.drops).toBe(1);
   });
-
-  it("stub-drops with BACKPRESSURED_STUB when bandwidth is exhausted", () => {
-    const state = new SimulationState({ zones: [], pairLatency: new Map() });
-    state.placeComponent(makeComponent({ id: "c-src", ports: [makePort("p-out", "egress")] }));
-    state.placeComponent(makeComponent({ id: "c-dst", ports: [makePort("p-in", "ingress")] }));
-    state.addConnection(
-      makeConnection(
-        "cx",
-        { componentId: "c-src", portId: "p-out" },
-        { componentId: "c-dst", portId: "p-in" },
-        { bandwidth: 1, latency: 1 },
-      ),
-    );
-    state.connectionLoadThisTick.set("cx" as ConnectionId, 1); // already saturated
-    const req = { id: "r1" as RequestId, createdAt: 0, ttl: 10 } as Request;
-    state.requestLog.set("r1" as RequestId, []);
-
-    deliverStaged(state, {
-      sourceComponentId: "c-src" as ComponentId,
-      request: req,
-      result: { outcome: { kind: "FORWARD" }, sideEffects: [], events: [] },
-    });
-
-    const drop = state.requestLog.get("r1" as RequestId)!.find((e) => e.type === "DROPPED");
-    expect(drop?.metadata?.reason).toBe("BACKPRESSURED_STUB");
-    expect(state.perComponentThisTick.get("c-src" as ComponentId)?.drops).toBe(1);
-    expect(state.pending.get("c-dst" as ComponentId) ?? []).not.toContain(req);
-  });
 });
