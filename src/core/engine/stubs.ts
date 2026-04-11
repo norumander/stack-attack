@@ -30,6 +30,10 @@ function chaosKey(event: ChaosEvent): string {
     case "zone_outage":        return `zone:${event.zone}`;
     case "connection_sever":   return `sever:${event.connectionId}`;
     case "latency_injection":  return `latency:${event.connectionId}`;
+    default: {
+      const _exhaustive: never = event;
+      return _exhaustive;
+    }
   }
 }
 
@@ -39,6 +43,10 @@ function computeExpiry(event: ChaosEvent, tick: number): number {
     case "zone_outage":
     case "connection_sever":
     case "latency_injection":  return tick + event.durationTicks;
+    default: {
+      const _exhaustive: never = event;
+      return _exhaustive;
+    }
   }
 }
 
