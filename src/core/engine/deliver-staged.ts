@@ -8,7 +8,7 @@ import type { ChildResponseSnapshot } from "./blocked-parent.js";
 import { getOrInitCounters } from "./metrics-counters.js";
 import { selectEgressConnection } from "./egress-selection.js";
 import { getEffectiveBandwidth } from "./effective-bandwidth.js";
-import { reconstructReturnPath } from "./return-path.js";
+import { reconstructReturnPath, pickStreamConnection } from "./return-path.js";
 import { isEngineBufferable } from "../capability/engine-interfaces.js";
 import { IllegalStateError } from "./errors.js";
 import { applyStrictCascade } from "./cascade.js";
@@ -77,6 +77,43 @@ export function deliverStaged(
 
   switch (result.outcome.kind) {
     case "RESPOND": {
+      // Stream registration side effect (§6.4). Only fires if the request is a stream request.
+      if (request.streamDuration != null) {
+        const streamConnectionId = pickStreamConnection(state, request.id, sourceComponentId);
+        if (streamConnectionId == null) {
+          // No valid connection to reserve on — degrade RESPOND to DROP.
+          state.appendEvent(request.id, {
+            tick: state.currentTick,
+            componentId: sourceComponentId,
+            capabilityId: null,
+            connectionId: null,
+            type: "DROPPED",
+            latencyAdded: 0,
+            metadata: { reason: "NO_STREAM_EGRESS" },
+          });
+          getOrInitCounters(state, sourceComponentId).drops += 1;
+          return true;
+        }
+
+        state.registerActiveStream({
+          requestId: request.id,
+          connectionId: streamConnectionId,
+          originComponentId: request.origin,
+          baseRevenue: 0,
+          remainingDuration: request.streamDuration,
+          reservedBandwidth: request.streamBandwidth ?? 0,
+        });
+        state.appendEvent(request.id, {
+          tick: state.currentTick,
+          componentId: sourceComponentId,
+          capabilityId: null,
+          connectionId: streamConnectionId,
+          type: "STREAM_STARTED",
+          latencyAdded: 0,
+        });
+        // Fall through to the normal RESPOND return-path walk below.
+      }
+
       const path = reconstructReturnPath(state, request.id);
       state.appendEvent(request.id, {
         tick: state.currentTick,
