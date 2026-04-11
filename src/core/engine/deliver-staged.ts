@@ -5,6 +5,7 @@ import type { EngineBufferable } from "../capability/engine-interfaces.js";
 import type { Request } from "../types/request.js";
 import type { BlockedParentEntry } from "./blocked-parent.js";
 import type { ChildResponseSnapshot } from "./blocked-parent.js";
+import type { ModeController } from "../mode/mode-controller.js";
 import { getOrInitCounters } from "./metrics-counters.js";
 import { selectEgressConnection } from "./egress-selection.js";
 import { getEffectiveBandwidth, getEffectiveLatency } from "./effective-bandwidth.js";
@@ -16,6 +17,7 @@ import { applyStrictCascade } from "./cascade.js";
 export function deliverStaged(
   state: SimulationState,
   staged: StagedOutcome,
+  modeController?: ModeController,
 ): boolean {
   const { sourceComponentId, request, result } = staged;
   for (const e of result.events) state.appendEvent(request.id, e);
@@ -129,6 +131,15 @@ export function deliverStaged(
           forwardLatency: path.forwardLatency,
         },
       });
+
+      if (
+        modeController &&
+        request.streamDuration == null &&
+        !state.childToParent.has(request.id)
+      ) {
+        const credited = modeController.economy.creditRevenue(request);
+        state.revenueEarnedThisTick += credited;
+      }
 
       const parentId = state.childToParent.get(request.id);
       if (parentId != null) {

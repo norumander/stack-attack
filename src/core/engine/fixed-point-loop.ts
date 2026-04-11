@@ -15,7 +15,7 @@ export function runFixedPointLoop(
     let delivered = false;
     while (state.stagedOutcomes.length > 0) {
       const staged = state.stagedOutcomes.shift()!;
-      if (deliverStaged(state, staged)) delivered = true;
+      if (deliverStaged(state, staged, modeController)) delivered = true;
     }
 
     if (!processed && !delivered) return;
