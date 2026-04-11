@@ -5,6 +5,15 @@ export function getEffectiveBandwidth(
   state: SimulationState,
   connectionId: ConnectionId,
 ): number {
+  // Chaos check first — connection_sever forces 0 regardless of raw bandwidth.
+  for (const entry of state.activeChaos.values()) {
+    if (
+      entry.event.kind === "connection_sever" &&
+      entry.event.connectionId === connectionId
+    ) {
+      return 0;
+    }
+  }
   const conn = state.connections.get(connectionId);
   if (!conn) return 0;
   const load = state.connectionLoadThisTick.get(connectionId) ?? 0;
