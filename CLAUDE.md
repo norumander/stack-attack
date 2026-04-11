@@ -10,7 +10,7 @@ The game must stand on its own as a strategy game first. The learning is the lon
 
 ## Implementation status
 
-**Current:** Phase 1, Stage 2a complete (merged into `main` at `b3fd0bc`). Stage 1 baseline (type contracts, `Component`, `SimulationState`, registries, `ModeController`/`EconomyStrategy`/`TrafficSource` interfaces, stub `ProcessingCapability`) plus full Stage 2a tick loop: 12-step `Engine.tick`, fixed-point `processPending` with throughput gate, real `deliverStaged` with backpressure/FORWARD/RESPOND/DROP/QUEUE_HOLD/SPAWN handling, strict cascade, TTL with parent-child cascades, active streams, per-tick metrics. Sandbox mode from a parallel branch also merged. 267 tests. **Next:** Stage 2b (fill in `updateCondition`/`injectChaos`/`deductUpkeep` stubs in `src/core/engine/stubs.ts`, condition effects, economy math).
+**Current:** Phase 1, Stage 2b complete (merged into `main` at `a6e883f`). Stage 2a baseline plus real `updateCondition`/`injectChaos`/`deductUpkeep` (one file per step under `src/core/engine/`), `condition-effects.ts` single-source-of-truth for effect tiers, chaos-aware `getEffectiveBandwidth`/`getEffectiveLatency` adapters, revenue crediting at RESPONDED + STREAM_COMPLETED, real economy metrics (`revenueEarned`/`upkeepPaid`/per-component `condition`). Upstream sandbox work (zone management, scenarios, metrics history) also merged. 378 tests. **Next:** Stage 2c — no spec yet; candidate work: close the `EngineBufferable.removeRequest(id)` TTL gap, auto-scaling SCALE side effects, condition-aware routing (tier-3 `RoutingCapability`).
 
 ## Two Modes, One Engine
 
@@ -38,6 +38,8 @@ CLAUDE.md is a navigation hub. Pull detail from these when the task requires it:
 - **`brainlift-system-architecture-game.md`** — purpose, SPOVs, research insights, market analysis, design theory.
 - **`docs/superpowers/specs/2026-04-10-tower-defense-foundation-design.md`** — Stage 1 foundation type contracts.
 - **`docs/superpowers/specs/2026-04-10-stage-2a-tick-loop-core-design.md`** — Stage 2a engine contracts (1344 lines, authoritative for the implemented tick loop).
+- **`docs/superpowers/specs/2026-04-11-stage-2b-condition-chaos-upkeep-design.md`** — Stage 2b condition/chaos/upkeep contracts.
+- **`docs/superpowers/plans/2026-04-11-stage-2b-condition-chaos-upkeep.md`** — Stage 2b implementation plan (16 TDD tasks).
 - **`docs/superpowers/plans/`** — implementation plans per stage.
 
 ## Simulation tick (10 steps, fixed order for determinism)
@@ -63,6 +65,14 @@ Quick reference. Full semantics in `component-architecture.md` and Stage 2a spec
 - `deliverStaged` no longer treats `PASS` as FORWARD. Test components that need to forward must carry a real capability (e.g. `new ProcessingCapability(id, { outcomeKind: "FORWARD" })`); bare `makeComponent` clients fall through to PASS and requests are lost.
 - `checkTTL` does not scan bufferable partitions (known limitation). Expired buffered requests get a one-tick grace period and time out on the next tick's pending scan. Closing this gap needs an `EngineBufferable.removeRequest(id)` interface extension.
 
+### Stage 2b engine contract gotchas
+
+- **One file per tick step.** `updateCondition`, `injectChaos`, `deductUpkeep` each live in their own file under `src/core/engine/` (matching `process-pending.ts`, `check-ttl.ts`, etc.). No "stubs.ts" umbrella.
+- **`condition-effects.ts` is the single source of truth** for reading `ConditionEffect` tiers off a `Component`. Never re-implement `getActiveConditionEffects`/`getUpkeepMultiplier`/`getThroughputMultiplier`/`getDropProbability`/`getLatencyMultiplier` inline — import from there.
+- **`effective-bandwidth.ts` is the sole `Connection.latency` reader** in `src/core/engine/` (it hosts both `getEffectiveBandwidth` and `getEffectiveLatency`). Enforced by a grep invariant test in `tests/unit/effective-latency.test.ts`. Route new latency reads through `getEffectiveLatency(state, connId)`.
+- **Drop-probability RNG uses a per-request key** (`` `tick-${T}|${componentId}|drop|${reqId}` ``), not the shared component RNG from `buildProcessContext`. This keeps healthy-path (condition=1.0 → dropP=0 → no RNG call) Stage 2a replay determinism byte-identical. Don't consolidate these RNG streams.
+- **`deliverStaged` requires `modeController`** as its final parameter. Tests calling it directly must construct a `NoOpModeController` (`tests/harness/noop-mode-controller.ts`). The production path threads it through `runFixedPointLoop`.
+
 ## Tech Stack
 
 React + TypeScript + Pixi.js planned for the UI stage (not yet built). Simulation layer is **pure TypeScript, framework-agnostic** — no React, Next.js, or Vercel imports allowed until the UI stage. TypeScript's type system enforces the capability pattern at compile time; branded IDs and strict settings catch whole classes of bugs at the type layer.
@@ -70,7 +80,7 @@ React + TypeScript + Pixi.js planned for the UI stage (not yet built). Simulatio
 ## Development workflow
 
 ```bash
-pnpm test                              # run full suite (~3s, 267 tests)
+pnpm test                              # run full suite (~3s, 378 tests)
 pnpm test tests/unit/<name>.test.ts    # run a single file (~1s)
 pnpm typecheck                         # strict tsc --noEmit
 git worktree add .worktrees/<branch> -b <branch>   # isolated feature work
@@ -83,6 +93,8 @@ git worktree add .worktrees/<branch> -b <branch>   # isolated feature work
   - `test-capabilities.ts` — `ForwardingCapability`, `RespondingCapability`, `BlockingDbCapability`, `TwoBlockingSpawnsCapability`, `DroppingCapability`, `TestQueueCapability` (EngineBufferable)
   - `random-topology.ts` — `makeRandomTopology(rng)` deterministic linear chains for property tests
   - `noop-mode-controller.ts`, `noop-economy.ts`, `fixed-intensity-traffic-source.ts` — minimal mode/traffic stubs
+  - `test-economy.ts` — `TestEconomyStrategy` with `creditLog`/`debitLog` + configurable `revenuePerRequest`/`insolvencyRule`
+  - `test-chaos-controller.ts` — `TestChaosController` wraps `NoOpModeController` with a scripted `Map<tick, ChaosEvent[]>`
 - **Path aliases:** `@core/*`, `@capabilities/*`, `@harness/*`. Must be mirrored in both `tsconfig.json` paths and `vitest.config.ts` resolve.alias — changing one without the other silently breaks tests or typecheck.
 - **TypeScript:** strict with `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`. ESM — relative imports use `.js` extension on `.ts` sources (bundler moduleResolution). Branded IDs (`RequestId`, `ComponentId`, etc.) require `as RequestId` casts in test fixtures.
 - **Specs and plans:** designs in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`. Phase 1 is built in sequential stages with explicit exit criteria — write the next stage's plan only after the previous stage merges and its interfaces are locked.
