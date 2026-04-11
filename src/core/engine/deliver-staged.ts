@@ -11,6 +11,7 @@ import { getEffectiveBandwidth } from "./effective-bandwidth.js";
 import { reconstructReturnPath } from "./return-path.js";
 import { isEngineBufferable } from "../capability/engine-interfaces.js";
 import { IllegalStateError } from "./errors.js";
+import { applyStrictCascade } from "./cascade.js";
 
 export function deliverStaged(
   state: SimulationState,
@@ -150,6 +151,7 @@ export function deliverStaged(
         metadata: { reason: result.outcome.reason },
       });
       getOrInitCounters(state, sourceComponentId).drops += 1;
+      applyStrictCascade(state, request.id); // NEW: if this request is a blocking child, cascade
       return true;
     case "FORWARD": {
       // Minimal placeholder ProcessContext for egress selection. Real delivery
