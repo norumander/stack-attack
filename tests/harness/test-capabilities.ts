@@ -44,15 +44,22 @@ export interface RespondingCapabilityOptions {
    * default).
    */
   throughputPerTier?: number;
+  /**
+   * When set, reports `upkeepPerTier * tier` as the base upkeep cost
+   * per tick. When omitted, upkeep cost is zero (the historical default).
+   */
+  upkeepPerTier?: number;
 }
 
 /**
  * Always produces a RESPOND outcome. Throughput is unbounded unless
  * `throughputPerTier` is provided, in which case it contributes
- * `throughputPerTier * tier` per tick.
+ * `throughputPerTier * tier` per tick. Upkeep is zero unless
+ * `upkeepPerTier` is provided.
  */
 export class RespondingCapability implements Capability {
   readonly phase = "PROCESS" as const;
+  private readonly upkeepPerTier: number;
 
   constructor(
     readonly id: CapabilityId,
@@ -62,6 +69,7 @@ export class RespondingCapability implements Capability {
       const perTier = options.throughputPerTier;
       this.getThroughputPerTick = (tier: number) => perTier * tier;
     }
+    this.upkeepPerTier = options.upkeepPerTier ?? 0;
   }
 
   /**
@@ -79,8 +87,8 @@ export class RespondingCapability implements Capability {
     return { outcome: { kind: "RESPOND" }, sideEffects: [], events: [] };
   }
 
-  getUpkeepCost(_tier: number): number {
-    return 0;
+  getUpkeepCost(tier: number): number {
+    return this.upkeepPerTier * tier;
   }
 
   getStats() {
