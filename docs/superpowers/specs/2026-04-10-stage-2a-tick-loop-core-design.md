@@ -194,25 +194,43 @@ Key properties:
 
 ### 5.3 Throughput gate and OVERLOADED
 
-The throughput limit lives on the component, not per-capability. Even though
-`getThroughputPerTick` is defined on the PROCESS capability, only one PROCESS
-capability runs per request (first `canHandle()` match), so component-scoped
-counters are equivalent with less bookkeeping and match the existing Stage 1
-counter structure (`PerComponentTickCounters`).
+The throughput limit lives on the **component**, not per-capability.
+Although the Stage 1 `Capability` interface exposes
+`getThroughputPerTick?(tier: number): number`, only one PROCESS capability
+runs per request (first `canHandle()` match), so component-scoped counters
+are equivalent with less bookkeeping. The gate reads from the existing
+`SimulationState.perComponentThisTick` counter structure (field name
+`processed`) so no new counter field is introduced.
 
-`componentThroughputPerTick(c)` is computed on demand (cheap) as the sum of
-`getThroughputPerTick(c)` across every PROCESS-phase capability on `c`,
-multiplied by `c.instanceCount`. Summation (rather than max) matches the
-intuition that multiple PROCESS capabilities on one component contribute
-independently — a component with two PROCESS capabilities of 3 each can
-handle 6 requests per tick total. The approximation cost (a component with
-multiple PROCESS capabilities could over-serve one capability at the expense
-of another) is acceptable; in the Phase 1 registry every component has a
-single PROCESS-phase capability in practice.
+`componentThroughputPerTick(c)` is the helper defined in §10.1 — the sum
+of `cap.getThroughputPerTick(c.getEffectiveTier(cap.id))` across every
+PROCESS-phase capability on `c`, multiplied by `c.instanceCount`.
+Summation (rather than max) matches the intuition that multiple PROCESS
+capabilities on one component contribute independently — a component with
+two PROCESS capabilities of 3 each can handle 6 requests per tick total.
+The approximation cost (a component with multiple PROCESS capabilities
+could over-serve one capability at the expense of another) is acceptable;
+in the Phase 1 registry every component has a single PROCESS-phase
+capability in practice.
 
-**Fallback:** if a component has no PROCESS-phase capabilities, its
-throughput is `Infinity` (gate disabled). Pure-INTERCEPT components (like a
-hypothetical standalone Cache) do not rate-limit at this layer.
+**Fallbacks:**
+- If a component has no PROCESS-phase capabilities, or if any
+  PROCESS-phase capability does not implement `getThroughputPerTick`,
+  `componentThroughputPerTick(c)` is `Infinity`. The gate comparison
+  `processed < Infinity` is always true, so the gate is effectively
+  disabled. Pure-INTERCEPT components (e.g. a hypothetical standalone
+  Cache) do not rate-limit at this layer.
+- The `Infinity` sentinel is the JavaScript `Number.POSITIVE_INFINITY`
+  value. Comparisons and arithmetic with it behave as expected for the
+  gate's `<` check.
+
+**How "leftover in pending at end of tick" and "throughput gate" are the
+same thing:** the gate in §5.2 stops `processPending` from dequeuing once
+`perComponentThisTick.processed >= componentThroughputPerTick(c)`. Any
+requests still sitting in `state.pending[c.id]` when the fixed-point loop
+quiesces are exactly the requests that couldn't get through the gate this
+tick. There is no separate "overload check" — the post-loop sweep in §5.3
+just attributes OVERLOADED events to those leftover requests.
 
 **OVERLOADED accounting runs once, after the fixed-point loop quiesces:**
 
@@ -253,7 +271,8 @@ type StagedOutcome = {
 };
 ```
 
-`deliverStaged(staged)` walks the `ProcessResult`:
+`deliverStaged(staged): boolean` walks the `ProcessResult` and returns
+`moved`:
 
 1. Append every event in `result.events` to `state.requestLog[request.id]`
    (authoritative history).
@@ -262,6 +281,52 @@ type StagedOutcome = {
 3. Process every side effect (`result.sideEffects`): `SPAWN` (blocking or
    non-blocking) and `SCALE`. `SCALE` is honored in 2a by mutating
    `component.instanceCount` (no gradual ramp).
+4. Return `true` iff any of the following happened: a request landed in a
+   new runtime location (pending / blocked / bufferable / active-stream),
+   or a request became terminal (RESOLVED / DROPPED / CHILD_FAILED /
+   SIBLING_CANCELLED), or a blocking-SPAWN side effect created a child, or
+   a non-blocking-SPAWN side effect created a child, or a SCALE side
+   effect changed `instanceCount`. Return `false` only for the pure
+   `PASS` case with no side effects (a rare "nothing happened" case that
+   indicates a probable capability bug; the engine still appends any
+   events but contributes no progress). `moved = false` is a safety
+   value; practical capabilities should never produce it.
+
+### 6.1.1 Egress selection for FORWARD
+
+`FORWARD` outcomes do not carry a target — the producing component
+decides the target by consulting its egress connections. The engine picks
+a connection using this rule:
+
+```
+function selectEgressConnection(sourceComponentId, request, state, ctx):
+  egresses = state.connections.values()
+    .filter(c => c.sourceComponentId == sourceComponentId)
+  if egresses.length == 0:
+    return null  // FORWARD degrades to DROP(NO_EGRESS)
+
+  # If the source component owns an EngineConsultable capability (e.g.
+  # RoutingCapability, GeoRoutingCapability, CircuitBreakerCapability),
+  # delegate to it.
+  consultable = findFirst(source.capabilities, isEngineConsultable)
+  if consultable != null:
+    return consultable.selectConnection(request, egresses, ctx)
+
+  # Fallback: round-robin across egress connections.
+  # State: state.roundRobinCursor: Map<ComponentId, number>, default 0.
+  cursor = state.roundRobinCursor.get(sourceComponentId) ?? 0
+  egressesSorted = egresses.sortedByConnectionIdAscending()
+  chosen = egressesSorted[cursor % egressesSorted.length]
+  state.roundRobinCursor.set(sourceComponentId, cursor + 1)
+  return chosen.id
+```
+
+Round-robin state lives in `SimulationState.roundRobinCursor:
+Map<ComponentId, number>`, incremented on each fallback-selected FORWARD,
+reset to 0 at the start of every wave. The deterministic sort by
+`ConnectionId` ensures round-robin ordering is reproducible. Multiple
+`EngineConsultable` capabilities on one component: the first match in
+capability declaration order wins (deterministic).
 
 **Primary outcome handling:**
 
@@ -269,8 +334,8 @@ type StagedOutcome = {
 |--------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `PASS`       | No-op in delivery. The pipeline short-circuited (e.g. INTERCEPT → PASS → PROCESS handled it downstream). This branch should never actually be staged as a terminal outcome; asserts.   |
 | `RESPOND`    | Walk return path via event log (§7.4), append `RESPONDED` event at origin, mark resolved. Instant. If `request.streamDuration != null`, also register an `ActiveStream` (§6.4). |
-| `FORWARD`    | Select an egress connection (via `EngineConsultable.selectConnection` if the source component has one, otherwise round-robin). Consume bandwidth via `getEffectiveBandwidth`. If within budget → place in target's pending + `FORWARDED` event. If exceeded → §6.2. |
-| `DROP`       | Append `DROPPED` event on the source component. Increment `source.counters.drops`. Terminal. |
+| `FORWARD`    | Select an egress connection (see "Egress selection" below). Consume bandwidth via `getEffectiveBandwidth`. If within budget → place in target's pending + `FORWARDED` event + `TRAVERSED` event with the selected `connectionId`. If exceeded → §6.2. If the source has no egress connections at all → `DROP` with `reason = NO_EGRESS`. |
+| `DROP`       | Append `DROPPED` event on the source component. Increment `source.counters.drops` (and only the source — never the target, even if the request was about to be forwarded). Terminal. |
 | `QUEUE_HOLD` | Hand the `(request, result)` pair to the **source component's own** `EngineBufferable.enqueueForRetry(request, result)` — QUEUE_HOLD is always self-directed, the source is itself a Queue. It goes into the Queue's `awaitingPipeline` buffer and is re-emitted in step 2 of the next tick, re-entering the Queue's own pipeline. If the source component has no `EngineBufferable` (i.e. it isn't actually a Queue), that's a registry bug and asserts. If the bufferable's `enqueueForRetry` returns `false` (buffer full), degrade to `DROP(reason=QUEUE_FULL)` and increment `counters.drops` on the source. Emit `QUEUED` event. |
 
 ### 6.2 Backpressure path
@@ -307,20 +372,31 @@ tick.
 
 ### 6.2.1 How step 2 drains both buffer partitions
 
-Step 2 (`reEmitQueued`) iterates every component with an `EngineBufferable`,
-calls `emitReady()`, and handles the two partitions:
+Step 2 (`reEmitQueued`) runs **once per tick**, before the fixed-point loop
+opens. It iterates components in `state.visitOrder` (deterministic),
+and for each component that owns an `EngineBufferable` capability, calls
+`emitReady()` and handles the two partitions:
 
-- **`awaitingPipeline: Request[]`** — requests that were placed in a QUEUE
-  (via `QUEUE_HOLD`) and are now ready to enter the Queue component's own
-  pipeline. Each is inserted into the Queue component's own `pending` at the
-  front of step 2 so that step 3 of the same tick can process them.
+- **`awaitingPipeline: Request[]`** — requests that were placed in a
+  QUEUE (via `QUEUE_HOLD`) and are now ready to enter the Queue
+  component's own pipeline. Each is appended to the **tail** of the
+  Queue component's own `pending` array (standard FIFO
+  `enqueuePending`). The fixed-point loop in step 3 will pick them up
+  when it visits the Queue component. Appending to tail — not front —
+  preserves the global pending order: requests that were already
+  waiting in the Queue's own pending (if any) are processed before the
+  newly re-emitted ones.
 - **`awaitingDelivery: { request, result }[]`** — requests that were
   backpressured with their already-computed `ProcessResult`. Each is
-  re-staged directly into `state.stagedOutcomes` at the top of step 3's
-  staged queue, so `deliverStaged` re-attempts delivery without re-running
-  the source pipeline. If delivery fails a second time, the same backpressure
-  path (§6.2) applies — the request can be re-buffered up to whatever cap
-  the bufferable implements.
+  pushed to `state.stagedOutcomes` **before** step 3 begins, so the
+  first iteration's `deliverStaged` re-attempts delivery without
+  re-running the source pipeline. If delivery fails a second time, the
+  same backpressure path (§6.2) applies — the request can be
+  re-buffered up to whatever cap the bufferable implements.
+
+When multiple bufferable components emit in the same step 2, they are
+processed in `state.visitOrder` — the same deterministic order used by
+step 3 — so re-emission across components is deterministic.
 
 ### 6.3 The bandwidth and latency adapters
 
@@ -349,8 +425,26 @@ path. 2b will add chaos-induced reductions (`connection_sever` → effective
 bandwidth 0; `latency_injection` → additional latency delta) by modifying
 only the adapter bodies. Delivery code never branches on chaos state.
 
+**Freshness within a single iteration.** The adapters read directly from
+`state.activeStreams` and `state.connectionLoadThisTick`. A stream
+registered earlier in the same iteration (by an earlier staged outcome)
+is **immediately visible** to later bandwidth reads in the same
+iteration: `deliverStaged` drains `state.stagedOutcomes` in FIFO order,
+and any RESPOND→STREAM_STARTED that mutates `state.activeStreams` is
+observed by later FORWARD deliveries in the same drain. Similarly, a
+FORWARD that consumes bandwidth updates
+`state.connectionLoadThisTick` immediately, so a second FORWARD on the
+same connection in the same iteration sees the reduced remaining budget.
+
 The adapters are the only 2a-visible surface where 2b will hook in its
 chaos-override logic without touching delivery call sites.
+
+**No double-counting of active-stream reservations.** The `bandwidth`
+adapter subtracts `connectionLoadThisTick` (per-tick one-shot load) and
+active-stream reservations independently. A stream registered at tick T
+contributes to `activeStreams` — it does not also populate
+`connectionLoadThisTick`. Stream bandwidth is an "evergreen" reservation;
+FORWARD bandwidth is one-shot. They never overlap on the same slot.
 
 ### 6.4 Active streams (step 4b)
 
@@ -359,24 +453,52 @@ on a request whose `request.streamDuration != null`. In `deliverStaged`:
 
 ```
 if outcome.kind == RESPOND and request.streamDuration != null:
-  # Register the stream on the connection the RESPOND is traveling back on.
-  # For a stream originating from a StreamingServer, this is typically the
-  # egress connection from the streaming server to the next hop toward origin.
-  # For a local-resolve RESPOND (no forward path), the stream registers on
-  # the source component's primary egress connection (one must exist, or the
-  # stream fails with DROP(reason=NO_EGRESS)).
+  connectionId = pickStreamConnection(request, sourceComponentId, state)
+  if connectionId == null:
+    // No valid connection to reserve on — the stream can't exist.
+    // Degrade the RESPOND to a DROP.
+    appendEvent(request.id, { type: "DROPPED", reason: "NO_STREAM_EGRESS", ... })
+    counters[sourceComponentId].drops += 1
+    return moved = true
+
   state.registerActiveStream({
     requestId: request.id,
-    connectionId: pickStreamConnection(request, sourceComponentId, state),
+    connectionId,
     originComponentId: request.origin,
     baseRevenue: 0,                             // credited in 2b
     remainingDuration: request.streamDuration,
     reservedBandwidth: request.streamBandwidth ?? 0,
   })
-  state.appendEvent(request.id, { type: "STREAM_STARTED", ... })
-  // The normal RESPOND return-path walk still runs — the client sees a RESPONDED
-  # event and the request is marked resolved. The stream runs independently.
+  appendEvent(request.id, { type: "STREAM_STARTED", componentId: sourceComponentId, ... })
+  // After registration, the normal RESPOND return-path walk still runs — the
+  # client sees a RESPONDED event and the request is marked resolved. The
+  # stream runs independently on its reserved connection until step 4b.
 ```
+
+**`pickStreamConnection(request, sourceComponentId, state)` algorithm:**
+
+```
+function pickStreamConnection(request, sourceComponentId, state):
+  # Prefer the last forward-path hop: the connection the request arrived on.
+  # Walk the request log backward looking for the most recent TRAVERSED event.
+  events = state.getEventsFor(request.id)
+  for event in events.reverse():
+    if event.type == "TRAVERSED" and event.connectionId != null:
+      return event.connectionId
+  # No forward path exists (the request was resolved at its entry component).
+  # Fall back to the source component's first egress connection by sorted id.
+  egresses = state.connections.values()
+    .filter(c => c.sourceComponentId == sourceComponentId)
+    .sortedByConnectionIdAscending()
+  if egresses.length > 0:
+    return egresses[0].id
+  return null  // no valid connection → caller degrades to DROP
+```
+
+The "last forward-path hop" rule matches intuition: a stream served by a
+StreamingServer reserves bandwidth on the connection the request used to
+reach it, which is typically the last hop toward the origin. The sorted
+fallback is deterministic because `ConnectionId` is a branded string.
 
 Step 4b runs once per tick, **after** the fixed-point loop quiesces:
 
@@ -416,14 +538,30 @@ economy code has clean consumption points.
 ### 7.1 Request lifecycle states
 
 ```
-pending   → blocked → resolved    (terminal)
-          ↘         ↘ dropped     (terminal)
-                    ↘ timed_out   (terminal)
-          ↘ resolved / dropped / timed_out  (from pending directly)
+                   ┌──────────────────────────────────────┐
+                   ▼                                      │
+ injected ─► pending ─► blocked ─► (unblocked: front-of-pending)
+                │         │
+                │         ├──► CHILD_FAILED (terminal)
+                │         │
+                │         └──► TIMED_OUT (terminal)
+                │
+                ├──► buffered(awaitingPipeline) ─► pending (next tick step 2)
+                │                              └─► TIMED_OUT (terminal)
+                │
+                ├──► buffered(awaitingDelivery) ─► (re-staged next tick step 2)
+                │                              └─► TIMED_OUT (terminal)
+                │
+                ├──► active-stream ─► resolved (step 4b, when remainingDuration=0)
+                │
+                ├──► RESOLVED   (terminal)
+                ├──► DROPPED    (terminal)
+                └──► TIMED_OUT  (terminal)
 ```
 
-A request is in exactly one runtime location at a time — this is the
-implementation of "state":
+Terminal states are never re-entered. Every non-terminal request is in
+exactly one runtime location at a time — that is the implementation of
+"state":
 
 - **pending:** present in `state.pending.get(componentId)` for exactly one
   component.
@@ -498,20 +636,30 @@ Used for synchronous downstream calls:
   then checks `state.childToParent.get(child.id)`. If the child has a
   parent:
   1. Look up the parent entry in `state.blockedParents`.
-  2. Append a `CHILD_RESOLVED` event to the parent's request log with
-     metadata `{ childId: child.id }`. The child's ProcessResult data is
-     stored in `parent.childResponses[child.id]` for the parent to read
-     during re-processing.
-  3. Remove `child.id` from `parent.blockedOn`.
-  4. If `parent.blockedOn` is now empty:
+  2. **Late-arriving response handling:** if the parent entry is missing
+     (because the parent was already transitioned to CHILD_FAILED by an
+     earlier sibling failure, or the parent already timed out), also
+     clean up `state.childToParent` for this child and return. The
+     child's RESPOND still resolves normally as a completed request; the
+     cleanup just prevents dangling references. No further action.
+  3. Otherwise: append a `CHILD_RESOLVED` event to the parent's request
+     log with metadata `{ childId: child.id }`. Store a
+     `ChildResponseSnapshot` in `parent.childResponses.set(child.id, ...)`
+     — the snapshot captures the child's final `outcome`, the full child
+     event log at time of RESPOND, and the child's `returnLatency`.
+  4. Remove `child.id` from `parent.blockedOn` and from
+     `state.childToParent`.
+  5. If `parent.blockedOn` is now empty:
      - Remove the parent entry from `state.blockedParents`.
      - Re-enter the parent into `state.pending[parent.originComponentId]`
-       at the **front** of the queue (so the next iteration of the
-       fixed-point loop picks it up).
-     - On re-processing, `ProcessContext` exposes a fresh
-       `childResponses: ReadonlyMap<RequestId, ChildResponseSnapshot>` so
-       the parent's capability can read the child results. Capabilities
-       that don't care about child responses simply ignore the map.
+       at the **front** of the queue (array `unshift`). Front insertion
+       means the next iteration of the fixed-point loop visits the
+       unblocked parent before any FIFO-ordered newcomers — critical for
+       same-tick round-trips.
+     - On re-processing, `ProcessContext.childResponses` is populated
+       from `parent.childResponses` so the parent's capability can read
+       the child results. Capabilities that don't care about child
+       responses simply ignore the map.
 
 - **Under normal load** the full round-trip happens in one tick — that is
   the whole reason fixed-point matters. Under load that forces the child
@@ -548,10 +696,21 @@ Used for synchronous downstream calls:
   empty and the return latency is 0. This is the normal case for cache
   hits.
 - Return is **instant**: the origin is marked resolved in the same tick a
-  `RESPONDED` event is appended at `request.origin`; total return latency
-  is `Σ getEffectiveLatency(connId)` for connections on the reverse path,
-  recorded in the final `RESPONDED` event's metadata
-  (`{ returnLatency: number }`) for scoring. It does not consume a tick.
+  `RESPONDED` event is appended at `request.origin`. The event's metadata
+  carries:
+  ```ts
+  metadata: {
+    returnLatency: number;              // Σ getEffectiveLatency over reverse path
+    returnPath: ConnectionId[];         // reverse order, for diagnostics/scoring
+    forwardLatency: number;             // Σ latencyAdded on forward events, for diagnostics
+  }
+  ```
+  It does not consume a tick.
+- A blocking-child RESPOND walks **only the child's own return path** —
+  the child's request log. The parent's return path is reconstructed
+  later, from the parent's own log, when the parent itself eventually
+  RESPONDs (after re-processing with the child's snapshot in
+  `ProcessContext.childResponses`).
 - Responses **never fail**. No bandwidth check, no backpressure, no TTL
   check on the return path.
 - Return latency uses the same `getEffectiveLatency` adapter as forward
@@ -625,17 +784,30 @@ from wherever it sits and mark it `TIMED_OUT` with counter attribution at
 the component location. Recursive — a blocking grandchild also cascades.
 
 **`cascadeChildTimeoutToParent(child)`** — up-cascade. Look up
-`state.childToParent.get(child.id)`. If a parent exists and is still
-blocked, apply the multi-child partial-failure rule from §7.3: the parent
-transitions to `CHILD_FAILED` and all remaining blocking siblings are
-cancelled with `SIBLING_CANCELLED`.
+`state.childToParent.get(child.id)`. If a parent entry exists in
+`state.blockedParents`, apply the strict-cascade rule from §7.3: the
+parent transitions to `CHILD_FAILED`, and every other child still in
+`parent.blockedOn` at the moment the cascade fires ("remaining siblings")
+is located (pending queue, blocked pool, or bufferable) and marked
+terminal with `reason = SIBLING_CANCELLED`. If a sibling has already
+reached a terminal state (because, say, two independent children timed
+out in the same step 5 scan), the cancellation is a no-op for that one.
+If the parent is no longer in `state.blockedParents` (late-arriving
+timeout after parent already CHILD_FAILED via a different sibling), the
+up-cascade is a no-op and `state.childToParent` is cleaned up for this
+child.
 
 **Cascade order is deterministic:**
 - Up-cascade runs before down-cascade for a given timed-out request (so
   parents see the failure before siblings are touched).
-- `blockedOn` is stored as an **insertion-ordered `Set` relied on for
-  JavaScript's spec-guaranteed insertion iteration order**; cascade
-  iteration follows that order.
+- `blockedOn` is stored as a JavaScript `Set<RequestId>`. Per
+  **ECMAScript 2015+ spec (§24.1 Map/Set Objects)**, Set iteration follows
+  insertion order, which the engine relies on for deterministic cascade
+  ordering. Children are inserted into `blockedOn` in the order their
+  SPAWN side effects appear in the parent's `ProcessResult.sideEffects`
+  array. If 2a ever runs on a non-compliant JavaScript runtime (none
+  exist for our target), the cascade determinism would need to be
+  re-verified.
 - Recursive traversal is pre-order depth-first.
 
 Recursion is bounded by the finite request tree.
@@ -694,18 +866,54 @@ export interface TickMetrics {
   readonly perComponent: ReadonlyMap<
     ComponentId,
     {
+      // Existing Stage 1 fields — past-participle naming
       processed: number;
       dropped: number;
       overloaded: number;
       backpressured: number;
-      timedOut: number;              // NEW in 2a
-      pendingAtEndOfTick: number;    // NEW in 2a
-      blockedAtEndOfTick: number;    // NEW in 2a
       condition: number;             // existing; 2a populates 1.0 (healthy), 2b populates real value
+      // NEW in 2a — all past-participle / camelCase to match existing style
+      timedOut: number;
+      pendingAtEndOfTick: number;
+      blockedAtEndOfTick: number;
     }
   >;
 }
 ```
+
+**Naming convention:** `TickMetrics.perComponent` uses past-participle
+field names (`processed`, `dropped`, `overloaded`, `backpressured`,
+`timedOut`) as the reader-facing shape. The internal
+`SimulationState.perComponentThisTick` counter struct uses different field
+names (`processed`, `drops`, `timeouts`, `overloaded`, `backpressured`)
+because it's a plain counter bag. `recordMetrics` in step 8 is the single
+site that translates between the two naming styles:
+
+```ts
+function buildPerComponent(state: SimulationState): Map<ComponentId, ...> {
+  const result = new Map();
+  for (const [id, c] of state.components) {
+    const raw = state.perComponentThisTick.get(id) ?? defaultCounters();
+    const pending = state.pending.get(id)?.length ?? 0;
+    const blocked = countBlockedAt(state, id);
+    result.set(id, {
+      processed: raw.processed,
+      dropped: raw.drops,            // rename drops → dropped
+      overloaded: raw.overloaded,
+      backpressured: raw.backpressured,
+      timedOut: raw.timeouts,        // rename timeouts → timedOut
+      pendingAtEndOfTick: pending,
+      blockedAtEndOfTick: blocked,
+      condition: 1.0,                // 2b populates
+    });
+  }
+  return result;
+}
+```
+
+The split is deliberate: the counter bag uses terse verb-plural names
+optimized for hot-path increments, while the metrics snapshot uses
+reader-friendly past-participle names. Do not unify them.
 
 `recordMetrics` appends one snapshot per tick to
 `state.metricsHistory: TickMetrics[]`. The 2a implementation reads directly
@@ -740,33 +948,84 @@ source-compatible change — readers that don't use them are unaffected.
 
 ## 10. Interfaces and API changes
 
-### 10.1 Capability interface additions
+### 10.1 Capability interface (unchanged from Stage 1)
+
+Stage 1's `Capability` interface
+(`src/core/capability/capability.ts`) already exposes the two hooks Stage 2a
+needs. Stage 2a does not modify the interface:
 
 ```ts
-// src/core/capability/capability.ts
+// existing in Stage 1, reproduced for reference
 export interface Capability {
-  // ... existing Stage 1 members ...
-
-  /**
-   * Optional per-tick reset hook. Called in step 9 after metrics are captured.
-   * Useful for stateful capabilities that accumulate per-tick data separately
-   * from the engine's component-level counters.
-   */
-  resetPerTickState?(): void;
-}
-
-// Processing phase capabilities add a throughput contract:
-export interface ProcessingPhaseCapability extends Capability {
-  readonly phase: "PROCESS";
-
-  /**
-   * Maximum requests per tick this capability contributes to the
-   * component's processing budget. Summed across PROCESS-phase
-   * capabilities on a component and scaled by instanceCount.
-   */
-  getThroughputPerTick(component: Component): number;
+  readonly id: CapabilityId;
+  readonly phase?: Phase;
+  canHandle(requestType: string): boolean;
+  process(request: Request, context: ProcessContext): ProcessResult;
+  getUpkeepCost(tier: number): number;
+  getThroughputPerTick?(tier: number): number;  // already exists
+  getStats(): CapabilityStats;
+  configure?(config: unknown): void;
+  resetPerTickState?(): void;                   // already exists
 }
 ```
+
+Stage 2a wires these existing hooks into the engine:
+
+- **`getThroughputPerTick(tier)`** — called in §5.2's fixed-point loop to
+  compute `componentThroughputPerTick(c)`. It is an optional hook; a
+  capability that does not implement it contributes `Infinity` to the sum
+  (i.e., does not gate). The computation in the engine is:
+
+  ```ts
+  function componentThroughputPerTick(c: Component): number {
+    let total = 0;
+    for (const cap of c.capabilities) {
+      if (cap.phase !== "PROCESS") continue;
+      const impl = cap.getThroughputPerTick;
+      if (impl == null) return Infinity;        // any unbounded cap unbounds the component
+      const tier = c.getEffectiveTier(cap.id);
+      total += impl.call(cap, tier);
+    }
+    return total * c.instanceCount;
+  }
+  ```
+
+  If the sum is `Infinity` the throughput gate in §5.2 is effectively
+  disabled (the `<` comparison against `Infinity` is always true).
+
+- **`resetPerTickState()`** — called in step 9 (§9.2) on every capability
+  that implements it. Unchanged signature.
+
+### 10.1.1 ProcessContext addition
+
+`ProcessContext` (`src/core/capability/process-context.ts`) already exists
+in Stage 1. Stage 2a **adds one field** to support blocking SPAWN re-entry:
+
+```ts
+export interface ProcessContext {
+  // ... existing Stage 1 members unchanged ...
+
+  /**
+   * Child responses from prior blocking SPAWNs, keyed by child RequestId.
+   * Populated by the engine when re-entering a parent that was unblocked
+   * after all its blocking children resolved. Empty on first processing
+   * or for requests that never spawned blocking children. Capabilities
+   * that did not spawn blocking children simply ignore this field.
+   */
+  readonly childResponses: ReadonlyMap<RequestId, ChildResponseSnapshot>;
+}
+
+export type ChildResponseSnapshot = {
+  readonly outcome: PrimaryOutcome;           // the child's final primary outcome (usually RESPOND)
+  readonly events: readonly RequestEvent[];    // the child's full event log (read-only snapshot)
+  readonly returnLatency: number;              // the child's return-path latency, for parent bookkeeping
+};
+```
+
+`childResponses` is a fresh empty map on first entry. On re-entry after a
+blocking SPAWN round-trip, the engine populates it with one entry per
+blocking child that RESPONDed. Capabilities that never produced blocking
+SPAWNs see an empty map and ignore it.
 
 ### 10.2 Engine sub-interface: EngineBufferable (existing, unchanged)
 
@@ -830,13 +1089,15 @@ initial seed, topology, and traffic schedule, then compares
 export class SimulationState {
   // ... existing Stage 1 members ...
 
-  visitOrder: ComponentId[] = [];
+  visitOrder: ComponentId[] = [];           // computed at engine construction; see below
 
-  stagedOutcomes: StagedOutcome[] = [];
+  stagedOutcomes: StagedOutcome[] = [];     // scratch, drained every iteration
 
   blockedParents: Map<RequestId, BlockedParentEntry> = new Map();
 
   childToParent: Map<RequestId, RequestId> = new Map();
+
+  roundRobinCursor: Map<ComponentId, number> = new Map();  // fallback egress selection
 
   metricsHistory: TickMetrics[] = [];
 }
@@ -867,20 +1128,24 @@ The existing `ActiveStream` type (`src/core/types/stream.ts`) is unchanged:
 single `connectionId`, `originComponentId`, `baseRevenue`,
 `remainingDuration`, `reservedBandwidth`.
 
-**`visitOrder` rebuild policy (2a invariant):** topology is immutable
-during a running tick. `visitOrder` is rebuilt exactly twice at known
-times:
+**`visitOrder` rebuild policy and initialization (2a invariant):**
 
-1. At engine start, before the first tick runs.
-2. In mode controllers that support mid-simulation topology changes (none
-   in 2a — TD mode does not change topology mid-wave; Sandbox mid-sim
-   modification is explicitly out of scope for 2a).
-
-Components cannot be added or removed between steps 1 and 10 of the same
-tick. Mode controllers that want to change topology must do so in the
-build phase between waves. 2a asserts this invariant: attempting to
-`placeComponent` or `removeComponent` while `state.phase === "simulate"`
-throws `IllegalStateError`.
+- The `Engine` constructor computes the initial `visitOrder` by sorting
+  `state.components.values()` by `(zone, placementTick, componentId)` and
+  writing the result to `state.visitOrder`. This runs before the first
+  tick starts.
+- Topology is **immutable during a running tick.** Components cannot be
+  added or removed between steps 1 and 10 of the same tick.
+- Between ticks (in TD mode: between waves, not mid-wave), the engine
+  rebuilds `visitOrder` by the same sort if `state.components` has
+  changed since the last build.
+- Mid-wave topology changes are **explicitly out of scope for Stage 2a.**
+  Sandbox mode's dynamic topology is deferred to Stage 2c.
+- 2a asserts the invariant: attempting to `placeComponent` or
+  `removeComponent` while `state.phase === "simulate"` throws
+  `IllegalStateError`.
+- `roundRobinCursor` is initialized to an empty Map and entries are added
+  lazily on first fallback selection. It is also cleared at wave start.
 
 The sort uses JavaScript's default string comparison on `componentId`
 values (branded strings in `ids.ts`). Because `ComponentId` is globally
@@ -1005,10 +1270,15 @@ Whole engine, realistic topologies:
   bandwidth reserved the whole time, released on completion.
 - **Stream congestion (concrete):** a connection with `bandwidth = 100`
   carries one active stream with `reservedBandwidth = 60`. A non-stream
-  FORWARD with size 50 attempts to traverse the same connection: effective
-  bandwidth is `100 - 60 = 40`, so the FORWARD exceeds the budget and hits
-  the backpressure path in §6.2. A FORWARD with size 30 succeeds because
-  `30 <= 40`.
+  FORWARD with size 50 attempts to traverse the same connection:
+  `getEffectiveBandwidth` returns `100 - 0 (no other load yet) - 60
+  (stream reservation) = 40`, so the FORWARD exceeds the budget and hits
+  the backpressure path in §6.2. A FORWARD with size 30 on the same
+  connection succeeds because `30 <= 40` and bumps
+  `connectionLoadThisTick` by 30; a subsequent FORWARD with size 20 in the
+  same tick sees effective bandwidth `100 - 30 - 60 = 10` and also
+  backpressures because `20 > 10`. This test exercises the full
+  `getEffectiveBandwidth` subtraction logic from §6.3.
 - **Stream TTL exemption:** a stream request with `streamDuration = 20` and
   `ttl = 30` completes normally even though it is "alive" past its ttl
   relative to `createdAt`.
@@ -1057,7 +1327,10 @@ Stage 2a is complete when:
 2. Steps 6, 6b, 7 are stubbed as no-op functions with the correct call sites.
 3. The full integration test list in §11.2 passes.
 4. The full unit test list in §11.1 passes.
-5. The conservation property test passes over a randomized topology suite.
+5. The conservation property test passes over a randomized topology suite
+   of at least 100 generated topologies (2–12 components, 1–4 zones,
+   random traffic schedules drawn from a fixed RNG seed for
+   reproducibility).
 6. `pnpm typecheck` passes with strict settings (`exactOptionalPropertyTypes`,
    `noUncheckedIndexedAccess`).
 7. The Stage 1 smoke test passes unchanged.
