@@ -19,6 +19,9 @@ export interface TickMetrics {
       overloaded: number;
       backpressured: number;
       condition: number;
+      timedOut: number;
+      pendingAtEndOfTick: number;
+      blockedAtEndOfTick: number;
     }
   >;
 }
