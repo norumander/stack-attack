@@ -12,7 +12,19 @@ describe("Stage 1 smoke test", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
 
     const clientEgress = makePort("p-c-out", "egress");
-    const client = makeComponent({ id: "c-client", ports: [clientEgress] });
+    const clientCap = new ProcessingCapability("cap-client" as CapabilityId, {
+      outcomeKind: "FORWARD",
+    });
+    const clientCaps = new Map<CapabilityId, Capability>([
+      ["cap-client" as CapabilityId, clientCap],
+    ]);
+    const clientTiers = new Map<CapabilityId, number>([["cap-client" as CapabilityId, 1]]);
+    const client = makeComponent({
+      id: "c-client",
+      ports: [clientEgress],
+      capabilities: clientCaps,
+      tiers: clientTiers,
+    });
 
     const serverIngress = makePort("p-s-in", "ingress");
     const caps = new Map<CapabilityId, Capability>([
@@ -46,8 +58,8 @@ describe("Stage 1 smoke test", () => {
       intensity: 2,
       requestType: "api_read",
     });
-    const engine = new Engine();
-    for (let i = 0; i < 5; i++) engine.tick(state, mode);
+    const engine = new Engine(state);
+    for (let i = 0; i < 5; i++) engine.tick(mode);
 
     expect(state.currentTick).toBe(5);
 

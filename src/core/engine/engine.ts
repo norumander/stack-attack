@@ -1,181 +1,83 @@
-import type {
-  CapabilityId,
-  ComponentId,
-  ConnectionId,
-} from "../types/ids.js";
-import type { Request } from "../types/request.js";
-import type { ProcessContext } from "../capability/process-context.js";
-import type { ModeController } from "../mode/mode-controller.js";
 import type { SimulationState } from "../state/simulation-state.js";
-import { computeEffectiveTiers } from "../component/effective-tier.js";
-import { createRng } from "./rng.js";
+import type { ModeController } from "../mode/mode-controller.js";
+import { computeVisitOrder } from "./visit-order.js";
+import { injectTraffic as defaultInjectTraffic } from "./inject-traffic.js";
+import { reEmitQueued as defaultReEmitQueued } from "./re-emit-queued.js";
+import { runFixedPointLoop as defaultRunFixedPointLoop } from "./fixed-point-loop.js";
+import { sweepOverloaded as defaultSweepOverloaded } from "./overloaded-sweep.js";
+import { updateActiveStreams as defaultUpdateActiveStreams } from "./active-streams.js";
+import { checkTTL as defaultCheckTTL } from "./check-ttl.js";
+import {
+  updateCondition as defaultUpdateCondition,
+  injectChaos as defaultInjectChaos,
+  deductUpkeep as defaultDeductUpkeep,
+} from "./stubs.js";
+import { recordMetrics as defaultRecordMetrics } from "./metrics-builder.js";
+import { resetPerTickState as defaultResetPerTickState } from "./reset-per-tick.js";
 
 /**
- * Stage 1 walking-skeleton Engine.
+ * Injectable step functions. Defaults to the real Stage 2a implementations.
+ * Tests can override any subset to observe call ordering or substitute behavior.
+ */
+export interface EngineSteps {
+  injectTraffic: (state: SimulationState, mc: ModeController) => void;
+  reEmitQueued: (state: SimulationState) => void;
+  runFixedPointLoop: (state: SimulationState, mc: ModeController) => void;
+  sweepOverloaded: (state: SimulationState) => void;
+  updateActiveStreams: (state: SimulationState) => void;
+  checkTTL: (state: SimulationState) => void;
+  updateCondition: (state: SimulationState, mc: ModeController) => void;
+  injectChaos: (state: SimulationState, mc: ModeController) => void;
+  deductUpkeep: (state: SimulationState, mc: ModeController) => void;
+  recordMetrics: (state: SimulationState) => void;
+  resetPerTickState: (state: SimulationState) => void;
+}
+
+const defaultSteps: EngineSteps = {
+  injectTraffic: defaultInjectTraffic,
+  reEmitQueued: defaultReEmitQueued,
+  runFixedPointLoop: defaultRunFixedPointLoop,
+  sweepOverloaded: defaultSweepOverloaded,
+  updateActiveStreams: defaultUpdateActiveStreams,
+  checkTTL: defaultCheckTTL,
+  updateCondition: defaultUpdateCondition,
+  injectChaos: defaultInjectChaos,
+  deductUpkeep: defaultDeductUpkeep,
+  recordMetrics: defaultRecordMetrics,
+  resetPerTickState: defaultResetPerTickState,
+};
+
+/**
+ * Stage 2a Engine — runs the full 12-step simulation tick in deterministic order.
  *
- * Runs a minimal tick loop sufficient to thread requests end-to-end
- * through a Client → Server topology for the smoke test. No backpressure,
- * TTL, condition, throughput gate, upkeep, metrics, or chaos — those
- * land in Stage 2 (which replaces this class's internals).
+ * Step ordering is locked by construction; 2b fills in updateCondition, injectChaos,
+ * and deductUpkeep without touching this file.
  */
 export class Engine {
-  tick(state: SimulationState, modeController: ModeController): void {
-    this.injectTraffic(state, modeController);
-    this.processPending(state, modeController);
-    this.advanceTick(state);
+  private readonly steps: EngineSteps;
+
+  constructor(
+    private readonly state: SimulationState,
+    stepsOverride: Partial<EngineSteps> = {},
+  ) {
+    this.steps = { ...defaultSteps, ...stepsOverride };
+    // Compute the initial visitOrder from the current components map.
+    this.state.visitOrder.length = 0;
+    this.state.visitOrder.push(...computeVisitOrder(state.components));
   }
 
-  private injectTraffic(state: SimulationState, modeController: ModeController): void {
-    const source = modeController.getTrafficSource();
-    const subSources =
-      typeof source.getSubSources === "function" ? source.getSubSources() : [source];
-
-    for (const sub of subSources) {
-      const requests = sub.generate(state.currentTick);
-      const target = sub.targetEntryPointId;
-      if (target === null) continue;
-      for (const req of requests) {
-        state.enqueuePending(target, req);
-        state.appendEvent(req.id, {
-          tick: state.currentTick,
-          componentId: target,
-          capabilityId: null,
-          connectionId: null,
-          type: "ENTERED",
-          latencyAdded: 0,
-        });
-      }
-    }
-  }
-
-  private processPending(state: SimulationState, modeController: ModeController): void {
-    const MAX_ITERATIONS = 32; // walking-skeleton safety cap
-    for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-      const snapshot: Array<[ComponentId, Request[]]> = [];
-      for (const [id, queue] of state.pending) {
-        if (queue.length === 0) continue;
-        snapshot.push([id, [...queue]]);
-        state.pending.set(id, []);
-      }
-      if (snapshot.length === 0) return;
-
-      for (const [componentId, queue] of snapshot) {
-        const component = state.components.get(componentId);
-        if (!component) continue;
-        const activeCapabilityIds = modeController.getActiveCapabilities(component);
-        const effectiveTiers = computeEffectiveTiers(component, modeController);
-
-        for (const request of queue) {
-          const context = this.buildProcessContext(
-            state,
-            componentId,
-            activeCapabilityIds,
-            effectiveTiers,
-            request,
-          );
-          const result = component.process(request, context);
-
-          for (const ev of result.events) state.appendEvent(request.id, ev);
-
-          switch (result.outcome.kind) {
-            case "RESPOND":
-              state.appendEvent(request.id, {
-                tick: state.currentTick,
-                componentId,
-                capabilityId: null,
-                connectionId: null,
-                type: "RESPONDED",
-                latencyAdded: 0,
-              });
-              break;
-            case "FORWARD":
-            case "PASS":
-              if (!this.routeForward(state, componentId, request)) {
-                state.appendEvent(request.id, {
-                  tick: state.currentTick,
-                  componentId,
-                  capabilityId: null,
-                  connectionId: null,
-                  type: "DROPPED",
-                  latencyAdded: 0,
-                  metadata: { reason: "no_outcome" },
-                });
-              }
-              break;
-            case "DROP":
-              state.appendEvent(request.id, {
-                tick: state.currentTick,
-                componentId,
-                capabilityId: null,
-                connectionId: null,
-                type: "DROPPED",
-                latencyAdded: 0,
-                metadata: { reason: result.outcome.reason },
-              });
-              break;
-            case "QUEUE_HOLD":
-              state.appendEvent(request.id, {
-                tick: state.currentTick,
-                componentId,
-                capabilityId: null,
-                connectionId: null,
-                type: "QUEUED",
-                latencyAdded: 0,
-              });
-              break;
-          }
-        }
-      }
-    }
-  }
-
-  private routeForward(
-    state: SimulationState,
-    fromId: ComponentId,
-    request: Request,
-  ): boolean {
-    const component = state.components.get(fromId);
-    if (!component) return false;
-    const egressPort = component.ports.find((p) => p.direction === "egress");
-    if (!egressPort) return false;
-    const connectionId: ConnectionId | undefined = egressPort.connections[0];
-    if (!connectionId) return false;
-    const conn = state.connections.get(connectionId);
-    if (!conn) return false;
-
-    state.enqueuePending(conn.target.componentId, request);
-    state.appendEvent(request.id, {
-      tick: state.currentTick,
-      componentId: fromId,
-      capabilityId: null,
-      connectionId,
-      type: "TRAVERSED",
-      latencyAdded: conn.latency,
-    });
-    return true;
-  }
-
-  private buildProcessContext(
-    state: SimulationState,
-    componentId: ComponentId,
-    activeCapabilityIds: ReadonlySet<CapabilityId>,
-    effectiveTiers: ReadonlyMap<CapabilityId, number>,
-    request: Request,
-  ): ProcessContext {
-    return {
-      state: state.asReader(),
-      componentId,
-      effectiveTier: 0,
-      effectiveTiers,
-      activeCapabilityIds,
-      currentTick: state.currentTick,
-      rng: createRng(`${state.currentTick}:${componentId}:${request.id}`),
-      directories: [],
-      childResponses: new Map(),
-    };
-  }
-
-  private advanceTick(state: SimulationState): void {
-    state.advanceTick();
+  tick(modeController: ModeController): void {
+    this.steps.injectTraffic(this.state, modeController);        // step 1
+    this.steps.reEmitQueued(this.state);                         // step 2
+    this.steps.runFixedPointLoop(this.state, modeController);    // step 3 (fixed-point)
+    this.steps.sweepOverloaded(this.state);                      // step 3b (post-loop sweep)
+    this.steps.updateActiveStreams(this.state);                  // step 4b
+    this.steps.checkTTL(this.state);                             // step 5
+    this.steps.updateCondition(this.state, modeController);      // step 6  (stub)
+    this.steps.injectChaos(this.state, modeController);          // step 6b (stub)
+    this.steps.deductUpkeep(this.state, modeController);         // step 7  (stub)
+    this.steps.recordMetrics(this.state);                        // step 8
+    this.steps.resetPerTickState(this.state);                    // step 9
+    this.state.advanceTick();                                    // step 10
   }
 }

@@ -77,7 +77,14 @@ describe("Engine walking skeleton", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
 
     const clientEgress = mkPort("p-c-out", "egress");
-    const client = mkComp("c-client", [clientEgress], new Map(), new Map());
+    const clientCap = new ProcessingCapability("cap-client" as CapabilityId, {
+      outcomeKind: "FORWARD",
+    });
+    const clientCaps = new Map<CapabilityId, Capability>([
+      ["cap-client" as CapabilityId, clientCap],
+    ]);
+    const clientTiers = new Map<CapabilityId, number>([["cap-client" as CapabilityId, 1]]);
+    const client = mkComp("c-client", [clientEgress], clientCaps, clientTiers);
 
     const serverIngress = mkPort("p-s-in", "ingress");
     const serverCap = new ProcessingCapability("cap-proc" as CapabilityId, {
@@ -109,8 +116,8 @@ describe("Engine walking skeleton", () => {
       requestType: "api_read",
     });
 
-    const engine = new Engine();
-    engine.tick(state, mode);
+    const engine = new Engine(state);
+    engine.tick(mode);
 
     const logs = [...state.requestLog.values()];
     expect(logs).toHaveLength(2);
@@ -127,7 +134,14 @@ describe("Engine walking skeleton", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
 
     const clientEgress = mkPort("p-c-out", "egress");
-    const client = mkComp("c-client", [clientEgress], new Map(), new Map());
+    const clientCap = new ProcessingCapability("cap-client" as CapabilityId, {
+      outcomeKind: "FORWARD",
+    });
+    const clientCaps = new Map<CapabilityId, Capability>([
+      ["cap-client" as CapabilityId, clientCap],
+    ]);
+    const clientTiers = new Map<CapabilityId, number>([["cap-client" as CapabilityId, 1]]);
+    const client = mkComp("c-client", [clientEgress], clientCaps, clientTiers);
 
     const serverIngress = mkPort("p-s-in", "ingress");
     const cap = new ProcessingCapability("cap-proc" as CapabilityId, {
@@ -159,8 +173,8 @@ describe("Engine walking skeleton", () => {
       intensity: 2,
       requestType: "api_read",
     });
-    const engine = new Engine();
-    for (let i = 0; i < 5; i++) engine.tick(state, mode);
+    const engine = new Engine(state);
+    for (let i = 0; i < 5; i++) engine.tick(mode);
 
     expect(state.currentTick).toBe(5);
     expect([...state.requestLog.values()]).toHaveLength(10);
