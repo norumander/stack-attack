@@ -8,6 +8,13 @@ import type { EngineBufferable } from "@core/capability/engine-interfaces";
 import type { ComponentId, CapabilityId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
 import type { ProcessResult } from "@core/types/result";
+import { NoOpModeController } from "@harness/noop-mode-controller";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
 
 function makeBufferable(opts: { accept: boolean }): Capability & EngineBufferable {
   return {
@@ -42,7 +49,7 @@ describe("deliverStaged — QUEUE_HOLD", () => {
       sourceComponentId: "q1" as ComponentId,
       request: req,
       result,
-    });
+    }, mc);
 
     expect(moved).toBe(true);
     const evs = state.requestLog.get("r1" as RequestId)!;
@@ -67,7 +74,7 @@ describe("deliverStaged — QUEUE_HOLD", () => {
       sourceComponentId: "q1" as ComponentId,
       request: req,
       result,
-    });
+    }, mc);
 
     const drop = state.requestLog.get("r1" as RequestId)!.find((e) => e.type === "DROPPED");
     expect(drop?.metadata?.reason).toBe("QUEUE_FULL");
@@ -86,7 +93,7 @@ describe("deliverStaged — QUEUE_HOLD", () => {
         sourceComponentId: "c-plain" as ComponentId,
         request: req,
         result: { outcome: { kind: "QUEUE_HOLD" }, sideEffects: [], events: [] },
-      }),
+      }, mc),
     ).toThrow(IllegalStateError);
   });
 });

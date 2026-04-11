@@ -5,6 +5,13 @@ import { makeComponent } from "@harness/fixtures";
 import type { ComponentId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
 import type { SideEffect } from "@core/types/result";
+import { NoOpModeController } from "@harness/noop-mode-controller";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
 
 describe("deliverStaged — blocking SPAWN side effect", () => {
   const topo = { zones: [], pairLatency: new Map() };
@@ -56,7 +63,7 @@ describe("deliverStaged — blocking SPAWN side effect", () => {
         sideEffects: [se],
         events: [],
       },
-    });
+    }, mc);
 
     // Child should be in target pending
     expect(state.pending.get("c-tgt" as ComponentId)?.length).toBe(1);
@@ -98,7 +105,7 @@ describe("deliverStaged — blocking SPAWN side effect", () => {
         ],
         events: [],
       },
-    });
+    }, mc);
 
     const entry = state.blockedParents.get("p2" as RequestId);
     expect(entry?.blockedOn.size).toBe(2);
@@ -123,7 +130,7 @@ describe("deliverStaged — blocking SPAWN side effect", () => {
         sideEffects: [{ kind: "SPAWN", request: childTemplate("c3"), blocking: true }],
         events: [],
       },
-    });
+    }, mc);
 
     // Parent should NOT be re-enqueued in source pending
     expect(state.pending.get("c-src" as ComponentId) ?? []).not.toContain(p);
@@ -148,7 +155,7 @@ describe("deliverStaged — blocking SPAWN side effect", () => {
         ],
         events: [],
       },
-    });
+    }, mc);
 
     // Non-blocking child does NOT appear in blockedOn or childToParent
     const entry = state.blockedParents.get("p4" as RequestId);

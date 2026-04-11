@@ -16,16 +16,11 @@ import { applyStrictCascade } from "./cascade.js";
 
 /**
  * Apply a staged outcome to simulation state (events, side effects, outcome plumbing).
- *
- * @param modeController Optional by test-direct-call convention: Stage 2a unit tests
- *   that exercise outcome plumbing directly omit it because they don't assert on
- *   revenue. The production path (runFixedPointLoop) always passes it, so RESPOND
- *   credits revenue as expected in real ticks.
  */
 export function deliverStaged(
   state: SimulationState,
   staged: StagedOutcome,
-  modeController?: ModeController,
+  modeController: ModeController,
 ): boolean {
   const { sourceComponentId, request, result } = staged;
   for (const e of result.events) state.appendEvent(request.id, e);
@@ -140,11 +135,7 @@ export function deliverStaged(
         },
       });
 
-      if (
-        modeController &&
-        request.streamDuration == null &&
-        !state.childToParent.has(request.id)
-      ) {
+      if (request.streamDuration == null && !state.childToParent.has(request.id)) {
         const credited = modeController.economy.creditRevenue(request);
         state.revenueEarnedThisTick += credited;
       }

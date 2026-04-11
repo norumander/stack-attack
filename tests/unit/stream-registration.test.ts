@@ -5,6 +5,13 @@ import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
 import type { ComponentId, ConnectionId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
 import type { ProcessResult } from "@core/types/result";
+import { NoOpModeController } from "@harness/noop-mode-controller";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
 
 function makeReq(overrides: Partial<Request> = {}): Request {
   return {
@@ -64,7 +71,7 @@ describe("deliverStaged — RESPOND stream registration (§6.4)", () => {
       sourceComponentId: "c-dst" as ComponentId,
       request: req,
       result,
-    });
+    }, mc);
 
     expect(moved).toBe(true);
     const evs = state.requestLog.get(req.id)!;
@@ -103,7 +110,7 @@ describe("deliverStaged — RESPOND stream registration (§6.4)", () => {
       sourceComponentId: "c-iso" as ComponentId,
       request: req,
       result,
-    });
+    }, mc);
 
     const evs = state.requestLog.get(req.id)!;
     const drop = evs.find((e) => e.type === "DROPPED");
@@ -133,7 +140,7 @@ describe("deliverStaged — RESPOND stream registration (§6.4)", () => {
       sourceComponentId: "c-src" as ComponentId,
       request: req,
       result,
-    });
+    }, mc);
 
     const evs = state.requestLog.get(req.id)!;
     expect(evs.some((e) => e.type === "RESPONDED")).toBe(true);

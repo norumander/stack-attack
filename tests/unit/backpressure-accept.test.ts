@@ -6,6 +6,13 @@ import type { Capability } from "@core/capability/capability";
 import type { EngineBufferable } from "@core/capability/engine-interfaces";
 import type { ComponentId, CapabilityId, ConnectionId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
+import { NoOpModeController } from "@harness/noop-mode-controller";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
 
 function makeBufferable(opts: { accept: boolean }): Capability & EngineBufferable {
   return {
@@ -50,7 +57,7 @@ describe("deliverStaged — FORWARD backpressure (§6.2)", () => {
       sourceComponentId: "c-src" as ComponentId,
       request: req,
       result: { outcome: { kind: "FORWARD" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     const evs = state.requestLog.get("r1" as RequestId)!;
     const bp = evs.find((e) => e.type === "BACKPRESSURED");
@@ -90,7 +97,7 @@ describe("deliverStaged — FORWARD backpressure (§6.2)", () => {
       sourceComponentId: "c-src" as ComponentId,
       request: req,
       result: { outcome: { kind: "FORWARD" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     const evs = state.requestLog.get("r1" as RequestId)!;
     const drop = evs.find((e) => e.type === "DROPPED");
@@ -128,7 +135,7 @@ describe("deliverStaged — FORWARD backpressure (§6.2)", () => {
       sourceComponentId: "c-src" as ComponentId,
       request: req,
       result: { outcome: { kind: "FORWARD" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     const evs = state.requestLog.get("r1" as RequestId)!;
     const drop = evs.find((e) => e.type === "DROPPED");

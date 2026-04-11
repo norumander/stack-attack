@@ -4,6 +4,13 @@ import { SimulationState } from "@core/state/simulation-state";
 import { makeConnection } from "@harness/fixtures";
 import type { ComponentId, RequestId, ConnectionId } from "@core/types/ids";
 import type { Request, RequestEvent } from "@core/types/request";
+import { NoOpModeController } from "@harness/noop-mode-controller";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
 
 describe("deliverStaged — RESPOND", () => {
   const topo = { zones: [], pairLatency: new Map() };
@@ -39,7 +46,7 @@ describe("deliverStaged — RESPOND", () => {
       sourceComponentId: "c-dst" as ComponentId,
       request: req,
       result: { outcome: { kind: "RESPOND" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     expect(moved).toBe(true);
     const responded = state.requestLog
@@ -66,7 +73,7 @@ describe("deliverStaged — RESPOND", () => {
       sourceComponentId: "c1" as ComponentId,
       request: req,
       result: { outcome: { kind: "RESPOND" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     const responded = state.requestLog
       .get("r1" as RequestId)!
@@ -89,7 +96,7 @@ describe("deliverStaged — RESPOND", () => {
       sourceComponentId: "c1" as ComponentId,
       request: req,
       result: { outcome: { kind: "RESPOND" }, sideEffects: [], events: [] },
-    });
+    }, mc);
     expect(moved).toBe(true);
   });
 });

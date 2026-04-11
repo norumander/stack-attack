@@ -6,6 +6,13 @@ import { makeComponent } from "@harness/fixtures";
 import type { ComponentId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
 import type { BlockedParentEntry } from "@core/engine/blocked-parent";
+import { NoOpModeController } from "@harness/noop-mode-controller";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
 
 describe("deliverStaged — blocking child RESPOND unblocks parent", () => {
   const topo = { zones: [], pairLatency: new Map() };
@@ -60,7 +67,7 @@ describe("deliverStaged — blocking child RESPOND unblocks parent", () => {
       sourceComponentId: "c-child" as ComponentId,
       request: c,
       result: { outcome: { kind: "RESPOND" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     // Parent unblocked
     expect(state.blockedParents.has("p1" as RequestId)).toBe(false);
@@ -95,7 +102,7 @@ describe("deliverStaged — blocking child RESPOND unblocks parent", () => {
       sourceComponentId: "c-x" as ComponentId,
       request: c1,
       result: { outcome: { kind: "RESPOND" }, sideEffects: [], events: [] },
-    });
+    }, mc);
     expect(state.blockedParents.has("p2" as RequestId)).toBe(true);
     const entry = state.blockedParents.get("p2" as RequestId)!;
     expect(entry.blockedOn.size).toBe(1);
@@ -107,7 +114,7 @@ describe("deliverStaged — blocking child RESPOND unblocks parent", () => {
       sourceComponentId: "c-y" as ComponentId,
       request: c2,
       result: { outcome: { kind: "RESPOND" }, sideEffects: [], events: [] },
-    });
+    }, mc);
     expect(state.blockedParents.has("p2" as RequestId)).toBe(false);
     expect(state.pending.get("c-parent" as ComponentId)?.[0]?.id).toBe("p2");
   });
@@ -123,7 +130,7 @@ describe("deliverStaged — blocking child RESPOND unblocks parent", () => {
       sourceComponentId: "c-x" as ComponentId,
       request: c,
       result: { outcome: { kind: "RESPOND" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     expect(moved).toBe(true);
     expect(state.childToParent.has("c-late" as RequestId)).toBe(false);
@@ -140,7 +147,7 @@ describe("deliverStaged — blocking child RESPOND unblocks parent", () => {
       sourceComponentId: "c-x" as ComponentId,
       request: r,
       result: { outcome: { kind: "RESPOND" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     // RESPONDED event should still exist (Task 13 behavior preserved)
     const evs = state.requestLog.get("r-free" as RequestId)!;

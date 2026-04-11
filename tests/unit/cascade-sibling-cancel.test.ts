@@ -5,6 +5,13 @@ import { makeComponent } from "@harness/fixtures";
 import type { ComponentId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
 import type { BlockedParentEntry } from "@core/engine/blocked-parent";
+import { NoOpModeController } from "@harness/noop-mode-controller";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
 
 describe("strict cascade — child DROP → parent CHILD_FAILED + sibling cancel", () => {
   const topo = { zones: [], pairLatency: new Map() };
@@ -68,7 +75,7 @@ describe("strict cascade — child DROP → parent CHILD_FAILED + sibling cancel
       sourceComponentId: "c-db-a" as ComponentId,
       request: childA,
       result: { outcome: { kind: "DROP", reason: "db_error" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     // Parent no longer blocked
     expect(state.blockedParents.has("p1" as RequestId)).toBe(false);
@@ -108,7 +115,7 @@ describe("strict cascade — child DROP → parent CHILD_FAILED + sibling cancel
       sourceComponentId: "c1" as ComponentId,
       request: r,
       result: { outcome: { kind: "DROP", reason: "plain" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     expect(state.blockedParents.size).toBe(0);
     // And the original DROPPED event still fires (Task 11 behavior)
@@ -126,7 +133,7 @@ describe("strict cascade — child DROP → parent CHILD_FAILED + sibling cancel
       sourceComponentId: "c1" as ComponentId,
       request: r,
       result: { outcome: { kind: "DROP", reason: "x" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     expect(state.childToParent.has("c-late" as RequestId)).toBe(false);
   });
@@ -160,7 +167,7 @@ describe("strict cascade — child DROP → parent CHILD_FAILED + sibling cancel
       sourceComponentId: "c-a" as ComponentId,
       request: ca,
       result: { outcome: { kind: "DROP", reason: "fail" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     // Both siblings b and c cancelled
     expect(state.requestLog.get("b" as RequestId)!.find((e) => e.type === "SIBLING_CANCELLED")).toBeDefined();

@@ -5,6 +5,13 @@ import { makeComponent } from "@harness/fixtures";
 import type { ComponentId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
 import type { SideEffect } from "@core/types/result";
+import { NoOpModeController } from "@harness/noop-mode-controller";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
 
 describe("deliverStaged — non-blocking SPAWN side effect", () => {
   const topo = { zones: [], pairLatency: new Map() };
@@ -54,7 +61,7 @@ describe("deliverStaged — non-blocking SPAWN side effect", () => {
         sideEffects: [sideEffect],
         events: [],
       },
-    });
+    }, mc);
 
     const targetPending = state.pending.get("c-tgt" as ComponentId) ?? [];
     expect(targetPending.length).toBe(1);
@@ -105,7 +112,7 @@ describe("deliverStaged — non-blocking SPAWN side effect", () => {
         sideEffects: [{ kind: "SPAWN", request: child, blocking: false }],
         events: [],
       },
-    });
+    }, mc);
 
     const stored = (state.pending.get("c-tgt" as ComponentId) ?? [])[0];
     expect(stored?.ttl).toBe(4);
@@ -137,7 +144,7 @@ describe("deliverStaged — non-blocking SPAWN side effect", () => {
         sideEffects: [{ kind: "SPAWN", request: child, blocking: false }],
         events: [],
       },
-    });
+    }, mc);
     expect(state.blockedParents.size).toBe(0);
     expect(state.childToParent.size).toBe(0);
   });

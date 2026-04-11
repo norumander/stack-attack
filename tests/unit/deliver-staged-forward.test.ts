@@ -4,6 +4,13 @@ import { SimulationState } from "@core/state/simulation-state";
 import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
 import type { ComponentId, RequestId, ConnectionId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
+import { NoOpModeController } from "@harness/noop-mode-controller";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
 
 describe("deliverStaged — FORWARD", () => {
   it("moves request to target pending and appends FORWARDED + TRAVERSED", () => {
@@ -27,7 +34,7 @@ describe("deliverStaged — FORWARD", () => {
       sourceComponentId: "c-src" as ComponentId,
       request: req,
       result: { outcome: { kind: "FORWARD" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     expect(moved).toBe(true);
     expect(state.pending.get("c-dst" as ComponentId)).toContain(req);
@@ -48,7 +55,7 @@ describe("deliverStaged — FORWARD", () => {
       sourceComponentId: "c-src" as ComponentId,
       request: req,
       result: { outcome: { kind: "FORWARD" }, sideEffects: [], events: [] },
-    });
+    }, mc);
 
     const drop = state.requestLog.get("r1" as RequestId)!.find((e) => e.type === "DROPPED");
     expect(drop?.metadata?.reason).toBe("NO_EGRESS");
