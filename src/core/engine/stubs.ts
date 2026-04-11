@@ -1,5 +1,6 @@
 import type { SimulationState } from "../state/simulation-state.js";
 import type { ModeController } from "../mode/mode-controller.js";
+import type { ChaosEvent } from "../types/chaos.js";
 
 // Step 6: update component health/condition based on failures this tick.
 // Bad tick (drops + timeouts + overloaded + backpressured > 0) decays by
@@ -23,13 +24,63 @@ export function updateCondition(
   }
 }
 
+function chaosKey(event: ChaosEvent): string {
+  switch (event.kind) {
+    case "component_failure": return `component:${event.componentId}`;
+    case "zone_outage":        return `zone:${event.zone}`;
+    case "connection_sever":   return `sever:${event.connectionId}`;
+    case "latency_injection":  return `latency:${event.connectionId}`;
+  }
+}
+
+function computeExpiry(event: ChaosEvent, tick: number): number {
+  switch (event.kind) {
+    case "component_failure": return tick + 1;
+    case "zone_outage":
+    case "connection_sever":
+    case "latency_injection":  return tick + event.durationTicks;
+  }
+}
+
 // Step 6b: fire scheduled chaos events from the mode controller.
-// TODO(stage-2b): read modeController.getScheduledChaos(currentTick) and apply.
 export function injectChaos(
-  _state: SimulationState,
-  _modeController: ModeController,
+  state: SimulationState,
+  mc: ModeController,
 ): void {
-  // no-op in 2a
+  // 1. Sweep expired entries first so same-tick re-arms can succeed.
+  for (const [key, entry] of state.activeChaos) {
+    if (entry.expiresAtTick <= state.currentTick) {
+      state.activeChaos.delete(key);
+    }
+  }
+
+  // 2. Pull new events and insert.
+  const events = mc.getScheduledChaos(state.currentTick);
+  for (const event of events) {
+    state.activeChaos.set(chaosKey(event), {
+      event,
+      expiresAtTick: computeExpiry(event, state.currentTick),
+    });
+  }
+
+  // 3. Re-apply instant-condition chaos across every still-active entry
+  //    (not just new ones). This keeps zone_outage / component_failure
+  //    pinned at 0 for the duration of the window.
+  for (const entry of state.activeChaos.values()) {
+    switch (entry.event.kind) {
+      case "component_failure":
+        state.setCondition(entry.event.componentId, 0);
+        break;
+      case "zone_outage": {
+        const zone = entry.event.zone;
+        for (const comp of state.components.values()) {
+          if (comp.zone === zone) state.setCondition(comp.id, 0);
+        }
+        break;
+      }
+      // connection_sever, latency_injection are adapter-only.
+    }
+  }
 }
 
 // Step 7: deduct component upkeep from the budget.
