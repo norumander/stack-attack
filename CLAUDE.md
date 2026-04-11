@@ -6,238 +6,85 @@ A tower defense game that teaches system architecture through gameplay. User tra
 
 The game must stand on its own as a strategy game first. The learning is the long-term payoff; the fun is what gets players there. Position as a strategy game, let the architecture depth be the surprise.
 
-**KSP analogy:** KSP doesn't teach aerospace engineering, but after playing it every orbital mechanics concept has an experiential anchor. We do the same for system architecture. A player who finishes this game and later encounters caching, load balancing, or sharding in a tutorial already has the intuition. The game is a force multiplier for every system design resource that comes after it.
+**KSP analogy:** KSP doesn't teach aerospace engineering, but after playing it every orbital mechanics concept has an experiential anchor. We do the same for system architecture. A player who finishes this game and later encounters caching, load balancing, or sharding in a tutorial already has the intuition.
 
 ## Implementation status
 
-**Current:** Phase 1, Stage 1 complete (tag `phase-1-stage-1-complete`). What exists today: all Stage 1 type contracts under `src/core/`, the `Component` class with pipeline runner, `SimulationState`, the registries, abstract `ModeController`/`EconomyStrategy`/`TrafficSource` interfaces, a stub `ProcessingCapability`, and a walking-skeleton `Engine` that passes a Client → Server smoke test (93 tests). **Next:** Stage 2 plan (real tick loop, fixed-point processing, backpressure, TTL, condition effects, throughput gate, metrics, chaos).
-
-**Read this before trusting the rest of this document:** the Architecture Overview, Component Registry, Wave Progression, and Simulation Engine sections below describe the **design target** for Phase 1 — not the current code. Use them as the spec the implementation is aiming at. The authoritative live contracts are in `docs/superpowers/specs/2026-04-10-tower-defense-foundation-design.md`; current implementation plans are in `docs/superpowers/plans/`.
+**Current:** Phase 1, Stage 2a complete (merged into `main` at `b3fd0bc`). Stage 1 baseline (type contracts, `Component`, `SimulationState`, registries, `ModeController`/`EconomyStrategy`/`TrafficSource` interfaces, stub `ProcessingCapability`) plus full Stage 2a tick loop: 12-step `Engine.tick`, fixed-point `processPending` with throughput gate, real `deliverStaged` with backpressure/FORWARD/RESPOND/DROP/QUEUE_HOLD/SPAWN handling, strict cascade, TTL with parent-child cascades, active streams, per-tick metrics. Sandbox mode from a parallel branch also merged. 267 tests. **Next:** Stage 2b (fill in `updateCondition`/`injectChaos`/`deductUpkeep` stubs in `src/core/engine/stubs.ts`, condition effects, economy math).
 
 ## Two Modes, One Engine
 
-- **TD Mode** (ships first): Game-first. Components expose limited capabilities through placement, connection, and upgrades. Waves of traffic test the player's architecture under pressure. Build -> watch -> assess -> repeat. No mid-wave intervention.
-- **Sandbox Mode** (designed-for from day one, built later): Full capability set unlocked. Player configures traffic patterns, triggers chaos events, explores architecture tradeoffs without economic pressure. The bridge from intuition to practice.
+- **TD Mode** (ships first): Game-first. Components expose limited capabilities through placement, connection, and upgrades. Waves test the player's architecture under pressure. Build → watch → assess → repeat. No mid-wave intervention.
+- **Sandbox Mode** (designed-for from day one, built later): Full capability set unlocked. Player configures traffic, triggers chaos, explores tradeoffs without economic pressure.
 
-Both modes share the same component system. A Database in TD mode has `StorageCapability(tier=1)` and flavor text. The same Database in Sandbox mode exposes `SchemaCapability`, `ReplicationCapability`, and `QueryCapability`. The ModeController determines the aperture; components never know which mode they're in.
+Both modes share the same component system. A Database in TD has `StorageCapability(tier=1)` and flavor text; in Sandbox it exposes `SchemaCapability`, `ReplicationCapability`, and `QueryCapability`. The ModeController determines the aperture; components never know which mode they're in.
 
-## Core Design Principles
+## Core Design Principles (one-liners)
 
-### Fun First, Education as Byproduct
-The moment a player perceives they are being taught, engagement drops. Learning objectives are embedded entirely within gameplay mechanics. Cache invalidation surfaces as a gameplay problem (stale data, performance drops), not a tooltip.
+- **Fun first** — learning is byproduct; anything that feels pedagogical gets cut.
+- **Real terminology from day one** — "cache" not "memory cache." Montessori principle: the real word connects to every tutorial and job posting outside the game.
+- **Tradeoffs, not right answers** — multi-axis scoring (cost, performance, reliability). The best architecture is the cheapest one that still performs under worst-case load.
+- **Build → Watch → Assess** — no mid-wave intervention. Maps to how real engineering works (deploy, observe, diagnose, iterate). Auto-battler loop.
+- **Wrong intuitions on purpose** — caches don't always help, load balancers don't always matter, queues trade latency for throughput. Open-ended levels with valid-tradeoff Pareto frontiers.
 
-### Real Terminology from Day One
-Use real industry terms (cache, load balancer, database shard) paired with clear one-liners and immediate behavioral confirmation. The Montessori principle: children learn the real word just as easily as a simplified one, and only the real word connects to knowledge outside the game. A cache called "cache" connects to every tutorial and job posting; a cache called "Memory" connects to nothing.
+See `brainlift-system-architecture-game.md` for depth on purpose, SPOVs, and research grounding.
 
-### Tradeoffs, Not Right Answers
-The game's economy couples cost, performance, and reliability into a single feedback loop. Underspend -> performance drops -> fewer successful requests -> less revenue -> death spiral. Overspend -> upkeep drains budget -> can't scale for the next wave. The best architecture is the cheapest one that still performs under realistic worst-case load. Multi-axis scoring (cost, performance, reliability) means no single "best" solution -- only a Pareto frontier of valid tradeoffs.
+## Design documents (read on demand)
 
-### Build -> Watch -> Assess -> Repeat
-No mid-wave intervention. The player commits to their architecture, launches the wave, and watches. This maps to how real engineering works (deploy, observe, diagnose, iterate), eliminates extraneous cognitive load (Sweller), and creates natural windows for reflection-on-action (Schon). The auto-battler model (TFT) proves this loop commercially viable.
+CLAUDE.md is a navigation hub. Pull detail from these when the task requires it:
 
-### Guided Component Intros Before Each TD Round
-Each level opens with a guided intro: same environment, same pieces as the TD round, but without budget pressure or waves. Clear name, one-liner, place it, watch it work. Then the TD round applies that component under real constraints. Fast, skippable on replay, under a minute.
+- **`component-architecture.md`** — object model, 7 core abstractions, 4-phase execution pipeline (INTERCEPT/PROCESS/REPLICATE/OBSERVE), engine sub-interfaces (EngineConsultable/EngineBufferable), 10-step simulation tick, 13-component registry with key capabilities, extensibility contract, zones/multi-region, auto-scaling. Authoritative for engine design target.
+- **`wave-progression-strategy.md`** — two scaling axes (intensity + diversity), 7 request types, 10-wave progression with architectural lessons, boss waves, economic pressure curve.
+- **`brainlift-system-architecture-game.md`** — purpose, SPOVs, research insights, market analysis, design theory.
+- **`docs/superpowers/specs/2026-04-10-tower-defense-foundation-design.md`** — Stage 1 foundation type contracts.
+- **`docs/superpowers/specs/2026-04-10-stage-2a-tick-loop-core-design.md`** — Stage 2a engine contracts (1344 lines, authoritative for the implemented tick loop).
+- **`docs/superpowers/plans/`** — implementation plans per stage.
 
-### The Simulation Must Produce Wrong Intuitions on Purpose
-Caches should not always help (cache invalidation is a real problem). Load balancers should not always matter (some bottlenecks are downstream). Queues solve one problem while creating another (latency vs. throughput). Open-ended levels with multiple valid architectures create both replayability and genuine learning.
+## Simulation tick (10 steps, fixed order for determinism)
 
-## Architecture Overview
+Quick reference. Full semantics in `component-architecture.md` and Stage 2a spec.
 
-### Capability-Based Component System
+1. **INJECT TRAFFIC** — TrafficSource generates new requests.
+2. **RE-EMIT QUEUED** — `reEmitQueued` drains `EngineBufferable` partitions back into pending / stagedOutcomes.
+3. **PROCESS PENDING** — `processPending` + `deliverStaged` in a fixed-point loop (throughput-gated, quiesces or throws `FixedPointRunaway`).
+3b. **OVERLOADED SWEEP** — leftover pending items get `OVERLOADED` events.
+4b. **UPDATE ACTIVE STREAMS** — decrement `remainingDuration`, release on completion.
+5. **CHECK TTL** — scan pending + blocked-pool for expired requests; fire parent/child cascades.
+6. **UPDATE CONDITION** — stub in 2a.
+6b. **INJECT CHAOS** — stub in 2a.
+7. **DEDUCT UPKEEP** — stub in 2a.
+8. **RECORD METRICS** — snapshot `perComponentThisTick` + pending/blocked/stream counts into `metricsHistory`.
+9. **RESET PER-TICK STATE** — clear counters, bandwidth load, capability per-tick state. Asserts `stagedOutcomes` is empty.
+10. **ADVANCE TICK** — `state.currentTick += 1`.
 
-**The core abstraction:** Components are named bundles of capabilities with visual identities, cost curves, and ports. The Component class is generic -- what makes a "Database" different from a "Server" is its capability bundle, port configuration, and flavor text.
+### Stage 2a engine contract gotchas
 
-**Key principles:**
-1. **Composition over inheritance.** A Database is not a subclass of Component. It's a Component that *has* StorageCapability, ReplicationCapability, and QueryCapability.
-2. **Open/Closed.** The simulation engine, routing, and economy are closed to modification. New components and capabilities are added by implementing interfaces and registering.
-3. **Capabilities are the atomic unit of behavior.** Everything a component "does" is a capability.
-4. **Mode controllers filter, they don't modify.** Same component object in TD and Sandbox. The ModeController determines which capabilities are visible and at what tier.
-5. **Rendering-agnostic.** Simulation produces state. Renderer reads state. They never call each other.
-
-### Seven Core Abstractions
-
-1. **Request** -- Immutable creation snapshot (id, type, payload, origin, TTL, originZone, streamDuration, streamBandwidth). All state changes appended as events to the RequestLog. Deterministic, debuggable, replayable.
-
-2. **Capability** -- Atomic unit of behavior. Declares a phase (INTERCEPT, PROCESS, REPLICATE, OBSERVE), implements `canHandle()`, `process()`, `getUpkeepCost()`. Stateless re: tier/activation (owned by Component and ModeController). Stateful re: operational data (cache entries, queue buffers).
-
-3. **Component** -- Named bundle of capabilities. Generic pipeline runner. Owns `capabilityTiers` map. Methods: `process()` (runs pipeline), `getUpkeepCost()` (sums capabilities), `upgrade()`. No subclasses -- a Database is `new Component({ type: "database", capabilities: [...] })`.
-
-4. **Port** -- Typed connection point (ingress/egress) with dataType and capacity. Enforces valid topologies at the type system level.
-
-5. **Connection** -- Directional link between ports. Passive pipe with bandwidth limits and fixed latency. Does not buffer. Excess requests rejected with BACKPRESSURE.
-
-6. **TrafficSource** -- Generates requests. In TD: wave system (pattern, requestTypes distribution, intensity, duration). In Sandbox: player-configurable traffic generator.
-
-7. **ModeController** -- Sits above everything. Determines active capabilities, build constraints, traffic sources, outcome evaluation, budget/economy. TDModeController manages waves, economy, phases. SandboxModeController unlocks everything.
-
-### Execution Pipeline (fixed order)
-
-1. **INTERCEPT** -- Runs first. Can short-circuit (RESPOND, FORWARD, DROP, QUEUE_HOLD) or PASS. Caching, auth, rate limiting, circuit breaking live here.
-2. **PROCESS** -- Main work. Only one PROCESS capability runs per request (first `canHandle()` match). Processing, storage, querying live here.
-3. **REPLICATE** -- After PROCESS succeeds. Appends SPAWN side effects without overriding primary outcome. Replication, sharding live here.
-4. **OBSERVE** -- Unconditional, read-only. Monitoring, health checks, auto-scaling live here.
-
-### Engine Sub-Interfaces
-- **EngineConsultable** -- `selectConnection()` for delivery routing decisions. RoutingCapability, CircuitBreakerCapability, GeoRoutingCapability implement this. Fallback: round-robin.
-- **EngineBufferable** -- `enqueueForRetry()` / `emitReady()` for backpressure handling. QueueCapability implements this. Fallback: drop.
-
-### Economy Model
-
-- **Income:** Revenue per successfully resolved request (varies by type).
-- **Upkeep (recurring):** Every active capability costs per tick, busy or idle. `Component.getUpkeepCost()` is the single source of truth.
-- **Placement cost (one-time):** Defined in component registry.
-- **Upgrade cost (one-time):** Escalates per tier (roughly doubling), forcing prioritization.
-- **The tradeoff loop:** More components = more capacity = more revenue BUT more upkeep = tighter margins = less room to scale. The winning architecture is the leanest one that survives.
-
-### Component Registry (13 components)
-
-| Component | Key Capabilities | Role |
-|---|---|---|
-| Server | ProcessingCapability, RetryCapability, AutoScaleCapability | General-purpose compute workhorse |
-| Database | StorageCapability, ReplicationCapability, ShardingCapability, QueryCapability, SearchCapability | Persistent structured data |
-| Cache | CachingCapability | Intercepts repeated reads, reduces DB load |
-| Load Balancer | RoutingCapability, HealthCheckCapability, FilterCapability, RateLimitCapability, SSLTermination, Compression | Distributes traffic, absorbs reverse proxy + WAF via tier upgrades |
-| Queue | QueueCapability | Buffers traffic spikes, trades speed for survival |
-| CDN | FilterCapability, CachingCapability | Serves static content from edge, frees servers |
-| API Gateway | AuthCapability, RateLimitCapability, RoutingCapability | Smart front door: routes by content, handles auth, aggregates |
-| Service Registry | RegistrationCapability, HealthCheckCapability | Service discovery, auto-registration |
-| Worker | BatchProcessingCapability, AutoScaleCapability | Async compute, pulls from queues |
-| Circuit Breaker | CircuitBreakerCapability | Prevents cascading failure (closed/open/half-open) |
-| DNS/GTM | GeoRoutingCapability, HealthCheckCapability | Geographic routing to nearest healthy region |
-| Blob Storage | BlobStorageCapability, ReplicationCapability | Massive unstructured assets (video, images) |
-| Streaming/Media Server | StreamingCapability, CachingCapability | Adaptive bitrate streaming, sustained flows |
-
-## Wave Progression (10 waves + boss waves)
-
-Two axes of scaling that combine multiplicatively:
-- **Quantitative (intensity):** Raw requests/tick increases each wave. Countered by horizontal scaling.
-- **Qualitative (diversity):** New request types appear that existing architecture handles poorly. Countered by specialized components.
-
-Request types never disappear. Wave 10 still has `api_read` from wave 1. Every solution must be forward-compatible.
-
-### Request Types
-
-| Type | Key Properties | Specialized Counter |
-|---|---|---|
-| `api_read` | processingCost: 1, baseline | Server (this IS the counter) |
-| `api_write` | processingCost: 2, requiresStorage | Server + Database |
-| `static_asset` | low compute, high bandwidth, cacheable | CDN (~10x efficiency) |
-| `auth_required` | requiresAuth before processing | API Gateway (~2x efficiency) |
-| `batch` | processingCost: 10, async, long TTL | Queue + Worker (~5x efficiency) |
-| `stream` | sustained bandwidth for 20 ticks | Streaming/Media Server (~3x) |
-| `event` | fanout to all subscribers | ReplicationCapability (can't be brute-forced) |
-
-### Wave Summary
-
-| Wave | Name | New Element | Architectural Lesson |
-|---|---|---|---|
-| 1 | Launch Day | `api_read` only, 10 rps | Request/response cycle, what a server does |
-| 2 | Users Start Signing Up | `api_write`, 25 rps | Read/write asymmetry, separation of compute and storage |
-| 3 | Traffic Spikes | Intensity 5x, 50 rps | Horizontal scaling + caching as complementary strategies |
-| 4 | Marketing Adds Images | `static_asset`, 80 rps | Edge caching, CDN capital expense reduces operational load |
-| 5 | The Authentication Wall | `auth_required`, 150 rps | API Gateway pattern, cross-cutting concerns at the edge |
-| 6 | Async Workloads | `batch` + `event`, 250 rps | Async processing, event-driven architecture, queue decoupling |
-| 7 | The Outage | Chaos event (component failure), 350 rps | Cascading failure, circuit breakers, resilience patterns |
-| 8 | Video Launch | `stream`, 500 rps | Traffic isolation, streaming needs dedicated infrastructure |
-| 9 | Going Global | Multi-zone + geo-routing, 800 rps | Multi-region architecture, CAP theorem, data consistency |
-| 10 | The Viral Moment | 3000+ rps + multi-chaos | Auto-scaling, elastic infrastructure, everything tested together |
-
-### Boss Waves (optional, high-risk/high-reward)
-- **DDoS Attack** (after W5): Massive invalid `auth_required` spike. Tests rate limiting + auth rejection.
-- **Recommendation Storm** (after W6): Event avalanche. Tests pub/sub + async pipeline.
-- **Season Premiere** (after W8): 50x `stream` spike in one zone. Tests streaming capacity + CDN warm-up.
-- **Chaos Monkey** (after W9): Continuous random failures across all zones. Tests entire resilience stack.
-
-### Economic Pressure Curve
-
-Brute-force with generic Servers becomes unsustainable as diversity increases:
-- Waves 1-3: ~10% savings from specialization (brute force is fine)
-- Waves 4-5: ~35% savings (CDN and Gateway pay for themselves)
-- Waves 6-7: ~45% savings (async pipeline + Circuit Breaker)
-- Waves 8-9: ~55% savings (streaming isolation + multi-zone)
-- Wave 10: ~63% savings (auto-scaling vs. permanent over-provision)
-
-## Simulation Engine
-
-### The Simulation Tick (10 steps, fixed order for determinism)
-
-1. INJECT TRAFFIC -- TrafficSource generates new requests
-2. RE-EMIT QUEUED -- QueueCapabilities emit ready requests; Workers pull from Queues
-3. PROCESS PENDING -- Engine runs Component.process() on each pending request (topological order)
-4. DELIVER RESULTS -- FORWARD/SPAWN through connections, handle backpressure, process SCALE side effects
-4b. UPDATE ACTIVE STREAMS -- Decrement stream durations, release bandwidth on completion
-5. CHECK TTL -- Timeout expired requests (recursive for blocking children)
-6. UPDATE CONDITION -- Component health degrades on failures, recovers on clean processing
-6b. INJECT CHAOS -- ModeController fires scheduled failure events
-7. DEDUCT UPKEEP -- Sum all component upkeep, deduct from budget
-8. RECORD METRICS -- Aggregate tick-level metrics for HUD and post-wave assessment
-9. RESET PER-TICK STATE -- Clear connection load counters
-10. ADVANCE TICK -- Check if wave is over, transition to assess phase
-
-### Key Engine Behaviors
-
-- **Backpressure is a delivery concern, not a processing concern.** Pipeline decides outcome. Engine attempts delivery. QueueCapability is the only buffer.
-- **Requests can traverse multiple components in one tick** (topological order). Connection latency is bookkeeping for scoring, not a scheduling delay.
-- **Response transport uses a dedicated reply channel** (reconstructed from event log). Responses never fail. Bandwidth contention only applies on the forward path.
-- **Sub-requests:** Blocking SPAWNs (from PROCESS) must complete before parent resolves. Non-blocking SPAWNs (from REPLICATE) are fire-and-forget.
-
-### Zones & Multi-Region
-
-- Zone is a property on Component, assigned at placement
-- Zone-pair latency table adds latency to cross-zone connections
-- DNS/GTM routes by `request.originZone` to nearest healthy zone
-- Going multi-region multiplies the entire topology (cost scales linearly, resilience scales non-linearly)
-- Cross-zone replication makes eventual consistency visible (CAP theorem through experience)
-
-### Auto-Scaling
-
-- `instanceCount` on Component (throughput and upkeep scale linearly)
-- `AutoScaleCapability` (OBSERVE phase) monitors load, emits SCALE side effects
-- Cooldown prevents oscillation; higher tiers = faster reaction + predictive scaling
-
-## Extensibility Contract
-
-The architecture is validated: adding 7 new components and 13 new capabilities required zero engine modifications.
-
-- **New component:** Define capability bundle + registry entry (ports, costs, visual, conditionProfile). No simulation/renderer code modified.
-- **New capability:** Implement Capability interface + optional EngineConsultable/EngineBufferable. Register. No engine code modified.
-- **New request type:** Define type string + properties. Capabilities declare handling via `canHandle()`. Engine doesn't know about specific types.
-- **New zone:** Add to zone-pair latency table. No code modified.
-- **New mode:** Implement ModeController interface. No component/capability code modified.
-
-## What the Architecture Prevents
-
-- **The god class.** Engine only knows Component, Capability, Connection, Request. All 13 component types are interchangeable.
-- **The switch statement.** No `if (component.type === "database")` anywhere. Behavior dispatched through capabilities. Engine uses sub-interfaces (EngineConsultable, EngineBufferable), not type checks.
-- **The refactor cascade.** Adding a component is a registry entry, not a code change.
-- **Mode coupling.** Components don't know about modes. Modes don't know about specific components.
-- **Rendering coupling.** Simulation produces state. Renderer reads state. Swappable.
+- `Engine` is constructor-bound to state: `new Engine(state)` + `engine.tick(mc)`. The Stage 1 `new Engine()` + `engine.tick(state, mc)` signature is gone.
+- `deliverStaged` no longer treats `PASS` as FORWARD. Test components that need to forward must carry a real capability (e.g. `new ProcessingCapability(id, { outcomeKind: "FORWARD" })`); bare `makeComponent` clients fall through to PASS and requests are lost.
+- `checkTTL` does not scan bufferable partitions (known limitation). Expired buffered requests get a one-tick grace period and time out on the next tick's pending scan. Closing this gap needs an `EngineBufferable.removeRequest(id)` interface extension.
 
 ## Tech Stack
 
-React + TypeScript + Pixi.js (or raw canvas). Chosen for:
-- TypeScript's type system enforces the capability pattern at compile time
-- AI agents operate most effectively in TypeScript (strongest language support, can run own tests, refactor confidently)
-- If engine goes open-source, TypeScript has a much larger contributor base than GDScript
-- Game needs (scene graph, UI, entity-component plumbing) are met by React's component model + thin canvas layer
-
-**Simulation layer must be framework-agnostic** -- pure TypeScript that doesn't know about React. Rendered by React. Agents and humans can work on both independently.
+React + TypeScript + Pixi.js planned for the UI stage (not yet built). Simulation layer is **pure TypeScript, framework-agnostic** — no React, Next.js, or Vercel imports allowed until the UI stage. TypeScript's type system enforces the capability pattern at compile time; branded IDs and strict settings catch whole classes of bugs at the type layer.
 
 ## Development workflow
 
-- **Package manager:** `pnpm` (uses `pnpm-lock.yaml`). Run tests with `pnpm test`, typecheck with `pnpm typecheck`.
+```bash
+pnpm test                              # run full suite (~3s, 267 tests)
+pnpm test tests/unit/<name>.test.ts    # run a single file (~1s)
+pnpm typecheck                         # strict tsc --noEmit
+git worktree add .worktrees/<branch> -b <branch>   # isolated feature work
+```
+
+- **Package manager:** `pnpm` (uses `pnpm-lock.yaml`).
 - **Test layout:** vitest runs `tests/**/*.test.ts`. Unit in `tests/unit/`, integration in `tests/integration/`, mode-agnostic stubs in `tests/harness/`.
+- **Test harness fixtures** (`tests/harness/`):
+  - `fixtures.ts` — `makeComponent`, `makePort`, `makeConnection`
+  - `test-capabilities.ts` — `ForwardingCapability`, `RespondingCapability`, `BlockingDbCapability`, `TwoBlockingSpawnsCapability`, `DroppingCapability`, `TestQueueCapability` (EngineBufferable)
+  - `random-topology.ts` — `makeRandomTopology(rng)` deterministic linear chains for property tests
+  - `noop-mode-controller.ts`, `noop-economy.ts`, `fixed-intensity-traffic-source.ts` — minimal mode/traffic stubs
 - **Path aliases:** `@core/*`, `@capabilities/*`, `@harness/*`. Must be mirrored in both `tsconfig.json` paths and `vitest.config.ts` resolve.alias — changing one without the other silently breaks tests or typecheck.
 - **TypeScript:** strict with `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`. ESM — relative imports use `.js` extension on `.ts` sources (bundler moduleResolution). Branded IDs (`RequestId`, `ComponentId`, etc.) require `as RequestId` casts in test fixtures.
 - **Specs and plans:** designs in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`. Phase 1 is built in sequential stages with explicit exit criteria — write the next stage's plan only after the previous stage merges and its interfaces are locked.
-- **Phase 1 scope reminder:** pure TypeScript simulation, framework-agnostic. No React, Next.js, or Vercel until the UI stage. Vercel-plugin skill suggestions that fire on `package.json`/`tsconfig.json` writes are false positives in this phase.
-- **Worktrees:** project-local at `.worktrees/<branch-name>` (gitignored). Create with `git worktree add .worktrees/<branch> -b <branch>` for isolated feature work.
-
-## Document Lineage
-
-This CLAUDE.md synthesizes and serves as the canonical reference for:
-- `brainlift-system-architecture-game.md` -- Purpose, SPOVs, research insights, market analysis, design theory
-- `component-architecture.md` -- Object model, execution pipeline, simulation tick, component registry, extensibility
-- `wave-progression-strategy.md` -- Traffic scaling axes, request types, wave-by-wave progression, economic pressure model
-
-All new documents, feature specs, and implementation work should be tethered to the concepts defined here. If a new doc contradicts this one, reconcile explicitly -- don't let silent drift accumulate.
+- **Phase 1 scope reminder:** pure TypeScript simulation. Vercel-plugin skill suggestions that fire on `package.json`/`tsconfig.json` writes are false positives in this phase.
+- **Worktrees:** project-local at `.worktrees/<branch-name>` (gitignored).
