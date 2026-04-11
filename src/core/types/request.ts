@@ -34,7 +34,12 @@ export type RequestEventType =
   | "TIMED_OUT"
   | "BACKPRESSURED"
   | "OVERLOADED"
-  | "TRAVERSED";
+  | "TRAVERSED"
+  | "CHILD_RESOLVED"
+  | "CHILD_FAILED"
+  | "SIBLING_CANCELLED"
+  | "STREAM_STARTED"
+  | "STREAM_COMPLETED";
 
 export interface RequestEvent {
   readonly tick: number;
