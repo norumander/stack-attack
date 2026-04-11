@@ -1,20 +1,33 @@
 import type { SimulationState } from "../state/simulation-state.js";
 import { getOrInitCounters } from "./metrics-counters.js";
-import { applyStrictCascade } from "./cascade.js";
+import { applyStrictCascade, cascadeParentTimeoutToChildren } from "./cascade.js";
 
 /**
- * Step 5 of the simulation tick: CHECK TTL — pending location scan.
+ * Step 5 of the simulation tick: CHECK TTL.
  *
- * Walks visitOrder; for each component's pending queue, filters out requests
- * whose TTL has elapsed (createdAt + ttl <= currentTick), removes them,
- * appends a TIMED_OUT event, increments the per-component timeout counter,
- * and fires applyStrictCascade to propagate the failure to any blocking parent.
+ * Performs three scans in order:
  *
- * Mutation safety: uses a filter-based rebuild (survivors array) rather than
- * in-place splice so that FIFO order is preserved for non-expired requests.
+ * 1. PENDING SCAN (Task 26): walks visitOrder; for each component's pending
+ *    queue, filters out expired requests, appends TIMED_OUT events, increments
+ *    per-component timeout counters, and fires applyStrictCascade (UP-cascade)
+ *    to propagate the failure to any blocking parent.
  *
- * Task 27 will extend this file with blocked-pool and bufferable scans plus
- * the down-cascade path.
+ * 2. BLOCKED-POOL SCAN (Task 27): iterates state.blockedParents; for each
+ *    blocked parent whose TTL has elapsed, marks it TIMED_OUT, increments the
+ *    counter, and fires cascadeParentTimeoutToChildren (DOWN-cascade) to
+ *    propagate the timeout to each non-terminal blocking child.
+ *
+ * 3. BUFFERABLE PARTITION SCAN (TODO — Stage 2a limitation): scanning
+ *    awaitingPipeline / awaitingDelivery partitions inside bufferable
+ *    capabilities requires a peek/removeRequest method on EngineBufferable
+ *    that does not yet exist. This scan is deferred to a follow-up task that
+ *    extends the EngineBufferable interface. Buffered requests whose TTL
+ *    expires will be re-emitted next tick and time out at that point via the
+ *    pending scan (or the blocked-pool scan if they produce blocking children).
+ *
+ * Mutation safety: pending rebuild uses a survivors array to preserve FIFO
+ * order. The blocked-pool scan snapshots entries before iteration to avoid
+ * mutation-during-iteration issues from the down-cascade deleting entries.
  */
 export function checkTTL(state: SimulationState): void {
   for (const componentId of state.visitOrder) {
@@ -48,5 +61,36 @@ export function checkTTL(state: SimulationState): void {
       getOrInitCounters(state, componentId).timeouts += 1;
       applyStrictCascade(state, req.id);
     }
+  }
+
+  // --- BLOCKED-POOL SCAN (§8.1/§8.2 Task 27) ---
+  // Snapshot all entries first so that down-cascade deletions during iteration
+  // don't cause mutation-during-iteration issues.
+  const blockedEntries = [...state.blockedParents.values()];
+  for (const entry of blockedEntries) {
+    const parentReq = entry.request;
+    if (parentReq.createdAt + parentReq.ttl > state.currentTick) continue;
+
+    // Defensive: an earlier iteration's recursive cascade may have already
+    // removed this entry from the map.
+    if (!state.blockedParents.has(parentReq.id)) continue;
+
+    const originComponentId = entry.originComponentId;
+    // Capture children BEFORE deleting the parent entry, since
+    // cascadeParentTimeoutToChildren receives the ids directly (not the entry).
+    const childrenIds = [...entry.blockedOn];
+    state.blockedParents.delete(parentReq.id);
+
+    state.appendEvent(parentReq.id, {
+      tick: state.currentTick,
+      componentId: originComponentId,
+      capabilityId: null,
+      connectionId: null,
+      type: "TIMED_OUT",
+      latencyAdded: 0,
+    });
+    getOrInitCounters(state, originComponentId).timeouts += 1;
+
+    cascadeParentTimeoutToChildren(state, childrenIds, originComponentId);
   }
 }

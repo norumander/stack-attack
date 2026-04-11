@@ -102,3 +102,66 @@ export function applyStrictCascade(
     }
   }
 }
+
+/**
+ * Down-cascade: when a blocked parent times out (step 5 blocked-pool scan),
+ * propagate the timeout to every non-terminal blocking child.
+ *
+ * Each child is located in one of:
+ *   - state.pending (any component queue) — removed and marked TIMED_OUT
+ *   - state.blockedParents (nested blocking parent) — removed and recursed
+ *   - a bufferable partition (Stage 2a limitation: not reachable via the
+ *     EngineBufferable interface without a peek/remove-by-id method; those
+ *     children are marked TIMED_OUT at the fallback component but are NOT
+ *     physically removed from the buffer — they will be re-emitted next tick
+ *     and handled normally). A follow-up task must extend EngineBufferable
+ *     with removeRequest(requestId) to close this gap.
+ *
+ * Counter attribution is at the component where the child was found in pending;
+ * if not found anywhere, the parent's originComponentId is used as fallback.
+ *
+ * @param state           - The mutable simulation state.
+ * @param childrenIds     - Snapshot of blockedOn set BEFORE the parent entry
+ *                          was deleted from blockedParents (caller responsibility).
+ * @param fallbackComponentId - The parent's originComponentId, used when a child
+ *                          cannot be located in any pending queue.
+ */
+export function cascadeParentTimeoutToChildren(
+  state: SimulationState,
+  childrenIds: readonly RequestId[],
+  fallbackComponentId: ComponentId,
+): void {
+  for (const childId of childrenIds) {
+    state.childToParent.delete(childId);
+
+    // Try to locate and remove the child from a pending queue.
+    let found: ComponentId | null = null;
+    for (const [componentId, queue] of state.pending) {
+      const idx = queue.findIndex((r) => r.id === childId);
+      if (idx >= 0) {
+        queue.splice(idx, 1);
+        found = componentId;
+        break;
+      }
+    }
+
+    const attributeTo = found ?? fallbackComponentId;
+    state.appendEvent(childId, {
+      tick: state.currentTick,
+      componentId: attributeTo,
+      capabilityId: null,
+      connectionId: null,
+      type: "TIMED_OUT",
+      latencyAdded: 0,
+    });
+    getOrInitCounters(state, attributeTo).timeouts += 1;
+
+    // Nested blocking parent: recursively cascade its own children.
+    if (state.blockedParents.has(childId)) {
+      const nestedEntry = state.blockedParents.get(childId)!;
+      const nestedChildren = [...nestedEntry.blockedOn];
+      state.blockedParents.delete(childId);
+      cascadeParentTimeoutToChildren(state, nestedChildren, nestedEntry.originComponentId);
+    }
+  }
+}
