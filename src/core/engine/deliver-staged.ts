@@ -1,9 +1,13 @@
 import type { SimulationState } from "../state/simulation-state.js";
 import type { StagedOutcome } from "./staged-outcome.js";
+import type { Capability } from "../capability/capability.js";
+import type { EngineBufferable } from "../capability/engine-interfaces.js";
 import { getOrInitCounters } from "./metrics-counters.js";
 import { selectEgressConnection } from "./egress-selection.js";
 import { getEffectiveBandwidth } from "./effective-bandwidth.js";
 import { reconstructReturnPath } from "./return-path.js";
+import { isEngineBufferable } from "../capability/engine-interfaces.js";
+import { IllegalStateError } from "./errors.js";
 
 export function deliverStaged(
   state: SimulationState,
@@ -132,6 +136,49 @@ export function deliverStaged(
         type: "FORWARDED",
         latencyAdded: 0,
       });
+      return true;
+    }
+    case "QUEUE_HOLD": {
+      const source = state.components.get(sourceComponentId);
+      if (!source) {
+        throw new IllegalStateError(
+          `QUEUE_HOLD produced by unknown component ${sourceComponentId}`,
+        );
+      }
+      let bufferable: (Capability & EngineBufferable) | null = null;
+      for (const cap of source.capabilities.values()) {
+        if (isEngineBufferable(cap)) {
+          bufferable = cap;
+          break;
+        }
+      }
+      if (!bufferable) {
+        throw new IllegalStateError(
+          `QUEUE_HOLD produced by non-bufferable component ${sourceComponentId}`,
+        );
+      }
+      const accepted = bufferable.enqueueForRetry(request, result);
+      if (accepted) {
+        state.appendEvent(request.id, {
+          tick: state.currentTick,
+          componentId: sourceComponentId,
+          capabilityId: null,
+          connectionId: null,
+          type: "QUEUED",
+          latencyAdded: 0,
+        });
+        return true;
+      }
+      state.appendEvent(request.id, {
+        tick: state.currentTick,
+        componentId: sourceComponentId,
+        capabilityId: null,
+        connectionId: null,
+        type: "DROPPED",
+        latencyAdded: 0,
+        metadata: { reason: "QUEUE_FULL" },
+      });
+      getOrInitCounters(state, sourceComponentId).drops += 1;
       return true;
     }
     default:
