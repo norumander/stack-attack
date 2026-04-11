@@ -8,6 +8,12 @@ The game must stand on its own as a strategy game first. The learning is the lon
 
 **KSP analogy:** KSP doesn't teach aerospace engineering, but after playing it every orbital mechanics concept has an experiential anchor. We do the same for system architecture. A player who finishes this game and later encounters caching, load balancing, or sharding in a tutorial already has the intuition. The game is a force multiplier for every system design resource that comes after it.
 
+## Implementation status
+
+**Current:** Phase 1, Stage 1 complete (tag `phase-1-stage-1-complete`). What exists today: all Stage 1 type contracts under `src/core/`, the `Component` class with pipeline runner, `SimulationState`, the registries, abstract `ModeController`/`EconomyStrategy`/`TrafficSource` interfaces, a stub `ProcessingCapability`, and a walking-skeleton `Engine` that passes a Client → Server smoke test (93 tests). **Next:** Stage 2 plan (real tick loop, fixed-point processing, backpressure, TTL, condition effects, throughput gate, metrics, chaos).
+
+**Read this before trusting the rest of this document:** the Architecture Overview, Component Registry, Wave Progression, and Simulation Engine sections below describe the **design target** for Phase 1 — not the current code. Use them as the spec the implementation is aiming at. The authoritative live contracts are in `docs/superpowers/specs/2026-04-10-tower-defense-foundation-design.md`; current implementation plans are in `docs/superpowers/plans/`.
+
 ## Two Modes, One Engine
 
 - **TD Mode** (ships first): Game-first. Components expose limited capabilities through placement, connection, and upgrades. Waves of traffic test the player's architecture under pressure. Build -> watch -> assess -> repeat. No mid-wave intervention.
