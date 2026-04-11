@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { SimulationState } from "@core/state/simulation-state";
-import { injectChaos } from "@core/engine/stubs";
+import { injectChaos } from "@core/engine/inject-chaos";
 import { Component } from "@core/component/component";
 import type { ComponentId, CapabilityId, ConnectionId } from "@core/types/ids";
 import type { ChaosEvent } from "@core/types/chaos";

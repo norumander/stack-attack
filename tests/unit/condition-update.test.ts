@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { SimulationState } from "@core/state/simulation-state";
-import { updateCondition } from "@core/engine/stubs";
+import { updateCondition } from "@core/engine/update-condition";
 import { Component } from "@core/component/component";
 import type { ComponentId, CapabilityId } from "@core/types/ids";
 import type { ConditionProfile } from "@core/types/condition";

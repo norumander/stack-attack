@@ -7,11 +7,9 @@ import { runFixedPointLoop as defaultRunFixedPointLoop } from "./fixed-point-loo
 import { sweepOverloaded as defaultSweepOverloaded } from "./overloaded-sweep.js";
 import { updateActiveStreams as defaultUpdateActiveStreams } from "./active-streams.js";
 import { checkTTL as defaultCheckTTL } from "./check-ttl.js";
-import {
-  updateCondition as defaultUpdateCondition,
-  injectChaos as defaultInjectChaos,
-  deductUpkeep as defaultDeductUpkeep,
-} from "./stubs.js";
+import { updateCondition as defaultUpdateCondition } from "./update-condition.js";
+import { injectChaos as defaultInjectChaos } from "./inject-chaos.js";
+import { deductUpkeep as defaultDeductUpkeep } from "./deduct-upkeep.js";
 import { recordMetrics as defaultRecordMetrics } from "./metrics-builder.js";
 import { resetPerTickState as defaultResetPerTickState } from "./reset-per-tick.js";
 

@@ -1,30 +1,6 @@
 import type { SimulationState } from "../state/simulation-state.js";
 import type { ModeController } from "../mode/mode-controller.js";
 import type { ChaosEvent } from "../types/chaos.js";
-import { computeEffectiveTiers } from "../component/effective-tier.js";
-import { getUpkeepMultiplier } from "./condition-effects.js";
-
-// Step 6: update component health/condition based on failures this tick.
-// Bad tick (drops + timeouts + overloaded + backpressured > 0) decays by
-// profile.decayRate; otherwise recover by profile.recoveryRate. setCondition
-// clamps to [0, 1]. Iterates state.visitOrder for determinism.
-export function updateCondition(
-  state: SimulationState,
-  _modeController: ModeController,
-): void {
-  for (const id of state.visitOrder) {
-    const comp = state.components.get(id);
-    if (!comp) continue;
-    const counters = state.perComponentThisTick.get(id);
-    const badTick =
-      counters !== undefined &&
-      counters.drops + counters.timeouts + counters.overloaded + counters.backpressured > 0;
-    const delta = badTick
-      ? -comp.conditionProfile.decayRate
-      : comp.conditionProfile.recoveryRate;
-    state.setCondition(id, comp.condition + delta);
-  }
-}
 
 function chaosKey(event: ChaosEvent): string {
   switch (event.kind) {
@@ -90,30 +66,5 @@ export function injectChaos(
       }
       // connection_sever, latency_injection are adapter-only.
     }
-  }
-}
-
-// Step 7: deduct component upkeep from the budget.
-// Sums getUpkeepCost() * condition-based multiplier across all components,
-// debits the economy, and forces insolvent components to condition=0.
-export function deductUpkeep(
-  state: SimulationState,
-  mc: ModeController,
-): void {
-  let total = 0;
-  for (const comp of state.components.values()) {
-    const activeCaps = mc.getActiveCapabilities(comp);
-    const effectiveTiers = computeEffectiveTiers(comp, mc);
-    const baseCost = comp.getUpkeepCost(activeCaps, effectiveTiers);
-    const mult = getUpkeepMultiplier(comp);
-    total += baseCost * mult;
-  }
-
-  mc.economy.debitUpkeep(total);
-  state.upkeepPaidThisTick = total;
-
-  const insolventIds = mc.economy.resolveInsolvency(state.asReader());
-  for (const id of insolventIds) {
-    state.setCondition(id, 0);
   }
 }

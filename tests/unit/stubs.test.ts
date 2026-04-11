@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { updateCondition, injectChaos, deductUpkeep } from "@core/engine/stubs";
+import { updateCondition } from "@core/engine/update-condition";
+import { injectChaos } from "@core/engine/inject-chaos";
+import { deductUpkeep } from "@core/engine/deduct-upkeep";
 import { SimulationState } from "@core/state/simulation-state";
 import { NoOpModeController } from "@harness/noop-mode-controller";
 import type { ComponentId } from "@core/types/ids";
