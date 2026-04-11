@@ -59,7 +59,7 @@ export function recordMetrics(state: SimulationState): void {
       timedOut: raw.timeouts,
       pendingAtEndOfTick: pending,
       blockedAtEndOfTick: blocked,
-      condition: 1.0,
+      condition: state.components.get(id)?.condition ?? 1.0,
     });
 
     sumProcessed += raw.processed;
@@ -77,8 +77,8 @@ export function recordMetrics(state: SimulationState): void {
     requestsOverloaded: sumOverloaded,
     requestsBackpressured: sumBackpressured,
     requestsTimedOut: sumTimedOut,
-    revenueEarned: 0,
-    upkeepPaid: 0,
+    revenueEarned: state.revenueEarnedThisTick,
+    upkeepPaid: state.upkeepPaidThisTick,
     avgLatency,
     perComponent,
   };

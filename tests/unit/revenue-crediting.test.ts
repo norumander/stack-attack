@@ -195,3 +195,25 @@ describe("revenue crediting at STREAM_COMPLETED", () => {
     expect(economy.creditLog.length).toBe(0);
   });
 });
+
+describe("metrics-builder wires real economy values", () => {
+  it("populates revenueEarned, upkeepPaid, and per-component condition", () => {
+    const state = new SimulationState({ zones: [], pairLatency: new Map() });
+    const comp = makeRespondingComp("c1");
+    state.placeComponent(comp);
+    state.visitOrder.push(comp.id);
+    state.enqueuePending(comp.id, makeReq("r1", comp.id));
+    const economy = new TestEconomyStrategy({
+      budget: 100,
+      revenuePerRequest: 11,
+    });
+    const mc = new TestChaosController({ economy });
+
+    new Engine(state).tick(mc);
+
+    const snap = state.metricsHistory[0];
+    expect(snap?.revenueEarned).toBe(11);
+    expect(snap?.upkeepPaid).toBe(economy.debitLog.reduce((s, d) => s + d, 0));
+    expect(snap?.perComponent.get(comp.id)?.condition).toBe(comp.condition);
+  });
+});
