@@ -20,7 +20,9 @@ export function selectEgressConnection(
     .sort((a, b) => ((a.id as string) < (b.id as string) ? -1 : 1));
   if (egresses.length === 0) return null;
 
+  const activeCapabilityIds = modeController.getActiveCapabilities(source);
   for (const cap of source.capabilities.values()) {
+    if (!activeCapabilityIds.has(cap.id)) continue;
     if (isEngineConsultable(cap)) {
       const effectiveTier = getEffectiveTier(source, cap.id, modeController);
 
@@ -29,7 +31,7 @@ export function selectEgressConnection(
         componentId: sourceComponentId,
         effectiveTier,
         effectiveTiers: new Map([[cap.id, effectiveTier]]),
-        activeCapabilityIds: modeController.getActiveCapabilities(source),
+        activeCapabilityIds,
         currentTick: state.currentTick,
         rng: null as unknown as never,
         directories: [],

@@ -63,7 +63,8 @@ export function isEngineBufferable(
 ): c is Capability & EngineBufferable {
   return (
     typeof (c as unknown as EngineBufferable).enqueueForRetry === "function" &&
-    typeof (c as unknown as EngineBufferable).peekBuffered === "function"
+    typeof (c as unknown as EngineBufferable).peekBuffered === "function" &&
+    typeof (c as unknown as EngineBufferable).removeRequest === "function"
   );
 }
 
