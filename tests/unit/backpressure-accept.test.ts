@@ -6,6 +6,7 @@ import type { Capability } from "@core/capability/capability";
 import type { EngineBufferable } from "@core/capability/engine-interfaces";
 import type { ComponentId, CapabilityId, ConnectionId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
+import type { ProcessResult } from "@core/types/result";
 import { NoOpModeController } from "@harness/noop-mode-controller";
 
 const mc = new NoOpModeController({
@@ -25,6 +26,8 @@ function makeBufferable(opts: { accept: boolean }): Capability & EngineBufferabl
     enqueueForRetry: () => opts.accept,
     emitReady: () => ({ awaitingPipeline: [], awaitingDelivery: [] }),
     dequeueBatch: () => [],
+    peekBuffered: (): ReadonlyArray<{ request: Request; result: ProcessResult }> => [],
+    removeRequest: (_id: RequestId): boolean => false,
   };
 }
 

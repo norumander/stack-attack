@@ -170,7 +170,7 @@ export class BlockingDbCapability implements Capability {
  */
 export class TestQueueCapability implements Capability, EngineBufferable {
   readonly phase = "INTERCEPT" as const;
-  private buffer: { request: Request; result: ProcessResult }[] = [];
+  private buffer: Map<RequestId, { request: Request; result: ProcessResult }> = new Map();
   constructor(
     readonly id: CapabilityId,
     private readonly capacity: number = 64,
@@ -186,19 +186,25 @@ export class TestQueueCapability implements Capability, EngineBufferable {
 
   // EngineBufferable
   enqueueForRetry(request: Request, result: ProcessResult): boolean {
-    if (this.buffer.length >= this.capacity) return false;
-    this.buffer.push({ request, result });
+    if (this.buffer.size >= this.capacity) return false;
+    this.buffer.set(request.id, { request, result });
     return true;
   }
   emitReady(): {
     awaitingPipeline: Request[];
     awaitingDelivery: { request: Request; result: ProcessResult }[];
   } {
-    const out = this.buffer.slice();
-    this.buffer.length = 0;
+    const out = [...this.buffer.values()];
+    this.buffer.clear();
     return { awaitingPipeline: [], awaitingDelivery: out };
   }
   dequeueBatch(_n: number): Request[] { return []; }
+  peekBuffered(): ReadonlyArray<{ request: Request; result: ProcessResult }> {
+    return [...this.buffer.values()];
+  }
+  removeRequest(id: RequestId): boolean {
+    return this.buffer.delete(id);
+  }
 }
 
 /**
