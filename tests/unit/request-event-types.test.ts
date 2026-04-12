@@ -9,7 +9,8 @@ describe("Stage 2a RequestEventType additions", () => {
       "SIBLING_CANCELLED",
       "STREAM_STARTED",
       "STREAM_COMPLETED",
+      "SCALED",
     ];
-    expect(types).toHaveLength(5);
+    expect(types).toHaveLength(6);
   });
 });

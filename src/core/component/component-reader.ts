@@ -17,6 +17,8 @@ export interface ComponentReader {
   readonly instanceCount: number;
   readonly condition: number;
   readonly conditionProfile: ConditionProfile;
+  readonly minInstances: number;
+  readonly maxInstances: number;
 
   getPlayerTier(capabilityId: CapabilityId): number;
   getCapabilityIds(): readonly CapabilityId[];

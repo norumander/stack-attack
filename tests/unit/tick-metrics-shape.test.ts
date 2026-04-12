@@ -27,6 +27,7 @@ describe("TickMetrics Stage 2a shape", () => {
             timedOut: 0,
             pendingAtEndOfTick: 0,
             blockedAtEndOfTick: 0,
+            instanceCount: 1,
           },
         ],
       ]),

@@ -22,6 +22,7 @@ export interface TickMetrics {
       timedOut: number;
       pendingAtEndOfTick: number;
       blockedAtEndOfTick: number;
+      instanceCount: number;
     }
   >;
 }
