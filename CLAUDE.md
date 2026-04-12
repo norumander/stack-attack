@@ -10,7 +10,16 @@ The game must stand on its own as a strategy game first. The learning is the lon
 
 ## Implementation status
 
-**Current:** Phase 1, Stage 2c complete. Stage 2b baseline plus EngineBufferable `peekBuffered`/`removeRequest` interface extension, `checkTTL` Scan 3 for bufferable partitions, `applyStrictCascade` + `cascadeParentTimeoutToChildren` scan bufferables for siblings/children, SCALE side effect processing in `deliverStaged` with `minInstances`/`maxInstances` clamping and `SCALED` event emission, `selectEgressConnection` computes real `effectiveTier` for `EngineConsultable` capabilities via `modeController`, new `RoutingCapability` (T1 round-robin, T2 least-load, T3 condition-weighted) in `src/capabilities/routing/`, per-component `instanceCount` in metrics snapshot. 406 tests. **Next:** Stage 3 — no spec yet; candidate work: implement remaining 23 capabilities and 14 component registry entries.
+**Current stage:** Phase 1, Stage 2c complete. 406 tests, typecheck clean.
+
+**What Stage 2c delivered** (merged into `main`):
+- `EngineBufferable` gains `peekBuffered` + `removeRequest`; `checkTTL` Scan 3 expires buffered requests; cascade functions scan bufferables for siblings/children.
+- SCALE side effects processed in `deliverStaged` with `minInstances`/`maxInstances` clamping and `SCALED` event emission; per-component `instanceCount` in metrics snapshot.
+- `selectEgressConnection` computes real `effectiveTier` via `modeController`; new `RoutingCapability` in `src/capabilities/routing/` with T1 round-robin / T2 least-load / T3 condition-weighted.
+
+**Next:** Stage 3 — no spec yet. Candidate work: implement remaining 23 capabilities and 14 component registry entries. Write the spec only after revisiting scope; Stage 3 is large and may need decomposition.
+
+**History:** Stage-by-stage detail lives in `docs/superpowers/specs/` and `docs/superpowers/plans/` (see nav hub below).
 
 ## Two Modes, One Engine
 
@@ -37,10 +46,13 @@ CLAUDE.md is a navigation hub. Pull detail from these when the task requires it:
 - **`wave-progression-strategy.md`** — two scaling axes (intensity + diversity), 7 request types, 10-wave progression with architectural lessons, boss waves, economic pressure curve.
 - **`brainlift-system-architecture-game.md`** — purpose, SPOVs, research insights, market analysis, design theory.
 - **`docs/superpowers/specs/2026-04-10-tower-defense-foundation-design.md`** — Stage 1 foundation type contracts.
+- **`docs/superpowers/plans/2026-04-10-tower-defense-foundation-stage-1.md`** — Stage 1 implementation plan.
 - **`docs/superpowers/specs/2026-04-10-stage-2a-tick-loop-core-design.md`** — Stage 2a engine contracts (1344 lines, authoritative for the implemented tick loop).
+- **`docs/superpowers/plans/2026-04-10-stage-2a-tick-loop-core.md`** — Stage 2a implementation plan.
 - **`docs/superpowers/specs/2026-04-11-stage-2b-condition-chaos-upkeep-design.md`** — Stage 2b condition/chaos/upkeep contracts.
 - **`docs/superpowers/plans/2026-04-11-stage-2b-condition-chaos-upkeep.md`** — Stage 2b implementation plan (16 TDD tasks).
-- **`docs/superpowers/plans/`** — implementation plans per stage.
+- **`docs/superpowers/specs/2026-04-12-stage-2c-ttl-scale-routing-design.md`** — Stage 2c bufferable TTL, SCALE processing, RoutingCapability contracts.
+- **`docs/superpowers/plans/2026-04-12-stage-2c-ttl-scale-routing.md`** — Stage 2c implementation plan (13 TDD tasks).
 
 ## Simulation tick (10 steps, fixed order for determinism)
 
@@ -69,7 +81,7 @@ Quick reference. Full semantics in `component-architecture.md` and Stage 2a spec
 ### Stage 2b engine contract gotchas
 
 - **One file per tick step.** `updateCondition`, `injectChaos`, `deductUpkeep` each live in their own file under `src/core/engine/` (matching `process-pending.ts`, `check-ttl.ts`, etc.). No "stubs.ts" umbrella.
-- **`condition-effects.ts` is the single source of truth** for reading `ConditionEffect` tiers off a `Component`. Never re-implement `getActiveConditionEffects`/`getUpkeepMultiplier`/`getThroughputMultiplier`/`getDropProbability`/`getLatencyMultiplier` inline — import from there.
+- **`condition-effects.ts` is the single source of truth** for reading active `ConditionEffect`s off a `Component`. Never re-implement `getActiveConditionEffects`/`getUpkeepMultiplier`/`getThroughputMultiplier`/`getDropProbability`/`getLatencyMultiplier` inline — import from there.
 - **`effective-bandwidth.ts` is the sole `Connection.latency` reader** in `src/core/engine/` (it hosts both `getEffectiveBandwidth` and `getEffectiveLatency`). Enforced by a grep invariant test in `tests/unit/effective-latency.test.ts`. Route new latency reads through `getEffectiveLatency(state, connId)`.
 - **Drop-probability RNG uses a per-request key** (`` `tick-${T}|${componentId}|drop|${reqId}` ``), not the shared component RNG from `buildProcessContext`. This keeps healthy-path (condition=1.0 → dropP=0 → no RNG call) Stage 2a replay determinism byte-identical. Don't consolidate these RNG streams.
 - **`deliverStaged` requires `modeController`** as its final parameter. Tests calling it directly must construct a `NoOpModeController` (`tests/harness/noop-mode-controller.ts`). The production path threads it through `runFixedPointLoop`.
