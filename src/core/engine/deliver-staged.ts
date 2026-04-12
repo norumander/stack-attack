@@ -27,6 +27,29 @@ export function deliverStaged(
 
   // Process SPAWN side effects before the primary outcome.
   for (const se of result.sideEffects) {
+    if (se.kind === "SCALE") {
+      const comp = state.components.get(sourceComponentId);
+      if (!comp) continue;
+      const clamped = Math.max(
+        comp.minInstances,
+        Math.min(comp.maxInstances, se.targetInstanceCount),
+      );
+      if (clamped !== comp.instanceCount) {
+        const from = comp.instanceCount;
+        state.setInstanceCount(sourceComponentId, clamped);
+        state.appendEvent(request.id, {
+          tick: state.currentTick,
+          componentId: sourceComponentId,
+          capabilityId: null,
+          connectionId: null,
+          type: "SCALED",
+          latencyAdded: 0,
+          metadata: { from, to: clamped },
+        });
+      }
+      continue;
+    }
+
     if (se.kind !== "SPAWN") continue;
 
     const parentRemainingTtl = request.createdAt + request.ttl - state.currentTick;
