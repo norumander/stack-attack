@@ -50,12 +50,12 @@ Quick reference. Full semantics in `component-architecture.md` and Stage 2a spec
 2. **RE-EMIT QUEUED** — `reEmitQueued` drains `EngineBufferable` partitions back into pending / stagedOutcomes.
 3. **PROCESS PENDING** — `processPending` + `deliverStaged` in a fixed-point loop (throughput-gated, quiesces or throws `FixedPointRunaway`).
 3b. **OVERLOADED SWEEP** — leftover pending items get `OVERLOADED` events.
-4b. **UPDATE ACTIVE STREAMS** — decrement `remainingDuration`, release on completion.
+4b. **UPDATE ACTIVE STREAMS** — decrement `remainingDuration`, release on completion, credit stream revenue at `STREAM_COMPLETED`.
 5. **CHECK TTL** — scan pending + blocked-pool for expired requests; fire parent/child cascades.
-6. **UPDATE CONDITION** — stub in 2a.
-6b. **INJECT CHAOS** — stub in 2a.
-7. **DEDUCT UPKEEP** — stub in 2a.
-8. **RECORD METRICS** — snapshot `perComponentThisTick` + pending/blocked/stream counts into `metricsHistory`.
+6. **UPDATE CONDITION** — decay/recover `component.condition` from per-tick drop/timeout/overloaded/backpressured counters.
+6b. **INJECT CHAOS** — sweep expired → insert new from `mc.getScheduledChaos` → re-apply instant effects (`component_failure`, `zone_outage`).
+7. **DEDUCT UPKEEP** — sum `getUpkeepCost × getUpkeepMultiplier` across components, debit economy, resolve insolvency → `setCondition(id, 0)`.
+8. **RECORD METRICS** — snapshot `perComponentThisTick` + pending/blocked/stream counts + `revenueEarnedThisTick`/`upkeepPaidThisTick`/per-component `condition` into `metricsHistory`.
 9. **RESET PER-TICK STATE** — clear counters, bandwidth load, capability per-tick state. Asserts `stagedOutcomes` is empty.
 10. **ADVANCE TICK** — `state.currentTick += 1`.
 
@@ -76,6 +76,12 @@ Quick reference. Full semantics in `component-architecture.md` and Stage 2a spec
 ## Tech Stack
 
 React + TypeScript + Pixi.js planned for the UI stage (not yet built). Simulation layer is **pure TypeScript, framework-agnostic** — no React, Next.js, or Vercel imports allowed until the UI stage. TypeScript's type system enforces the capability pattern at compile time; branded IDs and strict settings catch whole classes of bugs at the type layer.
+
+**Source layout:**
+- `src/core/` — engine, state, component, capability, types, mode interfaces, registry
+- `src/core/engine/` — one file per tick step (29 files), plus helpers (rng, throughput, visit-order, etc.)
+- `src/modes/sandbox/` — `SandboxModeController`, zone management, scenario system
+- `src/capabilities/` — concrete capability implementations (e.g. `ProcessingCapability`)
 
 ## Development workflow
 
