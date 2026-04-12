@@ -46,12 +46,18 @@ describe("ProcessingCapability stub", () => {
     expect(cap.canHandle("stream")).toBe(true);
   });
 
-  it("process returns a PASS outcome by default (Stage 1 stub)", () => {
+  it("process returns RESPOND by default (Stage 3)", () => {
     const cap = new ProcessingCapability("cap-proc" as CapabilityId);
     const result = cap.process(req(), ctx());
-    expect(result.outcome.kind).toBe("PASS");
+    expect(result.outcome.kind).toBe("RESPOND");
     expect(result.sideEffects).toEqual([]);
     expect(result.events).toEqual([]);
+  });
+
+  it("process returns PASS when outcomeKind is explicitly PASS (backward compat)", () => {
+    const cap = new ProcessingCapability("cap-proc" as CapabilityId, { outcomeKind: "PASS" });
+    const result = cap.process(req(), ctx());
+    expect(result.outcome.kind).toBe("PASS");
   });
 
   it("can be constructed with a test-only outcome override", () => {
@@ -62,9 +68,15 @@ describe("ProcessingCapability stub", () => {
     expect(result.outcome.kind).toBe("RESPOND");
   });
 
-  it("getUpkeepCost returns tier * 1 (stub formula)", () => {
+  it("getUpkeepCost returns tier * 3 (Stage 3)", () => {
     const cap = new ProcessingCapability("cap-proc" as CapabilityId);
     expect(cap.getUpkeepCost(0)).toBe(0);
-    expect(cap.getUpkeepCost(3)).toBe(3);
+    expect(cap.getUpkeepCost(3)).toBe(9);
+  });
+
+  it("getThroughputPerTick returns tier * 10 (Stage 3)", () => {
+    const cap = new ProcessingCapability("cap-proc" as CapabilityId);
+    expect(cap.getThroughputPerTick(1)).toBe(10);
+    expect(cap.getThroughputPerTick(3)).toBe(30);
   });
 });
