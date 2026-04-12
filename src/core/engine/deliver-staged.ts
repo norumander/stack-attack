@@ -228,27 +228,11 @@ export function deliverStaged(
       applyStrictCascade(state, request.id); // NEW: if this request is a blocking child, cascade
       return true;
     case "FORWARD": {
-      // Minimal placeholder ProcessContext for egress selection. Real delivery
-      // inside processPending receives a full context; deliverStaged's fallback
-      // path (round-robin) ignores ctx entirely, and EngineConsultables that
-      // need ctx will already have been consulted during processPending.
-      const placeholderCtx = {
-        state: state.asReader(),
-        componentId: sourceComponentId,
-        effectiveTier: 0,
-        effectiveTiers: new Map(),
-        activeCapabilityIds: new Set(),
-        currentTick: state.currentTick,
-        rng: null as unknown as never,
-        directories: [],
-        childResponses: new Map(),
-      } as unknown as import("../capability/process-context.js").ProcessContext;
-
       const connectionId = selectEgressConnection(
         state,
         sourceComponentId,
         request,
-        placeholderCtx,
+        modeController,
       );
       if (connectionId == null) {
         state.appendEvent(request.id, {
