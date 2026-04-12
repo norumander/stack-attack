@@ -10,7 +10,7 @@ The game must stand on its own as a strategy game first. The learning is the lon
 
 ## Implementation status
 
-**Current:** Phase 1, Stage 2b complete (merged into `main` at `a6e883f`). Stage 2a baseline plus real `updateCondition`/`injectChaos`/`deductUpkeep` (one file per step under `src/core/engine/`), `condition-effects.ts` single-source-of-truth for effect tiers, chaos-aware `getEffectiveBandwidth`/`getEffectiveLatency` adapters, revenue crediting at RESPONDED + STREAM_COMPLETED, real economy metrics (`revenueEarned`/`upkeepPaid`/per-component `condition`). Upstream sandbox work (zone management, scenarios, metrics history) also merged. 378 tests. **Next:** Stage 2c — no spec yet; candidate work: close the `EngineBufferable.removeRequest(id)` TTL gap, auto-scaling SCALE side effects, condition-aware routing (tier-3 `RoutingCapability`).
+**Current:** Phase 1, Stage 2c complete. Stage 2b baseline plus EngineBufferable `peekBuffered`/`removeRequest` interface extension, `checkTTL` Scan 3 for bufferable partitions, `applyStrictCascade` + `cascadeParentTimeoutToChildren` scan bufferables for siblings/children, SCALE side effect processing in `deliverStaged` with `minInstances`/`maxInstances` clamping and `SCALED` event emission, `selectEgressConnection` computes real `effectiveTier` for `EngineConsultable` capabilities via `modeController`, new `RoutingCapability` (T1 round-robin, T2 least-load, T3 condition-weighted) in `src/capabilities/routing/`, per-component `instanceCount` in metrics snapshot. 406 tests. **Next:** Stage 3 — no spec yet; candidate work: implement remaining 23 capabilities and 14 component registry entries.
 
 ## Two Modes, One Engine
 
@@ -63,7 +63,7 @@ Quick reference. Full semantics in `component-architecture.md` and Stage 2a spec
 
 - `Engine` is constructor-bound to state: `new Engine(state)` + `engine.tick(mc)`. The Stage 1 `new Engine()` + `engine.tick(state, mc)` signature is gone.
 - `deliverStaged` no longer treats `PASS` as FORWARD. Test components that need to forward must carry a real capability (e.g. `new ProcessingCapability(id, { outcomeKind: "FORWARD" })`); bare `makeComponent` clients fall through to PASS and requests are lost.
-- `checkTTL` does not scan bufferable partitions (known limitation). Expired buffered requests get a one-tick grace period and time out on the next tick's pending scan. Closing this gap needs an `EngineBufferable.removeRequest(id)` interface extension.
+- `checkTTL` now scans bufferable partitions (Stage 2c closed this gap). See Stage 2c gotchas below for the `EngineBufferable.peekBuffered`/`removeRequest` interface extension.
 
 ### Stage 2b engine contract gotchas
 
@@ -72,6 +72,19 @@ Quick reference. Full semantics in `component-architecture.md` and Stage 2a spec
 - **`effective-bandwidth.ts` is the sole `Connection.latency` reader** in `src/core/engine/` (it hosts both `getEffectiveBandwidth` and `getEffectiveLatency`). Enforced by a grep invariant test in `tests/unit/effective-latency.test.ts`. Route new latency reads through `getEffectiveLatency(state, connId)`.
 - **Drop-probability RNG uses a per-request key** (`` `tick-${T}|${componentId}|drop|${reqId}` ``), not the shared component RNG from `buildProcessContext`. This keeps healthy-path (condition=1.0 → dropP=0 → no RNG call) Stage 2a replay determinism byte-identical. Don't consolidate these RNG streams.
 - **`deliverStaged` requires `modeController`** as its final parameter. Tests calling it directly must construct a `NoOpModeController` (`tests/harness/noop-mode-controller.ts`). The production path threads it through `runFixedPointLoop`.
+
+### Stage 2c engine contract gotchas
+
+- **`EngineBufferable` requires `peekBuffered` + `removeRequest`.** The `isEngineBufferable` type guard now checks for `peekBuffered` in addition to `enqueueForRetry`. Implementations that lack the new methods will not pass the guard. Inline mocks in test files must stub both methods.
+- **`peekBuffered()` must return a defensive copy.** Callers iterate the returned array while calling `removeRequest()`. A live view would corrupt during iteration. `TestQueueCapability` uses a `Map<RequestId, ...>` internally for O(1) removal and returns `[...buffer.values()]` from `peekBuffered`.
+- **`selectEgressConnection` takes `modeController`, not `ProcessContext`.** The old placeholder `ProcessContext` with `effectiveTier: 0` is gone. The function computes the real effective tier for the discovered `EngineConsultable` capability via `getEffectiveTier(source, cap.id, modeController)` and builds a fresh context inline.
+- **SCALE side effects target `sourceComponentId` only.** No `targetComponentId` field exists on the `SideEffect` type. Cross-component scaling (if needed in Stage 3) requires extending the type.
+- **SCALE takes effect immediately within the tick.** `setInstanceCount` mutates `component.instanceCount` synchronously inside `deliverStaged`, so subsequent deliveries in the same fixed-point loop iteration see the new count. Throughput and upkeep scale on the same tick.
+- **`deliverStaged` side-effects loop checks SCALE before SPAWN.** The previous `if (se.kind !== "SPAWN") continue;` skip pattern is preserved for SPAWN, but a new `if (se.kind === "SCALE") { ... continue; }` block runs before it.
+- **`RoutingCapability` lives at phase `INTERCEPT` with `canHandle() => false`.** It's invisible in the processing pipeline. The engine discovers it solely via `isEngineConsultable()` in `egress-selection.ts`. Same pattern as `TestQueueCapability`.
+- **T3 routing scores `condition * max(0, 1 - load/bandwidth)`.** When all scores are 0 (fully saturated), falls back to round-robin using the capability's own cursor (not the engine's `state.roundRobinCursor`).
+- **Recursive grandchild cascade gap persists.** `applyStrictCascade`'s recursive path for when a cancelled sibling is itself a blocking parent still does not scan pending/bufferables for grandchildren (`TODO(stage-2b)` in `cascade.ts`). Grandchildren stuck in bufferables time out via Scan 3 on the next tick.
+- **New files:** `src/capabilities/routing/routing-capability.ts`, `tests/harness/scaling-capability.ts`.
 
 ## Tech Stack
 
@@ -86,7 +99,7 @@ React + TypeScript + Pixi.js planned for the UI stage (not yet built). Simulatio
 ## Development workflow
 
 ```bash
-pnpm test                              # run full suite (~3s, 378 tests)
+pnpm test                              # run full suite (~3s, 406 tests)
 pnpm test tests/unit/<name>.test.ts    # run a single file (~1s)
 pnpm typecheck                         # strict tsc --noEmit
 git worktree add .worktrees/<branch> -b <branch>   # isolated feature work
