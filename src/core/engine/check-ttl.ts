@@ -1,6 +1,7 @@
 import type { SimulationState } from "../state/simulation-state.js";
 import { getOrInitCounters } from "./metrics-counters.js";
 import { applyStrictCascade, cascadeParentTimeoutToChildren } from "./cascade.js";
+import { isEngineBufferable } from "../capability/engine-interfaces.js";
 
 /**
  * Step 5 of the simulation tick: CHECK TTL.
@@ -17,13 +18,11 @@ import { applyStrictCascade, cascadeParentTimeoutToChildren } from "./cascade.js
  *    counter, and fires cascadeParentTimeoutToChildren (DOWN-cascade) to
  *    propagate the timeout to each non-terminal blocking child.
  *
- * 3. BUFFERABLE PARTITION SCAN (TODO — Stage 2a limitation): scanning
- *    awaitingPipeline / awaitingDelivery partitions inside bufferable
- *    capabilities requires a peek/removeRequest method on EngineBufferable
- *    that does not yet exist. This scan is deferred to a follow-up task that
- *    extends the EngineBufferable interface. Buffered requests whose TTL
- *    expires will be re-emitted next tick and time out at that point via the
- *    pending scan (or the blocked-pool scan if they produce blocking children).
+ * 3. BUFFERABLE PARTITION SCAN (Stage 2c): walks visitOrder; for each
+ *    component's EngineBufferable capabilities, calls peekBuffered() and
+ *    expires buffered requests whose TTL has elapsed. Fires applyStrictCascade
+ *    for expired blocking children. Uses removeRequest() return value to
+ *    skip requests already removed by an earlier cascade in the same scan.
  *
  * Mutation safety: pending rebuild uses a survivors array to preserve FIFO
  * order. The blocked-pool scan snapshots entries before iteration to avoid
@@ -92,5 +91,38 @@ export function checkTTL(state: SimulationState): void {
     getOrInitCounters(state, originComponentId).timeouts += 1;
 
     cascadeParentTimeoutToChildren(state, childrenIds, originComponentId);
+  }
+
+  // --- BUFFERABLE PARTITION SCAN (Stage 2c) ---
+  for (const componentId of state.visitOrder) {
+    const component = state.components.get(componentId);
+    if (!component) continue;
+
+    for (const cap of component.capabilities.values()) {
+      if (!isEngineBufferable(cap)) continue;
+      const buffered = cap.peekBuffered();
+
+      for (const entry of buffered) {
+        if (entry.request.createdAt + entry.request.ttl > state.currentTick) {
+          continue;
+        }
+
+        // Expired — remove from buffer. If removeRequest returns false,
+        // the request was already removed by a cascade from an earlier
+        // expiration in this same scan pass. Skip to avoid duplicate events.
+        if (!cap.removeRequest(entry.request.id)) continue;
+
+        state.appendEvent(entry.request.id, {
+          tick: state.currentTick,
+          componentId,
+          capabilityId: null,
+          connectionId: null,
+          type: "TIMED_OUT",
+          latencyAdded: 0,
+        });
+        getOrInitCounters(state, componentId).timeouts += 1;
+        applyStrictCascade(state, entry.request.id);
+      }
+    }
   }
 }
