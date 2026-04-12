@@ -24,6 +24,8 @@ export interface ComponentConstructorArgs {
   readonly conditionProfile: ConditionProfile;
   readonly initialInstanceCount?: number;
   readonly initialCondition?: number;
+  readonly minInstances?: number;
+  readonly maxInstances?: number;
 }
 
 export class Component implements ComponentReader {
@@ -41,6 +43,8 @@ export class Component implements ComponentReader {
   instanceCount: number;
   condition: number;
   readonly conditionProfile: ConditionProfile;
+  readonly minInstances: number;
+  readonly maxInstances: number;
 
   constructor(args: ComponentConstructorArgs) {
     this.id = args.id;
@@ -57,6 +61,8 @@ export class Component implements ComponentReader {
     this.conditionProfile = args.conditionProfile;
     this.instanceCount = args.initialInstanceCount ?? 1;
     this.condition = args.initialCondition ?? 1.0;
+    this.minInstances = args.minInstances ?? 1;
+    this.maxInstances = args.maxInstances ?? 1;
   }
 
   getPlayerTier(capabilityId: CapabilityId): number {

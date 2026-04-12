@@ -2,12 +2,18 @@ import { describe, it, expect } from "vitest";
 import { selectEgressConnection } from "@core/engine/egress-selection";
 import { SimulationState } from "@core/state/simulation-state";
 import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
+import { NoOpModeController } from "@harness/noop-mode-controller";
 import type { Capability } from "@core/capability/capability";
 import type { ComponentId, CapabilityId, ConnectionId } from "@core/types/ids";
 import type { EngineConsultable } from "@core/capability/engine-interfaces";
 
 describe("selectEgressConnection", () => {
   const topo = { zones: [], pairLatency: new Map() };
+  const mc = new NoOpModeController({
+    targetEntryPointId: "c-src" as ComponentId,
+    intensity: 0,
+    requestType: "noop",
+  });
 
   function setup3conn() {
     const state = new SimulationState(topo);
@@ -29,15 +35,14 @@ describe("selectEgressConnection", () => {
     const src = makeComponent({ id: "c-src" });
     state.placeComponent(src);
     expect(
-      selectEgressConnection(state, "c-src" as ComponentId, {} as any, {} as any),
+      selectEgressConnection(state, "c-src" as ComponentId, {} as any, mc),
     ).toBe(null);
   });
 
   it("round-robins in ascending ConnectionId order when no consultable", () => {
     const state = setup3conn();
-    const ctx = {} as any;
     const pick = () =>
-      selectEgressConnection(state, "c-src" as ComponentId, {} as any, ctx);
+      selectEgressConnection(state, "c-src" as ComponentId, {} as any, mc);
     expect(pick()).toBe("cx-a");
     expect(pick()).toBe("cx-b");
     expect(pick()).toBe("cx-c");
@@ -72,7 +77,7 @@ describe("selectEgressConnection", () => {
       state.addConnection(conn);
     }
     expect(
-      selectEgressConnection(state, "c-src" as ComponentId, {} as any, {} as any),
+      selectEgressConnection(state, "c-src" as ComponentId, {} as any, mc),
     ).toBe("cx-c");
   });
 });

@@ -1,6 +1,6 @@
 import type { Capability } from "./capability.js";
 import type { Connection } from "../types/connection.js";
-import type { ConnectionId, ComponentId } from "../types/ids.js";
+import type { ConnectionId, ComponentId, RequestId } from "../types/ids.js";
 import type { Request } from "../types/request.js";
 import type { ProcessResult } from "../types/result.js";
 import type { ProcessContext, PullContext } from "./process-context.js";
@@ -20,6 +20,17 @@ export interface EngineBufferable {
     awaitingDelivery: { request: Request; result: ProcessResult }[];
   };
   dequeueBatch(n: number): Request[];
+  /**
+   * Snapshot of all buffered items without draining.
+   * Returns a defensive copy in insertion order (FIFO).
+   * Implementations MUST return a copy, not a live view — the caller
+   * may call removeRequest() during iteration of the returned array.
+   */
+  peekBuffered(): ReadonlyArray<{ request: Request; result: ProcessResult }>;
+  /**
+   * Remove a specific request by ID. Returns true if found and removed.
+   */
+  removeRequest(id: RequestId): boolean;
 }
 
 export interface EnginePullable {
@@ -50,7 +61,11 @@ export function isEngineConsultable(
 export function isEngineBufferable(
   c: Capability,
 ): c is Capability & EngineBufferable {
-  return typeof (c as unknown as EngineBufferable).enqueueForRetry === "function";
+  return (
+    typeof (c as unknown as EngineBufferable).enqueueForRetry === "function" &&
+    typeof (c as unknown as EngineBufferable).peekBuffered === "function" &&
+    typeof (c as unknown as EngineBufferable).removeRequest === "function"
+  );
 }
 
 export function isEnginePullable(

@@ -39,7 +39,8 @@ export type RequestEventType =
   | "CHILD_FAILED"
   | "SIBLING_CANCELLED"
   | "STREAM_STARTED"
-  | "STREAM_COMPLETED";
+  | "STREAM_COMPLETED"
+  | "SCALED";
 
 export interface RequestEvent {
   readonly tick: number;

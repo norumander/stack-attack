@@ -46,6 +46,8 @@ function makeStatefulBufferable(opts: {
       return { awaitingPipeline: outPipe, awaitingDelivery: outDeliv };
     },
     dequeueBatch: () => [],
+    peekBuffered: (): ReadonlyArray<{ request: Request; result: ProcessResult }> => [],
+    removeRequest: (_id: RequestId): boolean => false,
   };
 }
 

@@ -6,7 +6,9 @@ import {
   isInstanceDirectory,
 } from "@core/capability/engine-interfaces";
 import type { Capability } from "@core/capability/capability";
-import type { CapabilityId, ConnectionId } from "@core/types/ids";
+import type { CapabilityId, ConnectionId, RequestId } from "@core/types/ids";
+import type { ProcessResult } from "@core/types/result";
+import type { Request } from "@core/types/request";
 
 function baseCap(): Capability {
   return {
@@ -48,12 +50,14 @@ describe("engine sub-interface predicates", () => {
     expect(isEnginePullable(c)).toBe(true);
   });
 
-  it("adding enqueueForRetry/emitReady/dequeueBatch makes it EngineBufferable", () => {
+  it("adding enqueueForRetry/emitReady/dequeueBatch/peekBuffered/removeRequest makes it EngineBufferable", () => {
     const c: Capability = {
       ...baseCap(),
       enqueueForRetry: () => true,
       emitReady: () => ({ awaitingPipeline: [], awaitingDelivery: [] }),
       dequeueBatch: () => [],
+      peekBuffered: (): ReadonlyArray<{ request: Request; result: ProcessResult }> => [],
+      removeRequest: (_id: RequestId): boolean => false,
     } as Capability;
     expect(isEngineBufferable(c)).toBe(true);
   });

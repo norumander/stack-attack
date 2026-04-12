@@ -27,6 +27,29 @@ export function deliverStaged(
 
   // Process SPAWN side effects before the primary outcome.
   for (const se of result.sideEffects) {
+    if (se.kind === "SCALE") {
+      const comp = state.components.get(sourceComponentId);
+      if (!comp) continue;
+      const clamped = Math.max(
+        comp.minInstances,
+        Math.min(comp.maxInstances, se.targetInstanceCount),
+      );
+      if (clamped !== comp.instanceCount) {
+        const from = comp.instanceCount;
+        state.setInstanceCount(sourceComponentId, clamped);
+        state.appendEvent(request.id, {
+          tick: state.currentTick,
+          componentId: sourceComponentId,
+          capabilityId: null,
+          connectionId: null,
+          type: "SCALED",
+          latencyAdded: 0,
+          metadata: { from, to: clamped },
+        });
+      }
+      continue;
+    }
+
     if (se.kind !== "SPAWN") continue;
 
     const parentRemainingTtl = request.createdAt + request.ttl - state.currentTick;
@@ -205,27 +228,11 @@ export function deliverStaged(
       applyStrictCascade(state, request.id); // NEW: if this request is a blocking child, cascade
       return true;
     case "FORWARD": {
-      // Minimal placeholder ProcessContext for egress selection. Real delivery
-      // inside processPending receives a full context; deliverStaged's fallback
-      // path (round-robin) ignores ctx entirely, and EngineConsultables that
-      // need ctx will already have been consulted during processPending.
-      const placeholderCtx = {
-        state: state.asReader(),
-        componentId: sourceComponentId,
-        effectiveTier: 0,
-        effectiveTiers: new Map(),
-        activeCapabilityIds: new Set(),
-        currentTick: state.currentTick,
-        rng: null as unknown as never,
-        directories: [],
-        childResponses: new Map(),
-      } as unknown as import("../capability/process-context.js").ProcessContext;
-
       const connectionId = selectEgressConnection(
         state,
         sourceComponentId,
         request,
-        placeholderCtx,
+        modeController,
       );
       if (connectionId == null) {
         state.appendEvent(request.id, {

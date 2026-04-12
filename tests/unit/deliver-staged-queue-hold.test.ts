@@ -27,6 +27,8 @@ function makeBufferable(opts: { accept: boolean }): Capability & EngineBufferabl
     enqueueForRetry: () => opts.accept,
     emitReady: () => ({ awaitingPipeline: [], awaitingDelivery: [] }),
     dequeueBatch: () => [],
+    peekBuffered: (): ReadonlyArray<{ request: Request; result: ProcessResult }> => [],
+    removeRequest: (_id: RequestId): boolean => false,
   };
 }
 

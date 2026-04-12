@@ -60,6 +60,7 @@ export function recordMetrics(state: SimulationState): void {
       pendingAtEndOfTick: pending,
       blockedAtEndOfTick: blocked,
       condition: state.components.get(id)?.condition ?? 1.0,
+      instanceCount: state.components.get(id)?.instanceCount ?? 1,
     });
 
     sumProcessed += raw.processed;
