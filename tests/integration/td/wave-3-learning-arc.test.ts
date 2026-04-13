@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { SimulationState } from "@core/state/simulation-state";
 import { WAVE_3 } from "@modes/td/td-waves";
+import { bootTDRegistry } from "@harness/td-fixtures";
 import {
   buildServer,
   buildDatabase,
@@ -9,15 +10,15 @@ import {
   wire,
   runWave,
 } from "./helpers.js";
-import type { ComponentId } from "@core/types/ids";
 
 describe("Wave 3 — Learning arc", () => {
   it("Cache rescue: Entry → Cache → Server → Database wins", () => {
     const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
+    const compRegistry = bootTDRegistry();
 
-    const cache = buildCache("c-cache");
-    const server = buildServer("c-server");
-    const db = buildDatabase("c-db");
+    const cache = buildCache(compRegistry);
+    const server = buildServer(compRegistry);
+    const db = buildDatabase(compRegistry);
     state.placeComponent(cache.component);
     state.placeComponent(server.component);
     state.placeComponent(db.component);
@@ -34,7 +35,7 @@ describe("Wave 3 — Learning arc", () => {
       "cx-server-db",
     );
 
-    const result = runWave(state, WAVE_3, "c-cache" as ComponentId);
+    const result = runWave(state, WAVE_3, cache.component.id);
 
     expect(result.outcome.verdict).toBe("win");
 
@@ -52,11 +53,12 @@ describe("Wave 3 — Learning arc", () => {
 
   it("LB rescue: Entry → LB → [Server1, Server2] → Database wins", () => {
     const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
+    const compRegistry = bootTDRegistry();
 
     const lb = buildLoadBalancer("c-lb", 2);
-    const server1 = buildServer("c-server-1");
-    const server2 = buildServer("c-server-2");
-    const db = buildDatabase("c-db");
+    const server1 = buildServer(compRegistry);
+    const server2 = buildServer(compRegistry);
+    const db = buildDatabase(compRegistry);
     state.placeComponent(lb.component);
     state.placeComponent(server1.component);
     state.placeComponent(server2.component);
@@ -87,7 +89,7 @@ describe("Wave 3 — Learning arc", () => {
       "cx-s2-db",
     );
 
-    const result = runWave(state, WAVE_3, "c-lb" as ComponentId);
+    const result = runWave(state, WAVE_3, lb.component.id);
 
     expect(result.outcome.verdict).toBe("win");
     const dropRate =
@@ -95,8 +97,8 @@ describe("Wave 3 — Learning arc", () => {
     expect(dropRate).toBeLessThan(0.05);
 
     // Both servers must have received traffic — via PROCESSED events per component.
-    const s1Processed = result.processedCountByComponent.get("c-server-1" as ComponentId) ?? 0;
-    const s2Processed = result.processedCountByComponent.get("c-server-2" as ComponentId) ?? 0;
+    const s1Processed = result.processedCountByComponent.get(server1.component.id) ?? 0;
+    const s2Processed = result.processedCountByComponent.get(server2.component.id) ?? 0;
     expect(s1Processed).toBeGreaterThan(0);
     expect(s2Processed).toBeGreaterThan(0);
 

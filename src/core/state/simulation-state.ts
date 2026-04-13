@@ -11,6 +11,7 @@ import type { PerComponentTickCounters } from "../engine/per-component-counters.
 import type { StagedOutcome } from "../engine/staged-outcome.js";
 import type { BlockedParentEntry, ChildResponseSnapshot } from "../engine/blocked-parent.js";
 import type { TickMetrics } from "../types/metrics.js";
+import { computeVisitOrder } from "../engine/visit-order.js";
 
 export class SimulationState {
   readonly components: Map<ComponentId, Component> = new Map();
@@ -115,6 +116,20 @@ export class SimulationState {
 
   advanceTick(): void {
     this.currentTick += 1;
+  }
+
+  /**
+   * Rewrite `visitOrder` in place from the current `components` map using
+   * the canonical `computeVisitOrder` ordering (zone → placementTick → id).
+   *
+   * The Engine constructor calls this once at boot. Dashboard / headless
+   * code paths that add components between waves without reconstructing
+   * the Engine call it again on the build→simulate transition so newly
+   * placed components are visited on the next tick.
+   */
+  recomputeVisitOrder(): void {
+    this.visitOrder.length = 0;
+    this.visitOrder.push(...computeVisitOrder(this.components));
   }
 
   asReader(): SimulationStateReader {

@@ -1,15 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { SimulationState } from "@core/state/simulation-state";
 import { WAVE_3 } from "@modes/td/td-waves";
+import { bootTDRegistry } from "@harness/td-fixtures";
 import { buildServer, buildDatabase, wire, runWave } from "./helpers.js";
-import type { ComponentId } from "@core/types/ids";
 
 describe("Wave 3 — Traffic Spikes (lone-server)", () => {
   it("Server+Database alone loses under Wave 3 load", () => {
     const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
+    const compRegistry = bootTDRegistry();
 
-    const server = buildServer("c-server");
-    const db = buildDatabase("c-db");
+    const server = buildServer(compRegistry);
+    const db = buildDatabase(compRegistry);
     state.placeComponent(server.component);
     state.placeComponent(db.component);
     wire(
@@ -19,7 +20,7 @@ describe("Wave 3 — Traffic Spikes (lone-server)", () => {
       "cx-server-db",
     );
 
-    const result = runWave(state, WAVE_3, "c-server" as ComponentId);
+    const result = runWave(state, WAVE_3, server.component.id);
 
     expect(result.outcome.verdict).toBe("lose");
     const dropRate =

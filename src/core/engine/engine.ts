@@ -1,6 +1,5 @@
 import type { SimulationState } from "../state/simulation-state.js";
 import type { ModeController } from "../mode/mode-controller.js";
-import { computeVisitOrder } from "./visit-order.js";
 import { injectTraffic as defaultInjectTraffic } from "./inject-traffic.js";
 import { reEmitQueued as defaultReEmitQueued } from "./re-emit-queued.js";
 import { runFixedPointLoop as defaultRunFixedPointLoop } from "./fixed-point-loop.js";
@@ -59,9 +58,7 @@ export class Engine {
     stepsOverride: Partial<EngineSteps> = {},
   ) {
     this.steps = { ...defaultSteps, ...stepsOverride };
-    // Compute the initial visitOrder from the current components map.
-    this.state.visitOrder.length = 0;
-    this.state.visitOrder.push(...computeVisitOrder(state.components));
+    this.state.recomputeVisitOrder();
   }
 
   tick(modeController: ModeController): void {

@@ -24,35 +24,13 @@ import type { TDEconomy } from "./td-economy.js";
 import type { TDWaveDefinition } from "./td-waves.js";
 import { TDTrafficSource } from "./td-traffic-source.js";
 
-// Stub registry used by the single-wave back-compat shim. tryPlace throws
-// if the back-compat-constructed controller is asked to place — Stage 3a
-// tests never call tryPlace, so this is unreachable in practice.
-const STUB_REGISTRY: ComponentRegistry = {
-  tryCreate: () => {
-    throw new Error(
-      "TDModeController: tryPlace not supported on single-wave back-compat controller",
-    );
-  },
-} as unknown as ComponentRegistry;
-
-export interface TDMultiWaveOptions {
+export interface TDModeControllerOptions {
   readonly waves: readonly TDWaveDefinition[];
   readonly economy: TDEconomy;
   readonly entryPointId: ComponentId;
   readonly rng: () => number;
   readonly componentRegistry: ComponentRegistry;
 }
-
-export interface TDSingleWaveOptions {
-  readonly wave: TDWaveDefinition;
-  readonly economy: TDEconomy;
-  readonly entryPointId: ComponentId;
-  readonly rng: () => number;
-}
-
-export type TDModeControllerOptions =
-  | TDMultiWaveOptions
-  | TDSingleWaveOptions;
 
 export type ConnectResult =
   | { ok: true; connectionId: ConnectionId }
@@ -84,16 +62,11 @@ export class TDModeController implements ModeController {
   private readonly rng: () => number;
 
   constructor(options: TDModeControllerOptions) {
-    if ("waves" in options) {
-      if (options.waves.length === 0) {
-        throw new Error("TDModeController: waves array must be non-empty");
-      }
-      this.waves = options.waves;
-      this.componentRegistry = options.componentRegistry;
-    } else {
-      this.waves = [options.wave];
-      this.componentRegistry = STUB_REGISTRY;
+    if (options.waves.length === 0) {
+      throw new Error("TDModeController: waves array must be non-empty");
     }
+    this.waves = options.waves;
+    this.componentRegistry = options.componentRegistry;
     this.economy = options.economy;
     this.entryPointId = options.entryPointId;
     this.rng = options.rng;
@@ -223,10 +196,8 @@ export class TDModeController implements ModeController {
 
   /**
    * Advance the phase machine. Optional `state` parameter is used by the
-   * dashboard to snapshot the metrics index at build→simulate and to
-   * reconstruct trafficSource at assess→build.
-   *
-   * Stage 3a's runWave calls advancePhase() with no args (single-wave path).
+   * dashboard to snapshot the metrics index at build→simulate. Call sites
+   * that don't need per-wave metric slicing (e.g. `runWave`) may omit it.
    *
    * Throws if called after the campaign is complete — callers must check
    * `isCampaignComplete()` before re-entering the phase machine. On the
