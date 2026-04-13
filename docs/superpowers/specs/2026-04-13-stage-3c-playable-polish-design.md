@@ -39,10 +39,9 @@ This sentence is the scope fence. Every design decision below serves it. Anythin
 
 **UX unblockers**
 10. **Raise `SERVER_ENTRY.p-in.capacity` from 1 to 2** so Wave 3 cache-rescue (Client→Cache→Server plus direct Client→Server for writes) works without the 2-Server workaround. One-line fix to `src/modes/td/td-component-entries.ts`.
-11. Auto-refresh `state.visitOrder` inside `state.placeComponent`; delete the dashboard's now-redundant explicit call on build→simulate.
 
 **Content**
-12. Extend `ComponentRegistryEntry` with `longDescription: string` and `capabilitiesHuman: string[]` fields. Populate for all 5 TD component entries (Client, Server, Database, Cache, Load Balancer). Single source of truth — no parallel description map.
+11. Extend `ComponentRegistryEntry` with optional `longDescription?: string` and `capabilitiesHuman?: string[]` fields. Populate for all 5 TD component entries (Client, Server, Database, Cache, Load Balancer). Sandbox entries (14) are left untouched — the fields are optional.
 
 ### Out (not this stage)
 
@@ -167,7 +166,7 @@ Adapter steps, per tick:
 
 1. **`state.lastTickEvents: RequestEvent[]`** — new field on `SimulationState`. `state.appendEvent()` pushes to both `requestLog` (existing, unbounded) AND `lastTickEvents` (per-tick view). `Engine.tick()` sets `state.lastTickEvents.length = 0` at the *start* of the tick (before step 1). This guarantees the adapter (running after `tick()` returns) sees exactly this-tick's events. ~4 lines of code across `simulation-state.ts` and `engine.ts`.
 
-2. **`TickMetrics.perConnection`** — new field: `ReadonlyMap<ConnectionId, { loadThisTick: number }>`. Populated inside `recordMetrics` by copying `state.connectionLoadThisTick` before step 9 clears it. ~6 lines in `src/core/engine/record-metrics.ts` and `src/core/types/metrics.ts`.
+2. **`TickMetrics.perConnection`** — new field: `ReadonlyMap<ConnectionId, { loadThisTick: number }>`. Populated inside `recordMetrics` by copying `state.connectionLoadThisTick` before step 9 clears it. ~6 lines in `src/core/engine/metrics-builder.ts` and `src/core/types/metrics.ts`.
 
 3. **`FORWARDED` event metadata** — both FORWARDED emit sites (in `deliverStaged.ts` and `ForwardingCapability.emitForwardedEvent`) add `metadata: { requestType: req.type }` to their events. ~2 lines.
 
@@ -179,20 +178,17 @@ Connection latency (in ticks) × dashboard tick interval (ms per tick) → dot t
 
 ### Component descriptions — extend the registry
 
-`ComponentRegistryEntry` already has `name` and `description` (one-liner). Stage 3c extends it:
+`ComponentRegistryEntry` already has `name` and `description` (one-liner). Stage 3c extends it with two **optional** fields:
 
 ```ts
-export interface ComponentRegistryEntry {
-  readonly type: string;
-  readonly name: string;             // existing: display name ("Server")
-  readonly description: string;      // existing: one-sentence tagline
-  readonly longDescription: string;  // NEW: 1-2 paragraph role explanation
-  readonly capabilitiesHuman: string[]; // NEW: human-readable capability bullets
-  // ... all other existing fields unchanged
-}
+// added to the existing interface in src/core/registry/component-registry.ts
+// (fields are optional so the 14 sandbox-only entries in component-entries.ts
+// stay compilable without being touched — only the 5 TD entries need updating.)
+longDescription?: string;        // 1-2 paragraph role explanation
+capabilitiesHuman?: string[];    // human-readable capability bullets
 ```
 
-Every TD component entry in `td-component-entries.ts` (Client, Server, Database, Cache, Load Balancer) gets both new fields populated. A unit test asserts every `bootstrapRegistries()` entry has non-empty `longDescription` and `capabilitiesHuman`.
+Every TD component entry in `td-component-entries.ts` (Client, Server, Database, Cache, Load Balancer) populates both new fields. The 14 sandbox entries in `src/core/registry/component-entries.ts` are left untouched in Stage 3c — their entries are not consumed by the TD-mode info panel. A unit test asserts every TD entry has non-empty `longDescription` and `capabilitiesHuman`; sandbox entries are not asserted on.
 
 Consumed by:
 - Component palette (tooltip on hover — reads `description` from existing field)
@@ -260,7 +256,7 @@ export interface Diagnosis {
 
 Diagnosis logic for Stage 3c covers four cases (ordered by specificity — tests must assert branch selection with realistic multi-branch inputs, not just branches in isolation):
 
-1. **Write routing gap:** `api_write` drops > 10% of wave total AND the bottleneck component has no `api_write`-accepting component reachable via egress walk → "Your server is trying to process writes but has nowhere to persist them."
+1. **Write routing gap:** `api_write` drops > 10% of wave total AND the bottleneck component has no `api_write`-accepting component reachable via egress walk → "Your server is trying to process writes but has nowhere to persist them." The reachability walk starts at the bottleneck, follows outbound `Connection.source.componentId → target.componentId` edges, and at each visited component iterates `comp.capabilities.values()` calling `cap.canHandle("api_write", ctx)` — `true` ends the walk with "reachable." `ProcessingCapability.handledTypes` is private; `canHandle()` is the only public probe.
 2. **Process throughput bottleneck:** any component has `processed >= componentThroughputPerTick(comp) * 0.95` for ≥ 5 consecutive ticks AND `dropped / total > 0.05` → "Your Server was overwhelmed — it processed every tick at max throughput but traffic exceeded what it could handle."
 3. **TTL timeouts:** sum of `requestsTimedOut` across the wave > 10% of total requests generated → "Requests piled up faster than they could drain. Your pipeline is under-provisioned."
 4. **Default:** "Too many requests dropped. Check the per-component stats."
@@ -279,15 +275,9 @@ Why not multi-port disambiguation? I audited the TD component registry: **no com
 
 Verification: after the capacity bump, the Wave 3 `tryConnect(Cache→Server)` followed by `tryConnect(Client→Server)` both succeed against the same `p-in`. The second edge uses port slot 2 instead of overflowing. An integration test (`tests/integration/td/wave-3-cache-rescue-single-server.test.ts`) builds the intended topology without the 2-server hack and asserts win.
 
-### Feature 5: `state.placeComponent` auto-refreshes visit order
+### Feature 5 (cut): `state.placeComponent` auto-refresh
 
-Current contract: `state.placeComponent` does NOT call `recomputeVisitOrder`. The dashboard explicitly calls it on every build→simulate transition. This is a footgun — forgetting it makes newly placed components invisible to the engine.
-
-Stage 3c change: `state.placeComponent` calls `state.recomputeVisitOrder()` at the end. The dashboard's explicit `recomputeVisitOrder` call on build→simulate is now redundant and gets deleted. Tests for `state.placeComponent` assert the new contract.
-
-Ripple check: test files currently populate `state.visitOrder` manually after `placeComponent` (per CLAUDE.md harness note). After this change the manual push is redundant but harmless — `recomputeVisitOrder` replaces the array, so the manual call either overwrites with the same content or gets overwritten by the next auto-call. Full-suite run in Slice 7 catches any test that asserts a specific `visitOrder` content post-place without recomputing.
-
-One-line fix. One new test. One deletion. Full suite verifies.
+**Deferred to a later stage.** The intended cleanup was to move `recomputeVisitOrder` into `state.placeComponent` and delete the dashboard's explicit call. The benefit is one deleted line in `td-mode.ts`. The cost is that 39 call sites across 19 existing test files currently do `state.visitOrder.push(...computeVisitOrder(state.components))` AFTER `placeComponent`, and after the auto-refresh each of those produces a duplicated `visitOrder` array, causing double-iteration of components in `processPending` and friends. Fixing the tests requires either (a) deleting the redundant manual push at every site or (b) scripting a replacement. Either way the blast radius is bigger than the feature's value in Stage 3c, so this stays a Stage 3c-candidate for a later stage dedicated to engine-contract cleanup. Stage 3c leaves the dashboard's explicit `state.recomputeVisitOrder()` call in place.
 
 ### Feature 6: Visual details (low design depth)
 
@@ -302,19 +292,17 @@ One-line fix. One new test. One deletion. Full suite verifies.
 ### Unit tests (Vitest, added to existing suite)
 
 - `diagnose-wave`: `tests/unit/diagnose-wave.test.ts` — 5 cases: each of the 4 branches fires on its happy-path input, AND a "specificity test" that feeds inputs matching multiple branches simultaneously and asserts the most-specific branch wins.
-- `state.placeComponent auto-refresh`: `tests/unit/state-place-component-visit-order.test.ts` — assert `visitOrder` contains the new component after `placeComponent`.
 - `lastTickEvents retention`: `tests/unit/engine-last-tick-events.test.ts` — assert `state.lastTickEvents` is populated after each tick, clears at the start of the next, and contains the event types actually emitted in a representative minimal simulation.
 - `TickMetrics.perConnection snapshot`: `tests/unit/metrics-per-connection.test.ts` — after one tick with traffic, `TickMetrics.perConnection.get(id).loadThisTick` matches the value `state.connectionLoadThisTick.get(id)` held DURING the tick.
 - `FORWARDED metadata.requestType`: `tests/unit/forwarded-event-metadata.test.ts` — FORWARDED events carry `metadata.requestType` matching the originating request's type.
 - `SERVER p-in capacity 2`: `tests/unit/server-port-capacity.test.ts` — assert `SERVER_ENTRY.ports.find(p => p.id === "p-in").capacity === 2`.
 - `utilization color lerp`: `tests/unit/utilization-color.test.ts` — 3 points on the gradient (0, 0.7, 1.0) map to the expected HSL values.
 - `component descriptions`: `tests/unit/component-descriptions.test.ts` — every entry in `bootstrapRegistries()` has non-empty `longDescription` and `capabilitiesHuman`.
-- `engine-pixi isolation`: `tests/unit/engine-pixi-isolation.test.ts` — read `src/core/**` and `src/capabilities/**` source files from disk, assert none contains `"pixi"` as an import specifier.
+- `engine-pixi isolation`: `tests/unit/engine-pixi-isolation.test.ts` — read `src/core/**` and `src/capabilities/**` source files from disk, assert none contains `"pixi"` as an import specifier. Uses the same `readFileSync`/`readdirSync` pattern as the existing `tests/unit/effective-latency.test.ts` grep invariant.
 
 ### Integration tests
 
-- `campaign-headless.test.ts` already exists. Add assertions that `state.lastTickEvents` contains expected event kinds on representative ticks (FORWARDED, PROCESSED). No new integration file for that.
-- New: `tests/integration/td/wave-3-cache-rescue-single-server.test.ts` — builds the intended Wave 3 cache-rescue (Client→Cache→Server for reads, Client→Server direct for writes), using a single Server (no 2-Server workaround). Both `tryConnect` calls land on `p-in`. Asserts win verdict.
+- `campaign-headless.test.ts` already exists. Stage 3c modifies it in two ways: (a) add assertions that `state.lastTickEvents` contains expected event kinds on representative ticks (FORWARDED, PROCESSED); (b) rewrite the Wave 3 rescue topology to drop the `w3Server` second-Server hack. After the `SERVER_ENTRY.p-in` capacity bump (1→2), the rescue becomes `Client → Cache → w1Server` (cache lands on `p-in` slot 2, write path `Client → w1Server` retained from Wave 1 stays on slot 1). The `w3Server` placement and its connections get deleted from the test. Asserts Wave 3 still wins with the simpler topology. No new integration file.
 
 ### Manual testing
 
@@ -325,7 +313,7 @@ Renderer and UX cannot be unit-tested. Manual procedure, executed against the do
 3. Wave 2: place a Server, wire Client→Server, click READY. Expected: lose (writes drop).
 4. Wave 2 retry: place a Database, wire Server→Database, click READY. Expected: win.
 5. Wave 3 first attempt: click READY with Wave 2's topology. Expected: lose, diagnosis identifies Server as bottleneck, hint points at repeated-read handling.
-6. Wave 3 second attempt: place Cache, wire Client→Cache→Server. Multi-port picker appears for Server's ingress. Pick `p-cache`. Click READY. Expected: win.
+6. Wave 3 second attempt: place Cache, wire Client→Cache and Cache→Server. The Client→Server write edge from step 4 is still there; the new Cache→Server edge lands in the second `p-in` slot (capacity is now 2, no picker). Click READY. Expected: win.
 
 If any step fails, the done-criteria sentence does not hold and the stage is not done.
 
@@ -342,13 +330,13 @@ Stage 3c does *not* keep the DOM topology renderer side-by-side. We replace it. 
 
 Execution order (engine plumbing FIRST so renderer slices have the data they need):
 
-1. **Slice 1 — Engine plumbing (no Pixi yet).** All the pure engine/state changes: `state.lastTickEvents` field + write-through in `appendEvent` + clear at start of `Engine.tick`; `TickMetrics.perConnection` + snapshot in `recordMetrics`; FORWARDED metadata requestType; `state.placeComponent` auto-refresh visit order; `SERVER_ENTRY.p-in.capacity: 1 → 2`; extend `ComponentRegistryEntry` with `longDescription`+`capabilitiesHuman` and populate the 5 TD entries. All new tests for each land in this slice. After Slice 1, the engine is ready to feed a renderer — but the dashboard is unchanged.
+1. **Slice 1 — Engine plumbing (no Pixi yet).** All the pure engine/state changes: `state.lastTickEvents` field + write-through in `appendEvent` + clear at start of `Engine.tick`; `TickMetrics.perConnection` + snapshot in `metrics-builder.ts`; FORWARDED metadata requestType (both emit sites); `SERVER_ENTRY.p-in.capacity: 1 → 2`; `campaign-headless.test.ts` rewritten to use single-server Wave 3 rescue; extend `ComponentRegistryEntry` with optional `longDescription`+`capabilitiesHuman` and populate the 5 TD entries. All new unit tests for each land in this slice. After Slice 1, the engine is ready to feed a renderer — but the dashboard is unchanged.
 
 2. **Slice 2 — Infrastructure.** `pnpm add pixi.js`. Create `TopologyRenderer` interface (includes `worldToScreen`, `screenToGrid`, `hitTest`, all pointer APIs) in `src/dashboard/render/topology-renderer.ts`. Add the `engine-pixi-isolation` invariant test. No implementation yet.
 
-3. **Slice 3 — Pixi renderer + adapter.** Implement `PixiTopologyRenderer` against the interface. Implement `state-to-renderer.ts` adapter. Both still unwired from the live dashboard — a throwaway standalone entrypoint (`src/dashboard/render/dev-preview.ts`) mounts it against a fake state to smoke-test in isolation. Delete `dev-preview.ts` at the end of the slice or leave it gitignored.
+3. **Slice 3 — Pixi renderer + adapter.** Implement `PixiTopologyRenderer` against the interface. Implement `state-to-renderer.ts` adapter. Both remain unwired from the live dashboard in this slice; verification is limited to unit tests on pure helpers (color lerp, utilization math) and TypeScript compile. The renderer gets its first real exercise in Slice 4 when the dashboard cuts over to it. No throwaway preview entrypoint — Vite's config treats `src/dashboard/index.html` as the only input, so adding a secondary entry would require config changes we don't need.
 
-4. **Slice 4 — Dashboard cutover.** Replace the DOM/SVG topology renderer in `td-mode.ts` with the new renderer + adapter. All click handlers route through `renderer.onPointerDown`/`screenToGrid`/`hitTest`. Delete the old SVG line code and the `.td-comp` DIV layout. Delete the dashboard's explicit `state.recomputeVisitOrder` call (now auto-fired). Manual smoke test against the done-criteria sentence.
+4. **Slice 4 — Dashboard cutover.** Replace the DOM/SVG topology renderer in `td-mode.ts` with the new renderer + adapter. All click handlers route through `renderer.onPointerDown`/`screenToGrid`/`hitTest`. Delete the old SVG line code and the `.td-comp` DIV layout. Manual smoke test against the done-criteria sentence.
 
 5. **Slice 5 — Teaching surfaces.** Pre-wave briefing card, component info panel, post-wave diagnosis. All DOM. Diagnosis pure function + its unit test live here. HTML/CSS additions for the panels.
 
@@ -388,7 +376,6 @@ These are not in Stage 3c and should not creep in:
 - `src/dashboard/td/component-info-panel.ts`
 - `src/dashboard/td/diagnose-wave.ts`
 - `tests/unit/diagnose-wave.test.ts`
-- `tests/unit/state-place-component-visit-order.test.ts`
 - `tests/unit/engine-last-tick-events.test.ts`
 - `tests/unit/metrics-per-connection.test.ts`
 - `tests/unit/forwarded-event-metadata.test.ts`
@@ -396,26 +383,25 @@ These are not in Stage 3c and should not creep in:
 - `tests/unit/utilization-color.test.ts`
 - `tests/unit/component-descriptions.test.ts`
 - `tests/unit/engine-pixi-isolation.test.ts`
-- `tests/integration/td/wave-3-cache-rescue-single-server.test.ts`
 
 **Modified:**
 - `src/dashboard/main.ts` — wires renderer, briefing card, info panel; deletes DOM topology code.
-- `src/dashboard/td-mode.ts` — replaces rerenderTopology with renderer-driven updates; deletes the explicit `state.recomputeVisitOrder` call on build→simulate.
+- `src/dashboard/td-mode.ts` — replaces rerenderTopology with renderer-driven updates.
 - `src/dashboard/index.html` — adds info panel, briefing card, extended loss modal containers.
 - `src/dashboard/styles.css` — styles for new DOM surfaces.
-- `src/core/state/simulation-state.ts` — adds `lastTickEvents` field, writes through from `appendEvent`, auto-calls `recomputeVisitOrder` inside `placeComponent`.
+- `src/core/state/simulation-state.ts` — adds `lastTickEvents` field, writes through from `appendEvent`.
 - `src/core/engine/engine.ts` — clears `state.lastTickEvents` at start of `tick()`.
-- `src/core/engine/record-metrics.ts` — snapshots `state.connectionLoadThisTick` into `TickMetrics.perConnection`.
+- `src/core/engine/metrics-builder.ts` — snapshots `state.connectionLoadThisTick` into `TickMetrics.perConnection`.
 - `src/core/engine/deliver-staged.ts` — adds `metadata: { requestType: req.type }` to its FORWARDED emit.
 - `src/capabilities/forwarding/forwarding-capability.ts` — adds `metadata.requestType` to its FORWARDED emit.
 - `src/core/types/metrics.ts` — adds `perConnection` field to `TickMetrics`.
-- `src/core/registry/component-registry.ts` — adds `longDescription` + `capabilitiesHuman` fields to `ComponentRegistryEntry`.
+- `src/core/registry/component-registry.ts` — adds optional `longDescription` + `capabilitiesHuman` fields to `ComponentRegistryEntry`.
 - `src/modes/td/td-component-entries.ts` — `SERVER_ENTRY.p-in.capacity: 1 → 2`; populates `longDescription`/`capabilitiesHuman` on all 5 TD entries.
+- `tests/integration/td/campaign-headless.test.ts` — rewrites Wave 3 rescue topology to use a single Server (drops the `w3Server` hack), leveraging the new `p-in` capacity; adds `state.lastTickEvents` assertions.
 - `package.json` — adds `pixi.js` dependency.
 
 **Deleted:**
 - The inline DOM topology rendering inside `src/dashboard/td-mode.ts:rerenderTopology` (SVG line drawing + `.td-comp` div layout).
-- The dashboard's explicit `state.recomputeVisitOrder()` call in `bootTDMode`'s `onPhaseChange` handler (now redundant — `placeComponent` does it).
 
 ## Open questions — resolved
 
