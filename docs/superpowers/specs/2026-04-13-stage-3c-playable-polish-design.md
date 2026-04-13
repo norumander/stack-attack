@@ -164,9 +164,9 @@ Adapter steps, per tick:
 
 **Engine changes needed (three surgical additions):**
 
-1. **`state.lastTickEvents: RequestEvent[]`** — new field on `SimulationState`. `state.appendEvent()` pushes to both `requestLog` (existing, unbounded) AND `lastTickEvents` (per-tick view). `Engine.tick()` sets `state.lastTickEvents.length = 0` at the *start* of the tick (before step 1). This guarantees the adapter (running after `tick()` returns) sees exactly this-tick's events. ~4 lines of code across `simulation-state.ts` and `engine.ts`.
+1. **`state.lastTickEvents: RequestEvent[]`** — new field on `SimulationState`, initialized to `[]`. `state.appendEvent()` pushes to both `requestLog` (existing, unbounded) AND `lastTickEvents` (per-tick view). In `Engine.tick()`, add `this.state.lastTickEvents.length = 0;` as the first statement of the method body — NOT inside any of the step files, just in the orchestrator. This guarantees the adapter (running after `tick()` returns) sees exactly this-tick's events. The very first tick's clear runs on an already-empty array; harmless. ~4 lines of code across `simulation-state.ts` and `engine.ts`.
 
-2. **`TickMetrics.perConnection`** — new field: `ReadonlyMap<ConnectionId, { loadThisTick: number }>`. Populated inside `recordMetrics` by copying `state.connectionLoadThisTick` before step 9 clears it. ~6 lines in `src/core/engine/metrics-builder.ts` and `src/core/types/metrics.ts`.
+2. **`TickMetrics.perConnection`** — new **optional** field: `perConnection?: ReadonlyMap<ConnectionId, { loadThisTick: number }>`. Populated inside `recordMetrics` by copying `state.connectionLoadThisTick` before step 9 clears it. Optional because four existing tests construct `TickMetrics` literals without the new field: `tests/unit/tick-metrics-shape.test.ts`, `tests/unit/mode-types.test.ts`, `tests/unit/sandbox-mode-controller.test.ts` (`makeEmptyMetrics`), `tests/unit/sandbox-metrics-snapshot.test.ts` (`makeFakeMetrics`). Making the field optional avoids touching all four. The adapter treats `undefined` as "no per-connection data" and skips connection load rendering for that tick — strictly rendering-layer degradation, no correctness impact. ~6 lines in `src/core/engine/metrics-builder.ts` and `src/core/types/metrics.ts`.
 
 3. **`FORWARDED` event metadata** — both FORWARDED emit sites (in `deliverStaged.ts` and `ForwardingCapability.emitForwardedEvent`) add `metadata: { requestType: req.type }` to their events. ~2 lines.
 
@@ -297,7 +297,7 @@ Verification: after the capacity bump, the Wave 3 `tryConnect(Cache→Server)` f
 - `FORWARDED metadata.requestType`: `tests/unit/forwarded-event-metadata.test.ts` — FORWARDED events carry `metadata.requestType` matching the originating request's type.
 - `SERVER p-in capacity 2`: `tests/unit/server-port-capacity.test.ts` — assert `SERVER_ENTRY.ports.find(p => p.id === "p-in").capacity === 2`.
 - `utilization color lerp`: `tests/unit/utilization-color.test.ts` — 3 points on the gradient (0, 0.7, 1.0) map to the expected HSL values.
-- `component descriptions`: `tests/unit/component-descriptions.test.ts` — every entry in `bootstrapRegistries()` has non-empty `longDescription` and `capabilitiesHuman`.
+- `component descriptions`: `tests/unit/component-descriptions.test.ts` — iterate the 5 TD entries (`CLIENT_ENTRY`, `SERVER_ENTRY`, `DATABASE_ENTRY`, `CACHE_ENTRY`, `LOAD_BALANCER_ENTRY`) imported directly from `td-component-entries.ts` and assert each has non-empty `longDescription` and `capabilitiesHuman`. Do NOT iterate `bootstrapRegistries()` — that registers the 14 sandbox entries, which intentionally stay un-populated.
 - `engine-pixi isolation`: `tests/unit/engine-pixi-isolation.test.ts` — read `src/core/**` and `src/capabilities/**` source files from disk, assert none contains `"pixi"` as an import specifier. Uses the same `readFileSync`/`readdirSync` pattern as the existing `tests/unit/effective-latency.test.ts` grep invariant.
 
 ### Integration tests
