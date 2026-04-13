@@ -107,4 +107,13 @@ export class ComponentRegistry {
       conditionProfile: entry.conditionProfile,
     });
   }
+
+  /**
+   * Non-throwing variant of create. Returns null on unknown type.
+   * Used by TDModeController.tryPlace to translate to PlacementResult.
+   */
+  tryCreate(type: string, position: Position, zone: string | null): Component | null {
+    if (!this.entries.has(type)) return null;
+    return this.create(type, position, zone);
+  }
 }
