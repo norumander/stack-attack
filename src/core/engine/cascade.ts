@@ -4,6 +4,37 @@ import { getOrInitCounters } from "./metrics-counters.js";
 import { isEngineBufferable } from "../capability/engine-interfaces.js";
 
 /**
+ * Locate a request by id across every place it can live mid-tick (pending
+ * queues then EngineBufferable partitions) and remove it in place. Returns
+ * the component id where the request was found, or null if nowhere.
+ *
+ * Used by the cascade paths (blocking-child fail + parent-timeout) to pull
+ * sibling/child requests out of wherever they're parked so the engine can
+ * attribute their terminal event to that component and reclaim the slot.
+ */
+function findAndRemoveRequestById(
+  state: SimulationState,
+  requestId: RequestId,
+): ComponentId | null {
+  for (const [componentId, queue] of state.pending) {
+    const idx = queue.findIndex((r) => r.id === requestId);
+    if (idx >= 0) {
+      queue.splice(idx, 1);
+      return componentId;
+    }
+  }
+  for (const componentId of state.visitOrder) {
+    const comp = state.components.get(componentId);
+    if (!comp) continue;
+    for (const cap of comp.capabilities.values()) {
+      if (!isEngineBufferable(cap)) continue;
+      if (cap.removeRequest(requestId)) return componentId;
+    }
+  }
+  return null;
+}
+
+/**
  * Cascade a blocking-child terminal failure up to the parent and across siblings.
  *
  * Called when a blocking child reaches a terminal failure state (DROP, TIMED_OUT).
@@ -56,36 +87,7 @@ export function applyStrictCascade(
   // Cancel every remaining blocking sibling.
   for (const siblingId of siblings) {
     state.childToParent.delete(siblingId);
-
-    // Locate the sibling: a non-terminal request is in exactly one place at
-    // cascade time — a pending queue or a bufferable partition. Pending scan
-    // first (fast, dense), then bufferable scan (Stage 2c).
-    let found: ComponentId | null = null;
-    for (const [componentId, queue] of state.pending) {
-      const idx = queue.findIndex((r) => r.id === siblingId);
-      if (idx >= 0) {
-        queue.splice(idx, 1);
-        found = componentId;
-        break;
-      }
-    }
-
-    // Stage 2c: if not found in pending, scan bufferables.
-    if (!found) {
-      for (const componentId of state.visitOrder) {
-        const comp = state.components.get(componentId);
-        if (!comp) continue;
-        for (const cap of comp.capabilities.values()) {
-          if (!isEngineBufferable(cap)) continue;
-          if (cap.removeRequest(siblingId)) {
-            found = componentId;
-            break;
-          }
-        }
-        if (found) break;
-      }
-    }
-
+    const found = findAndRemoveRequestById(state, siblingId);
     const attributeTo = found ?? entry.originComponentId;
     state.appendEvent(siblingId, {
       tick: state.currentTick,
@@ -146,34 +148,7 @@ export function cascadeParentTimeoutToChildren(
 ): void {
   for (const childId of childrenIds) {
     state.childToParent.delete(childId);
-
-    // Try to locate and remove the child from a pending queue.
-    let found: ComponentId | null = null;
-    for (const [componentId, queue] of state.pending) {
-      const idx = queue.findIndex((r) => r.id === childId);
-      if (idx >= 0) {
-        queue.splice(idx, 1);
-        found = componentId;
-        break;
-      }
-    }
-
-    // Stage 2c: if not found in pending, scan bufferables.
-    if (!found) {
-      for (const componentId of state.visitOrder) {
-        const comp = state.components.get(componentId);
-        if (!comp) continue;
-        for (const cap of comp.capabilities.values()) {
-          if (!isEngineBufferable(cap)) continue;
-          if (cap.removeRequest(childId)) {
-            found = componentId;
-            break;
-          }
-        }
-        if (found) break;
-      }
-    }
-
+    const found = findAndRemoveRequestById(state, childId);
     const attributeTo = found ?? fallbackComponentId;
     state.appendEvent(childId, {
       tick: state.currentTick,
