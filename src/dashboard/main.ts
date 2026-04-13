@@ -5,6 +5,18 @@ import type { ComponentId, ConnectionId } from "@core/types/ids";
 import type { TickMetrics } from "@core/types/metrics";
 import type { SandboxModeController, MetricsSnapshot } from "@modes/sandbox/sandbox-mode-controller";
 
+// TD mode imports
+import { TDModeController } from "@modes/td/td-mode-controller";
+import { TDEconomy } from "@modes/td/td-economy";
+import { WAVE_1, WAVE_2, WAVE_3 } from "@modes/td/td-waves";
+import { registerTDDefaults } from "@modes/td/register-td-defaults";
+import { ComponentRegistry } from "@core/registry/component-registry";
+import { CapabilityRegistry } from "@core/registry/capability-registry";
+import { SimulationState } from "@core/state/simulation-state";
+import { Engine } from "@core/engine/engine";
+import { createTDDashboard, type TDDashboard } from "./td-mode";
+import type { OutcomeReport } from "@core/types/outcome";
+
 declare const Chart: any;
 
 // ─── State ────────────────────────────────────────────────────────────
@@ -363,6 +375,225 @@ $fileInput.addEventListener("change", () => {
   $fileInput.value = "";
 });
 
+// ─── TD Mode ──────────────────────────────────────────────────────────
+// Module-level TD state so boot/teardown/onTick can share references.
+const TD_WAVES = [WAVE_1, WAVE_2, WAVE_3] as const;
+
+let tdDashboard: TDDashboard | null = null;
+let tdLoop: SimLoop<TDModeController> | null = null;
+let tdEngine: Engine | null = null;
+let tdState: SimulationState | null = null;
+let tdController: TDModeController | null = null;
+
+const $modeSandbox = document.getElementById("mode-sandbox") as HTMLButtonElement;
+const $modeTd = document.getElementById("mode-td") as HTMLButtonElement;
+
+// Sandbox-only panels that should be hidden while in TD mode.
+const SANDBOX_PANEL_IDS = [
+  "topology-select",
+  "traffic-select",
+  "btn-play",
+  "btn-step",
+  "btn-reset",
+  "speed-slider",
+];
+
+function getCurrentTickIntervalMs(): number {
+  // Sandbox speed slider: right = faster. Invert to ms the same way sandbox does.
+  return 1020 - parseInt($speedSlider.value);
+}
+
+function clearChildren(el: HTMLElement): void {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function showWaveResultToast(outcome: OutcomeReport): void {
+  const toast = document.createElement("div");
+  toast.className = "td-toast";
+  // Inline styling — CSS isn't touched by this task.
+  toast.style.position = "fixed";
+  toast.style.top = "24px";
+  toast.style.left = "50%";
+  toast.style.transform = "translateX(-50%)";
+  toast.style.padding = "12px 20px";
+  toast.style.background = "#1a1e2e";
+  toast.style.color = "#e1e4ed";
+  toast.style.border = "1px solid #2e3344";
+  toast.style.borderRadius = "6px";
+  toast.style.fontWeight = "600";
+  toast.style.zIndex = "1000";
+  toast.style.boxShadow = "0 4px 16px rgba(0,0,0,0.4)";
+  const noteText = outcome.notes.join(", ");
+  toast.textContent = `Wave ${outcome.verdict.toUpperCase()} — ${noteText}`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+
+/** The per-tick callback — hoisted so loop reconstruction can reuse it. */
+function tdOnTick(controller: TDModeController, state: SimulationState): void {
+  if (!controller.isWaveDrained(state)) return;
+
+  tdLoop?.stop();
+  controller.advancePhase(state); // simulate → assess
+  const outcome = controller.evaluateOutcome(
+    controller.getCurrentWaveMetrics(state),
+  );
+  showWaveResultToast(outcome);
+
+  // Per-wave reset: swap in a fresh economy and refresh condition on all
+  // placed components so the next wave starts clean.
+  const nextIdx = controller.getCurrentWaveIndex() + 1;
+  if (nextIdx < controller.getWaveCount()) {
+    const nextWave = TD_WAVES[nextIdx]!;
+    controller.setEconomy(
+      new TDEconomy({
+        startingBudget: nextWave.startingBudget,
+        revenuePerRequestType: nextWave.revenuePerRequestType,
+      }),
+    );
+    for (const id of state.components.keys()) {
+      state.setCondition(id, 1.0);
+    }
+  }
+  controller.advancePhase(state); // assess → build (or campaign complete)
+  tdDashboard?.refreshHud();
+  tdDashboard?.rerenderTopology();
+}
+
+function bootTDMode(): void {
+  // Stop sandbox loop (don't tear it down entirely — re-entry just clicks the
+  // sandbox button, which calls initTopology()).
+  simLoop?.stop();
+
+  // Hide sandbox-only panels.
+  for (const id of SANDBOX_PANEL_IDS) {
+    const el = document.getElementById(id);
+    if (el) (el as HTMLElement).style.display = "none";
+  }
+  // Clear the shared topology visual — TD dashboard will re-render into it.
+  clearChildren($topoVisual);
+  // Make topology container absolute-positionable for TD component divs.
+  $topoVisual.style.position = "relative";
+
+  const state = new SimulationState({
+    zones: ["default"],
+    pairLatency: new Map(),
+  });
+  const capRegistry = new CapabilityRegistry();
+  const compRegistry = new ComponentRegistry(capRegistry);
+  registerTDDefaults(capRegistry, compRegistry);
+
+  // Seed the entry-point Client at (0,0).
+  const client = compRegistry.create("client", { x: 0, y: 0 }, null);
+  state.placeComponent(client);
+
+  const economy = new TDEconomy({
+    startingBudget: WAVE_1.startingBudget,
+    revenuePerRequestType: WAVE_1.revenuePerRequestType,
+  });
+  const controller = new TDModeController({
+    waves: TD_WAVES,
+    economy,
+    entryPointId: client.id,
+    rng: Math.random,
+    componentRegistry: compRegistry,
+  });
+
+  // Engine is reconstructed each time phase enters simulate — visitOrder is
+  // computed only in the Engine constructor, and state.placeComponent does
+  // not update it, so without a fresh Engine newly-placed components are
+  // never visited.
+  let engine = new Engine(state);
+  tdEngine = engine;
+  tdState = state;
+  tdController = controller;
+
+  tdDashboard = createTDDashboard({
+    state,
+    controller,
+    topologyContainer: $topoVisual,
+    onPlace: () => tdDashboard?.refreshHud(),
+    onConnect: () => tdDashboard?.refreshHud(),
+    onPhaseChange: () => {
+      tdDashboard?.refreshHud();
+      if (controller.getPhase() === "simulate") {
+        // Rebuild engine so visitOrder picks up freshly-placed components,
+        // then swap it into the SimLoop via reset() (which also stops it).
+        engine = new Engine(state);
+        tdEngine = engine;
+        tdLoop?.reset(engine, state, controller);
+        tdLoop?.play();
+      }
+    },
+  });
+
+  tdLoop = new SimLoop<TDModeController>({
+    engine,
+    state,
+    controller,
+    tickInterval: getCurrentTickIntervalMs(),
+    onTick: tdOnTick,
+    shouldStop: (c) => c.getPhase() !== "simulate",
+  });
+
+  tdDashboard.refreshHud();
+}
+
+function teardownTDMode(): void {
+  tdLoop?.stop();
+  tdLoop = null;
+  tdDashboard?.destroy();
+  tdDashboard = null;
+  tdState = null;
+  tdController = null;
+  tdEngine = null;
+
+  // Restore sandbox panels.
+  for (const id of SANDBOX_PANEL_IDS) {
+    const el = document.getElementById(id);
+    if (el) (el as HTMLElement).style.display = "";
+  }
+  $topoVisual.style.position = "";
+}
+
+// ─── Mode toggle ──────────────────────────────────────────────────────
+function activateSandboxButton(): void {
+  $modeSandbox.classList.add("active");
+  $modeTd.classList.remove("active");
+}
+
+function activateTdButton(): void {
+  $modeTd.classList.add("active");
+  $modeSandbox.classList.remove("active");
+}
+
+$modeTd.addEventListener("click", () => {
+  if (tdDashboard) return; // already in TD mode
+  if (location.hash !== "#mode=td") location.hash = "#mode=td";
+  activateTdButton();
+  bootTDMode();
+});
+
+$modeSandbox.addEventListener("click", () => {
+  if (!tdDashboard) return; // already in sandbox mode
+  if (location.hash !== "#mode=sandbox") location.hash = "#mode=sandbox";
+  activateSandboxButton();
+  teardownTDMode();
+  // Rebuild sandbox topology from the currently-selected preset.
+  initTopology();
+});
+
+// Keep the TD sim loop responsive to the shared speed slider.
+$speedSlider.addEventListener("input", () => {
+  if (tdLoop) tdLoop.tickInterval = getCurrentTickIntervalMs();
+});
+
 // ─── Boot ─────────────────────────────────────────────────────────────
 populateSelects();
-initTopology();
+if (location.hash === "#mode=td") {
+  activateTdButton();
+  bootTDMode();
+} else {
+  activateSandboxButton();
+  initTopology();
+}
