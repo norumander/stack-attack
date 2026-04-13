@@ -6,5 +6,5 @@ export { TDModeController } from "./td-mode-controller.js";
 export type { TDModeControllerOptions } from "./td-mode-controller.js";
 export { registerTDDefaults } from "./register-td-defaults.js";
 export { SERVER_ENTRY, DATABASE_ENTRY, CACHE_ENTRY, LOAD_BALANCER_ENTRY } from "./td-component-entries.js";
-export { WAVE_1, WAVE_2 } from "./td-waves.js";
+export { WAVE_1, WAVE_2, WAVE_3 } from "./td-waves.js";
 export type { TDWaveDefinition } from "./td-waves.js";
