@@ -276,13 +276,34 @@ export class TDModeController implements ModeController {
     position: Position,
     zone: string | null,
   ): PlacementResult {
-    void state;
-    void type;
-    void position;
-    void zone;
-    void this.componentRegistry;
-    void this.placementSerial;
-    throw new Error("tryPlace not yet implemented (Task 7)");
+    // 1. Phase check
+    if (this.phase !== "build") {
+      return { ok: false, reason: "disallowed_by_mode", detail: "wrong phase" };
+    }
+    // 2. Allowlist check
+    const wave = this.getCurrentWave();
+    if (!wave.availableComponents.includes(type)) {
+      return {
+        ok: false,
+        reason: "disallowed_by_mode",
+        detail: "type not in current wave's allowlist",
+      };
+    }
+    // 3. Registry mint
+    const component = this.componentRegistry.tryCreate(type, position, zone);
+    if (!component) {
+      return { ok: false, reason: "registry_unknown_type", detail: type };
+    }
+    // 4. Budget check
+    if (!this.economy.canAfford(component.placementCost)) {
+      return { ok: false, reason: "insufficient_budget" };
+    }
+    // 5. Debit + place
+    this.economy.debitPlacement(component);
+    state.placeComponent(component);
+    this.placementSerial += 1;
+    // 6. Return
+    return { ok: true, componentId: component.id };
   }
 
   tryConnect(
