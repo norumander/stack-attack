@@ -6,7 +6,7 @@
  * and the payload-pool size for the cache working set.
  */
 export interface TDWaveDefinition {
-  readonly id: 1 | 2 | 3;
+  readonly id: number;
   readonly name: string;
   readonly startingBudget: number;
   readonly intensity: number;
