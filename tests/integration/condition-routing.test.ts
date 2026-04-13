@@ -3,7 +3,7 @@ import { SimulationState } from "@core/state/simulation-state";
 import { Engine } from "@core/engine/engine";
 import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
 import {
-  ForwardingCapability,
+  TestForwardingCapability,
   RespondingCapability,
 } from "@harness/test-capabilities";
 import { RoutingCapability } from "@capabilities/routing/routing-capability";
@@ -16,7 +16,7 @@ describe("condition-aware routing end-to-end", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
 
     const routingCap = new RoutingCapability("routing" as CapabilityId);
-    const fwdCap = new ForwardingCapability("fwd" as CapabilityId);
+    const fwdCap = new TestForwardingCapability("fwd" as CapabilityId);
 
     const routerCaps = new Map<CapabilityId, Capability>();
     routerCaps.set("routing" as CapabilityId, routingCap);

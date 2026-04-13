@@ -14,7 +14,7 @@ import type { CapabilityId, ComponentId, RequestId } from "@core/types/ids";
 import type { EngineBufferable } from "@core/capability/engine-interfaces";
 
 /** Always produces a FORWARD outcome. Throughput is unbounded (no getThroughputPerTick). */
-export class ForwardingCapability implements Capability {
+export class TestForwardingCapability implements Capability {
   readonly phase = "PROCESS" as const;
 
   constructor(readonly id: CapabilityId) {}

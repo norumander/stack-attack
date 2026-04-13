@@ -3,7 +3,7 @@ import { Engine } from "@core/engine/engine";
 import { SimulationState } from "@core/state/simulation-state";
 import { SandboxModeController } from "@modes/sandbox/sandbox-mode-controller";
 import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
-import { ForwardingCapability } from "@harness/test-capabilities";
+import { TestForwardingCapability } from "@harness/test-capabilities";
 import type { Capability, CapabilityStats } from "@core/capability/capability";
 import type { Request } from "@core/types/request";
 import type { ProcessContext } from "@core/capability/process-context";
@@ -37,7 +37,7 @@ describe("Sandbox throughput saturation", () => {
     // Client: forwards traffic (unbounded throughput)
     const clientEgress = makePort("p-c-out", "egress");
     const clientCaps = new Map<CapabilityId, Capability>([
-      ["cap-fwd" as CapabilityId, new ForwardingCapability("cap-fwd" as CapabilityId)],
+      ["cap-fwd" as CapabilityId, new TestForwardingCapability("cap-fwd" as CapabilityId)],
     ]);
     const clientTiers = new Map<CapabilityId, number>([["cap-fwd" as CapabilityId, 1]]);
     const client = makeComponent({

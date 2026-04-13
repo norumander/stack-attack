@@ -6,8 +6,8 @@
  *                                               Server <---unblock--+
  *                                               Server --RESPOND--> Client
  *
- * - Client: ForwardingCapability  (FORWARDs to LB)
- * - LB:     ForwardingCapability  (FORWARDs to Server)
+ * - Client: TestForwardingCapability  (FORWARDs to LB)
+ * - LB:     TestForwardingCapability  (FORWARDs to Server)
  * - Server: BlockingDbCapability  (first pass: blocking SPAWN to DB; re-entry: RESPOND)
  * - DB:     RespondingCapability  (RESPONDs to child, triggering Server unblock)
  *
@@ -20,7 +20,7 @@ import { SimulationState } from "@core/state/simulation-state";
 import { NoOpModeController } from "@harness/noop-mode-controller";
 import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
 import {
-  ForwardingCapability,
+  TestForwardingCapability,
   RespondingCapability,
   BlockingDbCapability,
 } from "@harness/test-capabilities";
@@ -34,7 +34,7 @@ describe("integration — same-tick multi-hop (Client → LB → Server → DB �
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
 
     // Client — forwards everything to LB.
-    const clientCap = new ForwardingCapability("cap-client" as CapabilityId);
+    const clientCap = new TestForwardingCapability("cap-client" as CapabilityId);
     const client = makeComponent({
       id: "c-client",
       ports: [makePort("p-c-out", "egress")],
@@ -45,7 +45,7 @@ describe("integration — same-tick multi-hop (Client → LB → Server → DB �
     });
 
     // LB — forwards everything to Server.
-    const lbCap = new ForwardingCapability("cap-lb" as CapabilityId);
+    const lbCap = new TestForwardingCapability("cap-lb" as CapabilityId);
     const lb = makeComponent({
       id: "c-lb",
       ports: [makePort("p-lb-in", "ingress"), makePort("p-lb-out", "egress")],

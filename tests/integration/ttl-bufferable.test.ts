@@ -4,7 +4,7 @@ import { SimulationState } from "@core/state/simulation-state";
 import { NoOpModeController } from "@harness/noop-mode-controller";
 import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
 import {
-  ForwardingCapability,
+  TestForwardingCapability,
   TestQueueCapability,
 } from "@harness/test-capabilities";
 import type { Capability } from "@core/capability/capability";
@@ -15,7 +15,7 @@ describe("integration — TTL expiry for buffered requests", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
 
     // Upstream: entry point. Forwards traffic into the bottleneck.
-    const upstreamCap = new ForwardingCapability("cap-up" as CapabilityId);
+    const upstreamCap = new TestForwardingCapability("cap-up" as CapabilityId);
     const upstream = makeComponent({
       id: "upstream",
       ports: [makePort("p-up-out", "egress")],
@@ -25,7 +25,7 @@ describe("integration — TTL expiry for buffered requests", () => {
       tiers: new Map([["cap-up" as CapabilityId, 1]]),
     });
 
-    // Bottleneck: holds the EngineBufferable buffer plus a ForwardingCapability.
+    // Bottleneck: holds the EngineBufferable buffer plus a TestForwardingCapability.
     // It has a self-loop egress (cx-bn-self) whose bandwidth is 0. When the
     // engine re-emits buffered items from reEmitQueued, they get tagged with
     // sourceComponentId=bottleneck and deliverStaged picks the bottleneck's
@@ -33,7 +33,7 @@ describe("integration — TTL expiry for buffered requests", () => {
     // item in bottleneck's own TestQueueCapability. That traps tick-0 requests
     // long enough for checkTTL's bufferable partition scan to expire them.
     const bottleneckBufCap = new TestQueueCapability("cap-bn-buf" as CapabilityId, 256);
-    const bottleneckFwdCap = new ForwardingCapability("cap-bn-fwd" as CapabilityId);
+    const bottleneckFwdCap = new TestForwardingCapability("cap-bn-fwd" as CapabilityId);
     const bottleneck = makeComponent({
       id: "bottleneck",
       ports: [

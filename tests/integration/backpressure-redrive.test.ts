@@ -4,7 +4,7 @@ import { SimulationState } from "@core/state/simulation-state";
 import { NoOpModeController } from "@harness/noop-mode-controller";
 import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
 import {
-  ForwardingCapability,
+  TestForwardingCapability,
   RespondingCapability,
   TestQueueCapability,
 } from "@harness/test-capabilities";
@@ -16,7 +16,7 @@ describe("integration — backpressure re-drive across ticks", () => {
   it("drains all 3 requests through a bandwidth-1 bottleneck with queue buffering", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
 
-    const upstreamCap = new ForwardingCapability("cap-up" as CapabilityId);
+    const upstreamCap = new TestForwardingCapability("cap-up" as CapabilityId);
     const upstream = makeComponent({
       id: "c-upstream",
       ports: [makePort("p-up-out", "egress")],
@@ -27,7 +27,7 @@ describe("integration — backpressure re-drive across ticks", () => {
     });
 
     const queueBufferCap = new TestQueueCapability("cap-queue-buf" as CapabilityId, 64);
-    const queueForwardCap = new ForwardingCapability("cap-queue-fwd" as CapabilityId);
+    const queueForwardCap = new TestForwardingCapability("cap-queue-fwd" as CapabilityId);
     const queue = makeComponent({
       id: "c-queue",
       ports: [makePort("p-q-in", "ingress"), makePort("p-q-out", "egress")],
