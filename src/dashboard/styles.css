@@ -226,3 +226,131 @@ textarea {
 .topology-visual .arrow {
   color: var(--accent);
 }
+
+/* === Mode toggle === */
+.mode-toggle {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 12px;
+}
+
+.mode-btn {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.mode-btn:hover {
+  background: var(--border);
+}
+
+.mode-btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* === TD HUD === */
+.td-hud {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  min-width: 220px;
+  color: var(--text);
+  font-size: 13px;
+  grid-column: 1 / -1;
+}
+
+.td-hud[hidden] {
+  display: none;
+}
+
+.td-hud__row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.td-hud__label {
+  color: var(--text-dim);
+}
+
+.td-hud__value {
+  font-weight: 600;
+}
+
+.td-hud__palette {
+  margin: 12px 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.td-hud__palette h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+
+.td-palette-btn {
+  display: block;
+  width: 100%;
+  margin-bottom: 4px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.85rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.td-palette-btn:hover {
+  background: var(--border);
+}
+
+.td-palette-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.td-palette-btn.placing {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.td-ready-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  background: var(--green);
+  color: var(--bg);
+  border: none;
+  padding: 10px;
+  border-radius: 4px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.td-ready-btn:hover {
+  background: #1ea853;
+}
+
+.td-ready-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--surface-2);
+  color: var(--text-dim);
+}

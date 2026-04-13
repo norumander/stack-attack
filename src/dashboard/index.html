@@ -14,6 +14,10 @@
     <div class="controls-row">
       <select id="topology-select"></select>
       <select id="traffic-select"></select>
+      <div id="mode-toggle" class="mode-toggle">
+        <button id="mode-sandbox" class="mode-btn active">Sandbox</button>
+        <button id="mode-td" class="mode-btn">TD</button>
+      </div>
     </div>
     <div class="controls-row">
       <button id="btn-play">&#9654; Play</button>
@@ -26,6 +30,31 @@
   </div>
 
   <div id="topology-visual" class="topology-visual"></div>
+
+  <aside id="td-hud" class="td-hud" hidden>
+    <div class="td-hud__row">
+      <span class="td-hud__label">Wave</span>
+      <span id="td-hud-wave" class="td-hud__value">1 of 3</span>
+    </div>
+    <div class="td-hud__row">
+      <span class="td-hud__label">Phase</span>
+      <span id="td-hud-phase" class="td-hud__value">BUILD</span>
+    </div>
+    <div class="td-hud__row">
+      <span class="td-hud__label">Budget</span>
+      <span id="td-hud-budget" class="td-hud__value">$500</span>
+    </div>
+
+    <div class="td-hud__palette">
+      <h4>Palette</h4>
+      <button class="td-palette-btn" data-type="server">+ Server $100</button>
+      <button class="td-palette-btn" data-type="database">+ Database $200</button>
+      <button class="td-palette-btn" data-type="cache">+ Cache $150</button>
+      <button class="td-palette-btn" data-type="load_balancer">+ Load Balancer $175</button>
+    </div>
+
+    <button id="td-ready-btn" class="td-ready-btn">READY</button>
+  </aside>
 
   <div class="grid">
     <!-- Charts -->
