@@ -1,33 +1,43 @@
 import type { Engine } from "@core/engine/engine";
 import type { SimulationState } from "@core/state/simulation-state";
-import type { SandboxModeController } from "@modes/sandbox/sandbox-mode-controller";
-import type { TickMetrics } from "@core/types/metrics";
-import type { MetricsSnapshot } from "@modes/sandbox/sandbox-mode-controller";
+import type { ModeController } from "@core/mode/mode-controller";
 
-export type TickCallback = (
-  tick: number,
-  metrics: TickMetrics,
-  snapshot: MetricsSnapshot,
-) => void;
+export interface SimLoopOptions<T extends ModeController> {
+  engine: Engine;
+  state: SimulationState;
+  controller: T;
+  /**
+   * Called after each tick. Receives the controller (concrete type)
+   * so the caller can extract mode-specific snapshot data.
+   */
+  onTick: (controller: T, state: SimulationState) => void;
+  /** Optional: called before each tick. If it returns true, the loop halts. */
+  shouldStop?: (controller: T, state: SimulationState) => boolean;
+  /** Initial tick interval in ms. Defaults to 300. */
+  tickInterval?: number;
+}
 
-export class SimLoop {
+export class SimLoop<T extends ModeController> {
   private engine: Engine;
   private state: SimulationState;
-  private controller: SandboxModeController;
+  private controller: T;
+  private readonly onTickCb: (c: T, s: SimulationState) => void;
+  private readonly shouldStop?: (c: T, s: SimulationState) => boolean;
+
   private running = false;
   private animFrameId = 0;
   private lastTickTime = 0;
-  private _tickInterval = 300;
-  private _onTick: TickCallback = () => {};
+  private _tickInterval: number;
 
-  constructor(engine: Engine, state: SimulationState, controller: SandboxModeController) {
-    this.engine = engine;
-    this.state = state;
-    this.controller = controller;
-  }
-
-  set onTick(cb: TickCallback) {
-    this._onTick = cb;
+  constructor(options: SimLoopOptions<T>) {
+    this.engine = options.engine;
+    this.state = options.state;
+    this.controller = options.controller;
+    this.onTickCb = options.onTick;
+    if (options.shouldStop !== undefined) {
+      this.shouldStop = options.shouldStop;
+    }
+    this._tickInterval = Math.max(20, options.tickInterval ?? 300);
   }
 
   get tickInterval(): number {
@@ -46,7 +56,7 @@ export class SimLoop {
     return this.state.currentTick;
   }
 
-  reset(engine: Engine, state: SimulationState, controller: SandboxModeController): void {
+  reset(engine: Engine, state: SimulationState, controller: T): void {
     this.stop();
     this.engine = engine;
     this.state = state;
@@ -54,13 +64,12 @@ export class SimLoop {
   }
 
   step(): void {
-    this.engine.tick(this.controller);
-    const history = this.state.metricsHistory;
-    const lastMetrics = history[history.length - 1];
-    if (lastMetrics) {
-      const snapshot = this.controller.getMetricsSnapshot(this.state);
-      this._onTick(this.state.currentTick, lastMetrics, snapshot);
+    if (this.shouldStop?.(this.controller, this.state)) {
+      this.stop();
+      return;
     }
+    this.engine.tick(this.controller);
+    this.onTickCb(this.controller, this.state);
   }
 
   play(): void {
@@ -84,6 +93,7 @@ export class SimLoop {
       this.step();
       this.lastTickTime = timestamp;
     }
+    if (!this.running) return;
     this.animFrameId = requestAnimationFrame((t) => this.loop(t));
   }
 }

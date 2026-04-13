@@ -3,13 +3,13 @@ import { SimLoop } from "./sim-loop";
 import { exportScenario, applyScenario, serializeScenario, parseScenario } from "@modes/sandbox/sandbox-scenario";
 import type { ComponentId, ConnectionId } from "@core/types/ids";
 import type { TickMetrics } from "@core/types/metrics";
-import type { MetricsSnapshot } from "@modes/sandbox/sandbox-mode-controller";
+import type { SandboxModeController, MetricsSnapshot } from "@modes/sandbox/sandbox-mode-controller";
 
 declare const Chart: any;
 
 // ─── State ────────────────────────────────────────────────────────────
 let topo: TopologyInfo;
-let simLoop: SimLoop;
+let simLoop: SimLoop<SandboxModeController>;
 
 const PRESETS = [
   "steady-load", "black-friday", "gradual-ramp",
@@ -153,9 +153,19 @@ function initTopology(): void {
   );
   topo.controller.advancePhase(); // build → simulate
 
-  simLoop = new SimLoop(topo.engine, topo.state, topo.controller);
-  simLoop.tickInterval = parseInt($speedSlider.value);
-  simLoop.onTick = onTick;
+  simLoop = new SimLoop<SandboxModeController>({
+    engine: topo.engine,
+    state: topo.state,
+    controller: topo.controller,
+    tickInterval: parseInt($speedSlider.value),
+    onTick: (controller, state) => {
+      const history = state.metricsHistory;
+      const lastMetrics = history[history.length - 1];
+      if (!lastMetrics) return;
+      const snapshot = controller.getMetricsSnapshot(state);
+      onTick(state.currentTick, lastMetrics, snapshot);
+    },
+  });
 
   $tickCounter.textContent = "0";
   renderTopologyVisual();
