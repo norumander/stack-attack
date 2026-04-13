@@ -92,11 +92,22 @@ Expected: all existing tests pass (~3s) and typecheck is clean. If not, stop and
 
 ## Task 2: Rename test-harness `ForwardingCapability` → `TestForwardingCapability`
 
-**Why:** the production `ForwardingCapability` (Task 4) needs the name `ForwardingCapability`. The harness file currently exports a class with that exact name (`tests/harness/test-capabilities.ts:17`). Rename first to avoid a collision.
+**Why:** the production `ForwardingCapability` (Task 5) needs the name `ForwardingCapability`. The harness file currently exports a class with that exact name (`tests/harness/test-capabilities.ts:17`). Rename first to avoid a collision.
 
-**Files:**
-- Modify: `tests/harness/test-capabilities.ts`
-- Modify: every test file that imports `ForwardingCapability` from `@harness/test-capabilities`
+**Files (full inventory from grep):**
+- Modify: `tests/harness/test-capabilities.ts` (the class declaration at line 17)
+- Modify: `tests/harness/random-topology.ts` (imports and constructs the class)
+- Modify: `tests/unit/ttl-bufferable.test.ts`
+- Modify: `tests/integration/sandbox-throughput.test.ts`
+- Modify: `tests/integration/backpressure-redrive.test.ts`
+- Modify: `tests/integration/same-tick-multi-hop.test.ts`
+- Modify: `tests/integration/sandbox-ttl.test.ts`
+- Modify: `tests/integration/ttl-bufferable.test.ts`
+- Modify: `tests/integration/condition-routing.test.ts`
+- Modify: `tests/integration/sandbox-backpressure.test.ts`
+- Modify: `tests/integration/sandbox-metrics-history.test.ts`
+
+That's 11 files total. Every import of `ForwardingCapability` from `@harness/test-capabilities` must be renamed to `TestForwardingCapability`, and every `new ForwardingCapability(` call in those files likewise.
 
 - [ ] **Step 1: Rename the class in the harness file**
 
@@ -212,10 +223,14 @@ export class ProcessingCapability implements Capability {
   }
 
   getThroughputPerTick(tier: number): number {
-    // Tuning target: lone Server at T1 must fail Wave 3 (50 req/tick mixed).
-    // Server = Processing(18) + Forwarding(12) = 30 budget; Wave 3 = 50 demand.
-    const table: Record<number, number> = { 1: 18, 2: 32, 3: 55 };
-    return table[tier] ?? 18;
+    // Tuning target: lone Server at T1 must fail Wave 3 (50 req/tick mixed),
+    // AND Wave 3 cache rescue must have condition-decay headroom so a
+    // transient cache miss-rate spike doesn't cascade. Server =
+    // Processing(20) + Forwarding(12) = 32 budget. Lone-server Wave 3:
+    // 32 vs 50 → 36% drops → loses. Cache rescue Wave 3: ~27 effective
+    // demand (12 missed reads + 15 writes) vs 32 budget → 5/tick headroom.
+    const table: Record<number, number> = { 1: 20, 2: 35, 3: 60 };
+    return table[tier] ?? 20;
   }
 
   getUpkeepCost(tier: number): number {
@@ -301,9 +316,9 @@ describe("ProcessingCapability (production)", () => {
 
   it("declares bounded throughput per tier", () => {
     const cap = new ProcessingCapability(CAP_ID);
-    expect(cap.getThroughputPerTick(1)).toBe(18);
-    expect(cap.getThroughputPerTick(2)).toBe(32);
-    expect(cap.getThroughputPerTick(3)).toBe(55);
+    expect(cap.getThroughputPerTick(1)).toBe(20);
+    expect(cap.getThroughputPerTick(2)).toBe(35);
+    expect(cap.getThroughputPerTick(3)).toBe(60);
   });
 
   it("emits a PROCESSED event for counting in integration tests", () => {
@@ -350,12 +365,13 @@ Run:
 grep -rln "new ProcessingCapability" tests/
 ```
 Expected list (for reference when Task 4 runs):
-- `tests/unit/engine-skeleton.test.ts`
-- `tests/unit/sandbox-mode-controller.test.ts`
-- `tests/integration/smoke.test.ts`
-- `tests/integration/sandbox-smoke.test.ts`
+- `tests/unit/processing-capability.test.ts` — already rewritten in Step 2 above, no migration needed, but Task 4's commit will include it
+- `tests/unit/engine-skeleton.test.ts` — needs migration
+- `tests/unit/sandbox-mode-controller.test.ts` — needs migration
+- `tests/integration/smoke.test.ts` — needs migration
+- `tests/integration/sandbox-smoke.test.ts` — needs migration
 
-Do not commit until Task 4 has migrated these files.
+Do not commit until Task 4 has migrated these files. (Task 4's single commit covers both the production-capability rewrite and all test migrations.)
 
 ---
 
@@ -1805,7 +1821,7 @@ Expected: clean. If `ComponentRegistryEntry`'s port/visual/conditionProfile shap
 
 - [ ] **Step 5: Smoke test the registry**
 
-Add a quick check to `tests/unit/td-mode-controller.test.ts` (or a new file `tests/unit/register-td-defaults.test.ts`):
+Create `tests/unit/register-td-defaults.test.ts` (new file, not a mix-in to another test):
 
 ```ts
 import { describe, it, expect } from "vitest";
@@ -3102,14 +3118,6 @@ export function buildLoadBalancer(id: string, egressCount: number): {
   return { component, ingressPortId, egressPortIds };
 }
 
-export function wireBySpecificPorts(
-  state: SimulationState,
-  source: { component: Component; egressPortId: string },
-  target: { component: Component; ingressPortId: string },
-  connId: string,
-): void {
-  wire(state, source, target, connId);
-}
 ```
 
 - [ ] **Step 5: Run test + typecheck**
