@@ -11,7 +11,7 @@ import { StorageCapability } from "@capabilities/storage/storage-capability";
 import { CachingCapability } from "@capabilities/caching/caching-capability";
 import { RoutingCapability } from "@capabilities/routing/routing-capability";
 import { makePort, makeConnection } from "@harness/fixtures";
-import { makeRng } from "@harness/td-fixtures";
+import { makeRng, bootTDRegistry } from "@harness/td-fixtures";
 import type { Capability } from "@core/capability/capability";
 import type { CapabilityId, ComponentId } from "@core/types/ids";
 import type { OutcomeReport } from "@core/types/outcome";
@@ -55,10 +55,11 @@ export function runWave(
     revenuePerRequestType: wave.revenuePerRequestType,
   });
   const mode = new TDModeController({
-    wave,
+    waves: [wave],
     economy,
     entryPointId,
     rng: makeRng(1),
+    componentRegistry: bootTDRegistry(),
   });
   mode.advancePhase(); // build → simulate
 

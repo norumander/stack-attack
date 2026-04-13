@@ -41,20 +41,6 @@ describe("TDModeController constructor", () => {
     ).toThrow(/non-empty/);
   });
 
-  it("accepts single-wave back-compat options (no componentRegistry)", () => {
-    const economy = new TDEconomy({
-      startingBudget: WAVE_1.startingBudget,
-      revenuePerRequestType: WAVE_1.revenuePerRequestType,
-    });
-    const tdc = new TDModeController({
-      wave: WAVE_1,
-      economy,
-      entryPointId: "entry" as ComponentId,
-      rng: makeRng(1),
-    });
-    expect(tdc.getCurrentWaveIndex()).toBe(0);
-    expect(tdc.getCurrentWave()).toBe(WAVE_1);
-  });
 });
 
 describe("TDModeController phase machine multi-wave progression", () => {

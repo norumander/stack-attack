@@ -41,7 +41,7 @@ The game must stand on its own as a strategy game first. The learning is the lon
 
 ### Stage 3b engine contract gotchas
 
-- **`TDModeController` is multi-wave by default.** The constructor accepts either `TDMultiWaveOptions` (with `waves: TDWaveDefinition[]` + `componentRegistry`) or `TDSingleWaveOptions` (the legacy `wave: TDWaveDefinition` shape used by `tests/integration/td/helpers.ts:runWave`). Discriminated via `"waves" in options`. The single-wave shim uses a `STUB_REGISTRY` that throws on `tryPlace`.
+- **`TDModeController` is multi-wave only.** The constructor takes `{waves, economy, entryPointId, rng, componentRegistry}`. Single-wave call sites (e.g. `tests/integration/td/helpers.ts:runWave`) pass `waves: [wave]` and thread a real `componentRegistry` via `bootTDRegistry()` from `@harness/td-fixtures`. The Stage 3b single-wave back-compat shim (`TDSingleWaveOptions` + `STUB_REGISTRY`) was deleted in Batch 3.
 - **`advancePhase(state?)` snapshots `waveStartMetricsIndex` only when `state` is passed.** Stage 3a tests call `advancePhase()` no-arg and never read `getCurrentWaveMetrics`. Dashboard call sites pass `state`.
 - **`registerTDDefaults` factories are TD-tuned.** `processing` registers with `{handledTypes: ["api_read"], throughputPerTier: 20, emitProcessedEvent: true}`. `forwarding` is Server-style writes-only at 12/tick. `forwarding-pipe` is the Cache/LB/Client variant at 55/tick. `storage` is at 25/tick with PROCESSED events. These match `tests/integration/td/helpers.ts:buildX` exactly. Sandbox bootstrap (`bootstrapRegistries`) is unaffected.
 - **`CLIENT_ENTRY` has no ingress port.** It's egress-only (entry point). `tryConnect(state, server, client)` rejects with `no_ingress_port`.
