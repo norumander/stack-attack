@@ -3,22 +3,19 @@ import { SimulationState } from "@core/state/simulation-state.js";
 import { Engine } from "@core/engine/engine.js";
 import { NoOpModeController } from "@harness/noop-mode-controller.js";
 import { makeComponent, makeConnection, makePort } from "@harness/fixtures.js";
-import {
-  TestForwardingCapability,
-  RespondingCapability,
-} from "@harness/test-capabilities.js";
-import type {
-  ComponentId,
-  RequestId,
-  CapabilityId,
-} from "@core/types/ids.js";
+import { RespondingCapability } from "@harness/test-capabilities.js";
+import { ForwardingCapability } from "@capabilities/forwarding/forwarding-capability.js";
+import type { RequestId, CapabilityId } from "@core/types/ids.js";
 import type { Capability } from "@core/capability/capability.js";
 
-describe("FORWARDED events carry metadata.requestType", () => {
-  it("engine target-side FORWARDED has metadata.requestType from the request", () => {
+describe("FORWARDED events carry metadata.requestType (both emit sites)", () => {
+  it("emits both source-side and target-side FORWARDED with metadata.requestType in one tick", () => {
     const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
 
-    const fwdCap = new TestForwardingCapability("fwd" as CapabilityId);
+    const fwdCap = new ForwardingCapability("fwd" as CapabilityId, {
+      handledTypes: ["api_read"],
+      emitForwardedEvent: true,
+    });
     const fwdCaps = new Map<CapabilityId, Capability>();
     fwdCaps.set(fwdCap.id, fwdCap);
     const source = makeComponent({
@@ -71,10 +68,20 @@ describe("FORWARDED events carry metadata.requestType", () => {
     engine.tick(mc);
 
     const forwardedEvents = state.lastTickEvents.filter((e) => e.type === "FORWARDED");
-    expect(forwardedEvents.length).toBeGreaterThan(0);
+    expect(forwardedEvents.length).toBe(2);
     for (const ev of forwardedEvents) {
       expect(ev.metadata).toBeDefined();
       expect((ev.metadata as { requestType?: string }).requestType).toBe("api_read");
     }
+
+    const sourceEvent = forwardedEvents.find((e) => e.capabilityId !== null);
+    const targetEvent = forwardedEvents.find((e) => e.capabilityId === null);
+    expect(sourceEvent).toBeDefined();
+    expect(targetEvent).toBeDefined();
+    expect(sourceEvent!.capabilityId).toBe(fwdCap.id);
+    expect(sourceEvent!.connectionId).toBeNull();
+    expect(targetEvent!.connectionId).toBe("c1");
+    expect((sourceEvent!.metadata as { requestType?: string }).requestType).toBe("api_read");
+    expect((targetEvent!.metadata as { requestType?: string }).requestType).toBe("api_read");
   });
 });
