@@ -89,3 +89,19 @@ export const LOAD_BALANCER_ENTRY: ComponentRegistryEntry = {
   visual: { icon: "load-balancer", color: "#50C878", shape: "hexagon" },
   conditionProfile: DEFAULT_CONDITION_PROFILE,
 };
+
+export const CLIENT_ENTRY: ComponentRegistryEntry = {
+  type: "client",
+  name: "Client",
+  description: "Traffic entry point. Forwards requests into the architecture.",
+  capabilities: [
+    { id: "forwarding-pipe" as CapabilityId, defaultTier: 1, maxTier: 1 },
+  ],
+  ports: [
+    { id: "p-out" as PortId, direction: "egress", dataType: "http", capacity: 4, connections: [] },
+  ],
+  placementCost: 0,
+  upgradeCostCurve: [0],
+  visual: { icon: "client", color: "#94a3b8", shape: "circle" },
+  conditionProfile: DEFAULT_CONDITION_PROFILE,
+};
