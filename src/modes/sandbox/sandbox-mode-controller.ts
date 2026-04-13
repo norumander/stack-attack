@@ -54,7 +54,6 @@ export class SandboxModeController implements ModeController {
   private phase: "build" | "simulate" | "assess" = "build";
   private readonly trafficSources: SandboxTrafficSource[] = [];
   private readonly chaosQueue: ScheduledChaos[] = [];
-  private placementCounter = 0;
   private readonly _zones: string[] = ["default"];
   private readonly _pairLatency: Map<string, number> = new Map();
 
@@ -145,27 +144,26 @@ export class SandboxModeController implements ModeController {
     _position: Position,
     _zone: string | null,
   ): PlacementResult {
-    this.placementCounter += 1;
-    return {
-      ok: true,
-      componentId: `sandbox-placed-${this.placementCounter}` as ComponentId,
-    };
+    // Sandbox placement is not yet implemented. The previous stub returned
+    // fabricated component ids without mutating state, which any future UI
+    // code that trusted the result would silently desync against. Throw
+    // loudly until a real impl lands (Stage 3c).
+    throw new Error(
+      "SandboxModeController.tryPlace is not implemented yet — sandbox topologies place via state.placeComponent() directly",
+    );
   }
 
   tryUpgrade(
-    state: SimulationState,
-    componentId: ComponentId,
-    capabilityId: CapabilityId,
+    _state: SimulationState,
+    _componentId: ComponentId,
+    _capabilityId: CapabilityId,
   ): UpgradeResult {
-    const component = state.components.get(componentId);
-    if (!component) {
-      return { ok: false, reason: "capability_not_found", detail: "Component not found" };
-    }
-    const ids = component.getCapabilityIds();
-    if (!ids.includes(capabilityId)) {
-      return { ok: false, reason: "capability_not_found" };
-    }
-    return { ok: true, newPlayerTier: component.getPlayerTier(capabilityId) + 1 };
+    // Sandbox upgrade is not yet implemented. The previous stub returned a
+    // bumped playerTier without actually calling component.upgrade() or
+    // touching state. Throw until a real impl lands (Stage 3c).
+    throw new Error(
+      "SandboxModeController.tryUpgrade is not implemented yet",
+    );
   }
 
   getScheduledChaos(currentTick: number): readonly ChaosEvent[] {

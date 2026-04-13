@@ -49,7 +49,8 @@ export function createTDDashboard(args: {
   };
 
   function refreshHud(): void {
-    if (controller.isCampaignComplete()) {
+    const complete = controller.isCampaignComplete();
+    if (complete) {
       waveEl.textContent = "Complete";
       phaseEl.textContent = "—";
     } else {
@@ -57,9 +58,11 @@ export function createTDDashboard(args: {
       phaseEl.textContent = controller.getPhase().toUpperCase();
     }
     budgetEl.textContent = `$${controller.economy.getBudget()}`;
-    const buildPhase = controller.getPhase() === "build";
-    paletteButtons.forEach((b) => (b.disabled = !buildPhase));
-    readyBtn.disabled = !buildPhase;
+    // Palette + READY are only actionable during a wave's build phase.
+    // Lock them both during simulate/assess and after the campaign is complete.
+    const actionable = !complete && controller.getPhase() === "build";
+    paletteButtons.forEach((b) => (b.disabled = !actionable));
+    readyBtn.disabled = !actionable;
   }
 
   // === Palette click handlers ===

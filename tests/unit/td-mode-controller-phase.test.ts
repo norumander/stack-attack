@@ -106,7 +106,7 @@ describe("TDModeController phase machine multi-wave progression", () => {
     expect(tdc.getCurrentWave()).toBe(WAVE_2);
   });
 
-  it("isCampaignComplete becomes true after the final assess→build", () => {
+  it("isCampaignComplete becomes true after the final wave's assess transition", () => {
     const economy = new TDEconomy({
       startingBudget: WAVE_1.startingBudget,
       revenuePerRequestType: WAVE_1.revenuePerRequestType,
@@ -120,10 +120,36 @@ describe("TDModeController phase machine multi-wave progression", () => {
     });
     const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
     expect(tdc.isCampaignComplete()).toBe(false);
+    tdc.advancePhase(state); // build → simulate
+    tdc.advancePhase(state); // simulate → assess
+    tdc.advancePhase(state); // assess → (terminal — no next wave)
+    expect(tdc.isCampaignComplete()).toBe(true);
+    // Phase stays at "assess" after the final wave rather than wrapping
+    // back to "build", so the dashboard cannot re-enter the phase machine.
+    expect(tdc.getPhase()).toBe("assess");
+  });
+
+  it("advancePhase throws after campaign is complete", () => {
+    // C2 regression: the dashboard used to be able to re-enter build/simulate
+    // after the final wave win, triggering getCurrentWave() to throw on the
+    // next tick. advancePhase must refuse to advance once complete.
+    const economy = new TDEconomy({
+      startingBudget: WAVE_1.startingBudget,
+      revenuePerRequestType: WAVE_1.revenuePerRequestType,
+    });
+    const tdc = new TDModeController({
+      waves: [WAVE_1],
+      economy,
+      entryPointId: "entry" as ComponentId,
+      rng: makeRng(1),
+      componentRegistry: bootRegistry(),
+    });
+    const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
     tdc.advancePhase(state);
     tdc.advancePhase(state);
     tdc.advancePhase(state);
     expect(tdc.isCampaignComplete()).toBe(true);
+    expect(() => tdc.advancePhase(state)).toThrow(/campaign complete/);
   });
 
   it("waveStartMetricsIndex snapshots state.metricsHistory.length on build→simulate", () => {

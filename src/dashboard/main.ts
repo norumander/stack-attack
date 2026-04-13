@@ -361,9 +361,7 @@ $fileInput.addEventListener("change", () => {
   reader.onload = () => {
     try {
       const scenario = parseScenario(reader.result as string);
-      applyScenario(scenario, topo.controller);
-      // Re-add traffic from scenario (applyScenario already does this)
-      topo.controller.advancePhase(); // ensure simulate phase
+      applyScenario(scenario, topo.controller, topo.entryPointId);
       resetCharts();
       $tickCounter.textContent = String(topo.state.currentTick);
       alert("Scenario loaded!");
@@ -515,7 +513,9 @@ function tdOnTick(controller: TDModeController, state: SimulationState): void {
       // eslint-disable-next-line no-console
       console.warn(`[td-campaign-end] all ${controller.getWaveCount()} waves complete`);
     }
-    controller.advancePhase(state); // assess → build (or campaign complete)
+    // advancePhase handles terminal case: bumps waveIndex and stays in assess
+    // when there is no next wave, so isCampaignComplete() becomes true.
+    controller.advancePhase(state);
     tdTickSeq = 0;
     tdDashboard?.refreshHud();
     tdDashboard?.rerenderTopology();

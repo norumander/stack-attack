@@ -227,8 +227,19 @@ export class TDModeController implements ModeController {
    * reconstruct trafficSource at assess→build.
    *
    * Stage 3a's runWave calls advancePhase() with no args (single-wave path).
+   *
+   * Throws if called after the campaign is complete — callers must check
+   * `isCampaignComplete()` before re-entering the phase machine. On the
+   * final wave's assess→build transition, the wave index is bumped past
+   * the end and the phase is left at "assess" — there is no next build
+   * phase to enter. Subsequent `advancePhase` calls will throw.
    */
   advancePhase(state?: SimulationState): void {
+    if (this.isCampaignComplete()) {
+      throw new Error(
+        "TDModeController: campaign complete; cannot advance phase",
+      );
+    }
     switch (this.phase) {
       case "build":
         if (state !== undefined) {
@@ -247,8 +258,9 @@ export class TDModeController implements ModeController {
             targetEntryPointId: this.entryPointId,
             rng: this.rng,
           });
+          this.phase = "build";
         }
-        this.phase = "build";
+        // Final wave cleared: stay in assess; isCampaignComplete() is now true.
         break;
     }
   }
@@ -374,26 +386,17 @@ export class TDModeController implements ModeController {
   }
 
   tryUpgrade(
-    state: SimulationState,
-    componentId: ComponentId,
-    capabilityId: CapabilityId,
+    _state: SimulationState,
+    _componentId: ComponentId,
+    _capabilityId: CapabilityId,
   ): UpgradeResult {
-    const component = state.components.get(componentId);
-    if (!component) {
-      return {
-        ok: false,
-        reason: "capability_not_found",
-        detail: "Component not found",
-      };
-    }
-    const ids = component.getCapabilityIds();
-    if (!ids.includes(capabilityId)) {
-      return { ok: false, reason: "capability_not_found" };
-    }
-    return {
-      ok: true,
-      newPlayerTier: component.getPlayerTier(capabilityId) + 1,
-    };
+    // TD upgrade is not yet implemented. The previous stub returned a bumped
+    // playerTier without calling component.upgrade() or debiting the economy,
+    // which would silently desync any future UI code. Throw until the real
+    // impl lands (Stage 3c).
+    throw new Error(
+      "TDModeController.tryUpgrade is not implemented yet",
+    );
   }
 
   getScheduledChaos(_currentTick: number): readonly ChaosEvent[] {

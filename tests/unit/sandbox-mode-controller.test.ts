@@ -91,58 +91,23 @@ describe("SandboxModeController", () => {
   });
 
   describe("placement and upgrade", () => {
-    it("tryPlace always succeeds with generated componentId", () => {
+    // tryPlace / tryUpgrade are not yet implemented for Sandbox mode (Stage 3c).
+    // They throw loudly rather than returning fabricated success values so any
+    // future UI code that calls them cannot silently desync against state.
+    it("tryPlace throws (not implemented)", () => {
       const ctrl = new SandboxModeController();
       const state = new SimulationState({ zones: [], pairLatency: new Map() });
-      const result = ctrl.tryPlace(state, "server", { x: 0, y: 0 }, null);
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.componentId).toMatch(/^sandbox-placed-/);
-      }
+      expect(() => ctrl.tryPlace(state, "server", { x: 0, y: 0 }, null)).toThrow(
+        /not implemented/,
+      );
     });
 
-    it("tryPlace generates unique IDs", () => {
+    it("tryUpgrade throws (not implemented)", () => {
       const ctrl = new SandboxModeController();
       const state = new SimulationState({ zones: [], pairLatency: new Map() });
-      const r1 = ctrl.tryPlace(state, "server", { x: 0, y: 0 }, null);
-      const r2 = ctrl.tryPlace(state, "cache", { x: 1, y: 0 }, null);
-      expect(r1.ok && r2.ok).toBe(true);
-      if (r1.ok && r2.ok) {
-        expect(r1.componentId).not.toBe(r2.componentId);
-      }
-    });
-
-    it("tryUpgrade succeeds for existing capability", () => {
-      const ctrl = new SandboxModeController();
-      const state = new SimulationState({ zones: [], pairLatency: new Map() });
-      const comp = makeServerComponent();
-      state.placeComponent(comp);
-
-      const result = ctrl.tryUpgrade(state, comp.id, "cap-proc" as CapabilityId);
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.newPlayerTier).toBe(2); // 1 + 1
-      }
-    });
-
-    it("tryUpgrade fails for missing component", () => {
-      const ctrl = new SandboxModeController();
-      const state = new SimulationState({ zones: [], pairLatency: new Map() });
-      const result = ctrl.tryUpgrade(state, "nonexistent" as ComponentId, "cap-proc" as CapabilityId);
-      expect(result.ok).toBe(false);
-    });
-
-    it("tryUpgrade fails for missing capability on existing component", () => {
-      const ctrl = new SandboxModeController();
-      const state = new SimulationState({ zones: [], pairLatency: new Map() });
-      const comp = makeComponent({ id: "c-bare" });
-      state.placeComponent(comp);
-
-      const result = ctrl.tryUpgrade(state, comp.id, "nonexistent" as CapabilityId);
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.reason).toBe("capability_not_found");
-      }
+      expect(() =>
+        ctrl.tryUpgrade(state, "c-any" as ComponentId, "cap-proc" as CapabilityId),
+      ).toThrow(/not implemented/);
     });
   });
 

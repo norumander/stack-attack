@@ -73,7 +73,6 @@ describe("applyScenario", () => {
         pairLatencies: [{ zoneA: "us-east", zoneB: "eu-west", latency: 80 }],
         trafficSources: [
           {
-            targetEntryPointId: TARGET,
             requestType: "api_write",
             intensity: 20,
             pattern: "spike",
@@ -87,14 +86,45 @@ describe("applyScenario", () => {
         ],
       },
       ctrl,
+      TARGET,
     );
 
     expect(ctrl.getZones()).toEqual(["us-east", "eu-west"]);
     expect(ctrl.getZonePairLatencies().get("eu-west|us-east")).toBe(80);
     expect(ctrl.getTrafficSources()).toHaveLength(1);
     expect(ctrl.getTrafficSources()[0]!.config.requestType).toBe("api_write");
+    expect(ctrl.getTrafficSources()[0]!.targetEntryPointId).toBe(TARGET);
     expect(ctrl.getChaosQueue()).toHaveLength(1);
     expect(ctrl.getChaosQueue()[0]!.atTick).toBe(10);
+  });
+
+  it("retargets traffic sources to the supplied entry-point id", () => {
+    // Scenarios are load-time rebound because component ids drift across
+    // topology rebuilds — this guards the C1 regression.
+    const ctrl = new SandboxModeController();
+    const freshEntry = "c-entry-v2" as ComponentId;
+
+    applyScenario(
+      {
+        version: 1,
+        name: "Rebind",
+        description: "",
+        zones: ["default"],
+        pairLatencies: [],
+        trafficSources: [
+          { requestType: "api_read", intensity: 5, pattern: "steady" },
+          { requestType: "api_write", intensity: 10, pattern: "spike" },
+        ],
+        chaosSchedule: [],
+      },
+      ctrl,
+      freshEntry,
+    );
+
+    const sources = ctrl.getTrafficSources();
+    expect(sources).toHaveLength(2);
+    expect(sources[0]!.targetEntryPointId).toBe(freshEntry);
+    expect(sources[1]!.targetEntryPointId).toBe(freshEntry);
   });
 
   it("clears previous state before applying", () => {
@@ -122,6 +152,7 @@ describe("applyScenario", () => {
         chaosSchedule: [],
       },
       ctrl,
+      TARGET,
     );
 
     expect(ctrl.getZones()).toEqual(["new-zone"]);
@@ -189,7 +220,7 @@ describe("serializeScenario + parseScenario roundtrip", () => {
     const parsed = parseScenario(json);
 
     const ctrl2 = new SandboxModeController();
-    applyScenario(parsed, ctrl2);
+    applyScenario(parsed, ctrl2, TARGET);
     const reExported = exportScenario("Test", "Desc", ctrl2);
 
     expect(reExported.zones).toEqual([...original.zones]);
@@ -222,7 +253,7 @@ describe("parseScenario validation", () => {
       trafficSources: [{ intensity: 10 }],
       chaosSchedule: [],
     });
-    expect(() => parseScenario(json)).toThrow(/targetEntryPointId/);
+    expect(() => parseScenario(json)).toThrow(/requestType/);
   });
 
   it("rejects traffic source with negative intensity", () => {
@@ -230,7 +261,7 @@ describe("parseScenario validation", () => {
       version: 1,
       zones: ["default"],
       trafficSources: [
-        { targetEntryPointId: "c-entry", requestType: "api_read", intensity: -5, pattern: "steady" },
+        { requestType: "api_read", intensity: -5, pattern: "steady" },
       ],
       chaosSchedule: [],
     });
@@ -287,7 +318,7 @@ describe("full scenario with all features", () => {
     const parsed = parseScenario(json);
 
     const ctrl2 = new SandboxModeController();
-    applyScenario(parsed, ctrl2);
+    applyScenario(parsed, ctrl2, "c-entry-1" as ComponentId);
 
     expect(ctrl2.getZones()).toHaveLength(4);
     expect(ctrl2.getTrafficSources()).toHaveLength(2);

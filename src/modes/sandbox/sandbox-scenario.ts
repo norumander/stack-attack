@@ -1,7 +1,18 @@
 import type { ChaosEvent } from "../../core/types/chaos.js";
+import type { ComponentId } from "../../core/types/ids.js";
 import { zonePairKey } from "../../core/types/zone.js";
 import type { SandboxTrafficConfig } from "./sandbox-traffic-source.js";
 import type { SandboxModeController } from "./sandbox-mode-controller.js";
+
+/**
+ * A serialized traffic source. Omits `targetEntryPointId` because component
+ * ids are not stable across topology rebuilds — the caller of `applyScenario`
+ * supplies the live entry-point id for the topology the scenario lands on.
+ */
+export type SandboxScenarioTrafficSource = Omit<
+  SandboxTrafficConfig,
+  "targetEntryPointId"
+>;
 
 export interface SandboxScenario {
   readonly version: 1;
@@ -13,7 +24,7 @@ export interface SandboxScenario {
     readonly zoneB: string;
     readonly latency: number;
   }[];
-  readonly trafficSources: readonly SandboxTrafficConfig[];
+  readonly trafficSources: readonly SandboxScenarioTrafficSource[];
   readonly chaosSchedule: readonly {
     readonly event: ChaosEvent;
     readonly atTick: number;
@@ -23,7 +34,9 @@ export interface SandboxScenario {
 /**
  * Export the current sandbox controller state as a serializable scenario.
  * Captures zones, traffic source configs, and chaos schedule.
- * Omits runtime state (economy totals, metrics, request counters).
+ * Omits runtime state (economy totals, metrics, request counters) and
+ * strips `targetEntryPointId` from traffic sources — ids are not stable
+ * across topology rebuilds, so load retargets to the live entry point.
  */
 export function exportScenario(
   name: string,
@@ -39,9 +52,10 @@ export function exportScenario(
     pairLatencies.push({ zoneA, zoneB, latency });
   }
 
-  const trafficSources = controller
-    .getTrafficSources()
-    .map((source) => source.config);
+  const trafficSources = controller.getTrafficSources().map((source) => {
+    const { targetEntryPointId: _ignored, ...rest } = source.config;
+    return rest;
+  });
 
   const chaosSchedule = [...controller.getChaosQueue()];
 
@@ -59,11 +73,13 @@ export function exportScenario(
 /**
  * Apply a scenario to a controller, resetting its state to match.
  * Clears existing traffic sources, chaos queue, and zone topology
- * before applying the scenario's configuration.
+ * before applying the scenario's configuration. The caller supplies the
+ * current topology's entry-point id, which is bound to every traffic source.
  */
 export function applyScenario(
   scenario: SandboxScenario,
   controller: SandboxModeController,
+  entryPointId: ComponentId,
 ): void {
   // Clear existing state
   controller.clearTrafficSources();
@@ -76,9 +92,9 @@ export function applyScenario(
   }
   controller.setZones(scenario.zones, pairLatencyMap);
 
-  // Apply traffic sources
-  for (const config of scenario.trafficSources) {
-    controller.addTrafficSource(config);
+  // Apply traffic sources — retarget to the live entry-point id
+  for (const source of scenario.trafficSources) {
+    controller.addTrafficSource({ ...source, targetEntryPointId: entryPointId });
   }
 
   // Apply chaos schedule
@@ -119,9 +135,9 @@ export function parseScenario(json: string): SandboxScenario {
   }
 
   for (const source of parsed.trafficSources as Record<string, unknown>[]) {
-    if (!source.targetEntryPointId || !source.requestType || !source.pattern) {
+    if (!source.requestType || !source.pattern) {
       throw new Error(
-        "Each traffic source must have targetEntryPointId, requestType, and pattern",
+        "Each traffic source must have requestType and pattern",
       );
     }
     if (typeof source.intensity !== "number" || source.intensity < 0) {
