@@ -53,35 +53,51 @@ describe("ForwardingCapability", () => {
     expect(cap.canHandle("api_write")).toBe(true);
   });
 
-  it("declares configurable throughput per tier (default 20/tier)", () => {
+  it("getThroughputPerTick is undefined by default (unbounded)", () => {
     const cap = new ForwardingCapability(CAP_ID, { handledTypes: ["api_read"] });
-    expect(cap.getThroughputPerTick!(1)).toBe(20);
-    expect(cap.getThroughputPerTick!(2)).toBe(40);
-    expect(cap.getThroughputPerTick!(3)).toBe(60);
+    expect(cap.getThroughputPerTick).toBeUndefined();
   });
 
-  it("accepts configured throughputPerTier", () => {
+  it("getThroughputPerTick is defined when throughputPerTier option is set", () => {
     const cap = new ForwardingCapability(CAP_ID, {
       handledTypes: ["api_read"],
       throughputPerTier: 55,
     });
+    expect(cap.getThroughputPerTick).toBeDefined();
     expect(cap.getThroughputPerTick!(1)).toBe(55);
+    expect(cap.getThroughputPerTick!(2)).toBe(110);
   });
 
-  it("has upkeep scaling with tier", () => {
+  it("upkeep is zero (intermediary default)", () => {
     const cap = new ForwardingCapability(CAP_ID, { handledTypes: ["api_read"] });
-    expect(cap.getUpkeepCost(1)).toBe(1);
-    expect(cap.getUpkeepCost(2)).toBe(2);
-    expect(cap.getUpkeepCost(3)).toBe(4);
+    expect(cap.getUpkeepCost(1)).toBe(0);
+    expect(cap.getUpkeepCost(2)).toBe(0);
+    expect(cap.getUpkeepCost(3)).toBe(0);
   });
 
-  it("emits a source-side FORWARDED event for integration test counting", () => {
+  it("emits no events by default", () => {
     const cap = new ForwardingCapability(CAP_ID, { handledTypes: ["api_read"] });
+    const result = cap.process(req("api_read"), ctx);
+    expect(result.events).toEqual([]);
+  });
+
+  it("emits a source-side FORWARDED event when emitForwardedEvent is true", () => {
+    const cap = new ForwardingCapability(CAP_ID, {
+      handledTypes: ["api_read"],
+      emitForwardedEvent: true,
+    });
     const result = cap.process(req("api_read"), ctx);
     const fwd = result.events.find((e) => e.type === "FORWARDED");
     expect(fwd).toBeDefined();
     expect(fwd?.capabilityId).toBe(CAP_ID); // non-null → source-side
     expect(fwd?.componentId).toBe("c-1");
+  });
+
+  it("default constructor with no options accepts all types (teammate's intermediary default)", () => {
+    const cap = new ForwardingCapability(CAP_ID);
+    expect(cap.canHandle("api_read")).toBe(true);
+    expect(cap.canHandle("api_write")).toBe(true);
+    expect(cap.canHandle("anything")).toBe(true);
   });
 
   it("phase is PROCESS", () => {

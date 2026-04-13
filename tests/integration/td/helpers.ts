@@ -138,13 +138,20 @@ export function buildServer(id: string): {
   const ingress = makePort(ingressPortId, "ingress");
   const egress = makePort(egressPortId, "egress");
 
-  const processingCap = new ProcessingCapability("processing" as CapabilityId, { handledTypes: ["api_read"], emitProcessedEvent: true });
-  // Server's Forwarding handles writes only, with small throughput (12/tick)
-  // so Server's total budget = Processing(20) + Forwarding(12) = 32 < Wave 3's
-  // 50 req/tick → lone-server fails as required by the learning arc.
+  // TD Server: Processing handles reads only (`handledTypes: ["api_read"]`),
+  // bounded at 20/tick, emits PROCESSED events for runWave to count.
+  // Forwarding handles writes only, bounded at 12/tick, emits source-side
+  // FORWARDED events. Server total budget = 20 + 12 = 32 < Wave 3's 50 req/tick
+  // → lone-server loses as required by the learning arc.
+  const processingCap = new ProcessingCapability("processing" as CapabilityId, {
+    handledTypes: ["api_read"],
+    throughputPerTier: 20,
+    emitProcessedEvent: true,
+  });
   const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
     handledTypes: ["api_write"],
     throughputPerTier: 12,
+    emitForwardedEvent: true,
   });
   const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
 
@@ -189,7 +196,13 @@ export function buildDatabase(id: string): {
   const ingress = makePort(ingressPortId, "ingress");
   const egress = makePort(egressPortId, "egress");
 
-  const storageCap = new StorageCapability("storage" as CapabilityId, { emitProcessedEvent: true });
+  // TD Database: Storage bounded at 25/tick (default is 5, too low for Wave 3's
+  // 15 writes/tick — Database must not be the bottleneck). Emits PROCESSED
+  // events for runWave to count writes.
+  const storageCap = new StorageCapability("storage" as CapabilityId, {
+    throughputPerTier: 25,
+    emitProcessedEvent: true,
+  });
   const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
 
   const capabilities = new Map<CapabilityId, Capability>([
@@ -234,11 +247,12 @@ export function buildCache(id: string): {
 
   const cachingCap = new CachingCapability("caching" as CapabilityId);
   // Cache's Forwarding handles ALL traffic passing through (cache misses
-  // for reads, pass-through for writes), so needs high throughput (~55/tick
-  // to handle Wave 3's 50 req/tick).
+  // for reads, pass-through for writes), needs high throughput (~55/tick
+  // to handle Wave 3's 50 req/tick). Emits source-side FORWARDED events.
   const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
     handledTypes: ["api_read", "api_write"],
     throughputPerTier: 55,
+    emitForwardedEvent: true,
   });
   const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
 
@@ -296,10 +310,12 @@ export function buildLoadBalancer(
 
   const routingCap = new RoutingCapability("routing" as CapabilityId);
   // LB's Forwarding handles ALL inbound traffic with high throughput
-  // (~55/tick) — it's the pass-through pipe feeding both servers.
+  // (~55/tick) — pass-through pipe feeding both servers. Emits source-side
+  // FORWARDED events for runWave.
   const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
     handledTypes: ["api_read", "api_write"],
     throughputPerTier: 55,
+    emitForwardedEvent: true,
   });
   const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
 
