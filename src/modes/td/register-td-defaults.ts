@@ -7,12 +7,20 @@ import { MonitoringCapability } from "@capabilities/monitoring/monitoring-capabi
 import { StorageCapability } from "@capabilities/storage/storage-capability.js";
 import { CachingCapability } from "@capabilities/caching/caching-capability.js";
 import { RoutingCapability } from "@capabilities/routing/routing-capability.js";
-import { SERVER_ENTRY, DATABASE_ENTRY, CACHE_ENTRY, LOAD_BALANCER_ENTRY } from "./td-component-entries.js";
+import {
+  SERVER_ENTRY,
+  DATABASE_ENTRY,
+  CACHE_ENTRY,
+  LOAD_BALANCER_ENTRY,
+  CLIENT_ENTRY,
+} from "./td-component-entries.js";
 
 /**
- * Populate the capability and component registries with the TD-mode
- * defaults. Called once at the start of an integration test / game
- * session to bootstrap what's available for the current stage.
+ * Populate the capability and component registries with the TD-mode defaults.
+ *
+ * Stage 3b: factory options match tests/integration/td/helpers.ts:buildX
+ * exactly, so dashboard-placed components have the same runtime behavior
+ * as harness-built components in the wave tests.
  */
 export function registerTDDefaults(
   capRegistry: CapabilityRegistry,
@@ -20,28 +28,40 @@ export function registerTDDefaults(
 ): void {
   capRegistry.register({
     id: "processing" as CapabilityId,
-    factory: () => new ProcessingCapability("processing" as CapabilityId),
-  });
-  capRegistry.register({
-    id: "forwarding" as CapabilityId,
-    // Default factory registers a generic "forwards everything" instance.
-    // Integration tests build components via tests/integration/td/helpers.ts
-    // (buildServer, buildCache, etc.) which construct per-instance
-    // ForwardingCapability with appropriate throughputPerTier values.
-    // The registry instance is only used by compRegistry.validate() —
-    // never instantiated for actual wave simulation in Stage 3a.
     factory: () =>
-      new ForwardingCapability("forwarding" as CapabilityId, {
-        handledTypes: ["api_read", "api_write"],
+      new ProcessingCapability("processing" as CapabilityId, {
+        handledTypes: ["api_read"],
+        throughputPerTier: 20,
+        emitProcessedEvent: true,
       }),
   });
   capRegistry.register({
-    id: "monitoring" as CapabilityId,
-    factory: () => new MonitoringCapability("monitoring" as CapabilityId),
+    id: "forwarding" as CapabilityId,
+    factory: () =>
+      new ForwardingCapability("forwarding" as CapabilityId, {
+        handledTypes: ["api_write"],
+        throughputPerTier: 12,
+        emitForwardedEvent: true,
+      }),
+  });
+  // forwarding-pipe is the Cache/LB/Client variant: handles all traffic at
+  // ~55/tick. Distinct id so it can be registered as a separate factory.
+  capRegistry.register({
+    id: "forwarding-pipe" as CapabilityId,
+    factory: () =>
+      new ForwardingCapability("forwarding-pipe" as CapabilityId, {
+        handledTypes: ["api_read", "api_write"],
+        throughputPerTier: 55,
+        emitForwardedEvent: true,
+      }),
   });
   capRegistry.register({
     id: "storage" as CapabilityId,
-    factory: () => new StorageCapability("storage" as CapabilityId),
+    factory: () =>
+      new StorageCapability("storage" as CapabilityId, {
+        throughputPerTier: 25,
+        emitProcessedEvent: true,
+      }),
   });
   capRegistry.register({
     id: "caching" as CapabilityId,
@@ -51,7 +71,12 @@ export function registerTDDefaults(
     id: "routing" as CapabilityId,
     factory: () => new RoutingCapability("routing" as CapabilityId),
   });
+  capRegistry.register({
+    id: "monitoring" as CapabilityId,
+    factory: () => new MonitoringCapability("monitoring" as CapabilityId),
+  });
 
+  compRegistry.register(CLIENT_ENTRY);
   compRegistry.register(SERVER_ENTRY);
   compRegistry.register(DATABASE_ENTRY);
   compRegistry.register(CACHE_ENTRY);

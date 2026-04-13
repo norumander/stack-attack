@@ -58,7 +58,7 @@ export const CACHE_ENTRY: ComponentRegistryEntry = {
   description: "Remembers recent responses so your database doesn't get hammered twice.",
   capabilities: [
     { id: "caching" as CapabilityId, defaultTier: 1, maxTier: 3 },
-    { id: "forwarding" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "forwarding-pipe" as CapabilityId, defaultTier: 1, maxTier: 3 },
     { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
   ],
   ports: [
@@ -77,7 +77,7 @@ export const LOAD_BALANCER_ENTRY: ComponentRegistryEntry = {
   description: "Splits traffic across multiple servers so no single one gets overwhelmed.",
   capabilities: [
     { id: "routing" as CapabilityId, defaultTier: 1, maxTier: 3 },
-    { id: "forwarding" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "forwarding-pipe" as CapabilityId, defaultTier: 1, maxTier: 3 },
     { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
   ],
   ports: [
