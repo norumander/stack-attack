@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { Engine } from "@core/engine/engine";
 import { SimulationState } from "@core/state/simulation-state";
 import { Component } from "@core/component/component";
-import { ProcessingCapability } from "@capabilities/processing/processing-capability";
+import { TestForwardingCapability, RespondingCapability } from "@harness/test-capabilities";
 import { NoOpModeController } from "@harness/noop-mode-controller";
 import type {
   CapabilityId,
@@ -77,9 +77,7 @@ describe("Engine walking skeleton", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
 
     const clientEgress = mkPort("p-c-out", "egress");
-    const clientCap = new ProcessingCapability("cap-client" as CapabilityId, {
-      outcomeKind: "FORWARD",
-    });
+    const clientCap = new TestForwardingCapability("cap-client" as CapabilityId);
     const clientCaps = new Map<CapabilityId, Capability>([
       ["cap-client" as CapabilityId, clientCap],
     ]);
@@ -87,9 +85,7 @@ describe("Engine walking skeleton", () => {
     const client = mkComp("c-client", [clientEgress], clientCaps, clientTiers);
 
     const serverIngress = mkPort("p-s-in", "ingress");
-    const serverCap = new ProcessingCapability("cap-proc" as CapabilityId, {
-      outcomeKind: "RESPOND",
-    });
+    const serverCap = new RespondingCapability("cap-proc" as CapabilityId);
     const caps = new Map<CapabilityId, Capability>([
       ["cap-proc" as CapabilityId, serverCap],
     ]);
@@ -134,9 +130,7 @@ describe("Engine walking skeleton", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
 
     const clientEgress = mkPort("p-c-out", "egress");
-    const clientCap = new ProcessingCapability("cap-client" as CapabilityId, {
-      outcomeKind: "FORWARD",
-    });
+    const clientCap = new TestForwardingCapability("cap-client" as CapabilityId);
     const clientCaps = new Map<CapabilityId, Capability>([
       ["cap-client" as CapabilityId, clientCap],
     ]);
@@ -144,9 +138,7 @@ describe("Engine walking skeleton", () => {
     const client = mkComp("c-client", [clientEgress], clientCaps, clientTiers);
 
     const serverIngress = mkPort("p-s-in", "ingress");
-    const cap = new ProcessingCapability("cap-proc" as CapabilityId, {
-      outcomeKind: "RESPOND",
-    });
+    const cap = new RespondingCapability("cap-proc" as CapabilityId);
     const server = mkComp(
       "c-server",
       [serverIngress],
