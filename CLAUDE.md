@@ -10,19 +10,29 @@ The game must stand on its own as a strategy game first. The learning is the lon
 
 ## Implementation status
 
-**Current stage:** Phase 1, Stage 2c complete. 406 tests, typecheck clean.
+**Current stage:** Phase 1, Stage 3a complete. 466 tests, typecheck clean.
 
-**What Stage 2c delivered** (merged into `main`):
-- `EngineBufferable` gains `peekBuffered` + `removeRequest`; `checkTTL` Scan 3 expires buffered requests; cascade functions scan bufferables for siblings/children.
-- SCALE side effects processed in `deliverStaged` with `minInstances`/`maxInstances` clamping and `SCALED` event emission; per-component `instanceCount` in metrics snapshot.
-- `selectEgressConnection` computes real `effectiveTier` via `modeController`; new `RoutingCapability` in `src/capabilities/routing/` with T1 round-robin / T2 least-load / T3 condition-weighted.
+**What Stage 3a delivered** (merged into `main`):
+- 5 production capabilities: `ProcessingCapability` (rewritten from Stage 1 stub — reads only, bounded throughput), `ForwardingCapability` (configurable `handledTypes` + `throughputPerTier`, emits source-side FORWARDED events), `StorageCapability` (writes only), `CachingCapability` (INTERCEPT, hit=RESPOND / miss=PASS, FIFO eviction, cache-on-miss shortcut), `MonitoringCapability` (OBSERVE ceremonial).
+- 4 registered component types in `src/modes/td/td-component-entries.ts`: Server (Processing + Forwarding + Monitoring), Database (Storage + Monitoring), Cache (Caching + Forwarding + Monitoring), LoadBalancer (Routing + Forwarding + Monitoring). Bootstrap via `registerTDDefaults()`.
+- New `src/modes/td/` mode stack: `TDEconomy`, `TDTrafficSource` (distinguishable payload pool for realistic cache working set), `TDModeController` (full `ModeController` interface; `evaluateOutcome` returns proper `OutcomeReport { verdict, score, notes }`).
+- 3 wave definitions: `WAVE_1` (10 req/tick reads), `WAVE_2` (25 req/tick 70/30 mix), `WAVE_3` (50 req/tick, TTL 8).
+- 4 integration tests in `tests/integration/td/`: Wave 1 passes with single Server, Wave 2 passes with Server→Database + write-routing verified via capability-emitted FORWARDED events at source, Wave 3 lone-server **loses** as required, Wave 3 cache-rescue and LB-rescue **both win** (learning arc validated).
+- Throughput tuning: Server = Processing(20) + Forwarding-for-writes(12) = 32/tick; Cache/LB Forwarding = 55/tick; Database Storage = 25/tick. Wave 3 cache rescue hits ~65% (682 hits of 1050 reads); LB rescue distributes 49.9%/50.1% round-robin.
+- Zero engine modifications — all new behavior lives in capabilities and mode code.
 
-**Next:** Stage 3a — Wave 1–3 playable headless slice. Spec and plan merged at `e5ddde6` / `cdd0c5d`. 28 tasks across three vertical slices (Slice A: Wave 1 infrastructure + `ProcessingCapability` production rewrite + `ForwardingCapability` + TD mode stack; Slice B: `StorageCapability` + Wave 2; Slice C: `CachingCapability` + Cache + LoadBalancer + Wave 3 learning arc). Exits when four integration tests are green: Wave 1 passes trivially, Wave 2 passes with Server+DB + write-routing verified, Wave 3 lone-server loses, Wave 3 Cache-rescue and LB-rescue both win.
+**Stage 3a engine contract gotchas**:
+- **`PROCESSED` events are capability-emitted, never engine-emitted.** The engine declares `"PROCESSED"` in `RequestEventType` but never emits one. `ProcessingCapability` and `StorageCapability` emit their own PROCESSED events inside `process()` so integration tests can count "who handled this request." If a capability returns `events: []`, nothing counts it as processed.
+- **`FORWARDED` events come from two sources.** The engine's `deliverStaged` emits a `FORWARDED` event at the target component with `capabilityId: null` (delivery-side). `ForwardingCapability` emits its own `FORWARDED` at the source component with `capabilityId: this.id` (source-side). Integration test helpers filter `ev.capabilityId !== null` to count source-side "who originated this forward."
+- **PASS at PROCESS phase is a silent drop.** `deliverStaged`'s switch statement has `default: return false` for any outcome that isn't RESPOND/FORWARD/DROP/QUEUE_HOLD. A component whose PROCESS phase has no matching `canHandle` capability produces `outcome: PASS` and the request vanishes with no event. This is why Stage 3a needs `ForwardingCapability` as an explicit primitive — "let the request fall through to egress" is not a pipeline behavior.
+- **`componentThroughputPerTick` sums all PROCESS capabilities on a component.** A Server with `ProcessingCapability(throughput=20)` + `ForwardingCapability(throughput=12)` has a total budget of 32 req/tick, shared between reads and writes. `ForwardingCapability` is configurable per-instance via `throughputPerTier` so the same class can contribute 12 on a Server (writes only) or 55 on a LoadBalancer (all traffic).
+- **Registry-instantiated capability instances are ceremony in Stage 3a.** Integration tests build components via `buildServer` / `buildDatabase` / `buildCache` / `buildLoadBalancer` helpers in `tests/integration/td/helpers.ts`, which construct real `Component` objects with per-instance capability configuration. The registry factories (in `registerTDDefaults`) are only exercised by `ComponentRegistry.validate()` — they never run in an actual wave simulation.
+- **`SandboxModeController.tryPlace` and `TDModeController.tryPlace` are stubs.** They increment counters and return fake IDs without touching `state.components`. Integration tests place components directly via `state.placeComponent()`. `tryPlace` exists for eventual UI-driven placement but is not exercised at test time.
 
-**Candidate work after Stage 3a** (no specs yet):
-- **Intra-wave satisfaction pressure.** Current design gates on `dropThreshold` at wave-end only. No mid-wave "user satisfaction bar" / lives / per-drop revenue penalty. Better designed once the UI can show live feedback — needs its own brainstorm to choose between satisfaction bar, lives-based game-over, and per-drop economic cost. Tracking issue.
-- **UI stage.** React + Pixi.js rendering of engine state. The whole point of Stage 3a is to make Stage UI possible on a proven engine.
-- **Remaining ~18 capabilities + ~9 components** from `component-architecture.md`. Probably Stage 3b+ depending on what UI work surfaces as needed.
+**Next:** Stage 3b — TBD. Candidates (no spec yet):
+- **UI stage** (React + Pixi.js). The whole point of Stage 3a was to prove the engine was worth rendering. Now validated.
+- **Intra-wave satisfaction pressure.** Stage 3a gates on `dropThreshold` at wave-end only. No mid-wave satisfaction bar / lives / per-drop revenue penalty. Needs its own brainstorm to choose the mechanic — best designed once the UI can show live feedback.
+- **Remaining ~18 capabilities + ~9 components** from `component-architecture.md`: Auth, RateLimit, CircuitBreaker, Replication, Sharding, Search, Streaming, Blob, Batch, Queue-production, Filter, GeoRouting, AutoScale, SSL, Compression, Retry, Registration, HealthCheck, Logging + CDN, APIGateway, ServiceRegistry, Worker, CircuitBreaker component, DNSGlobalTrafficManager, BlobStorage, StreamingMediaServer, Message Queue.
 
 **History:** Stage-by-stage detail lives in `docs/superpowers/specs/` and `docs/superpowers/plans/` (see nav hub below).
 

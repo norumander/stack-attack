@@ -47,3 +47,17 @@ export const WAVE_2: TDWaveDefinition = {
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
   readKeyPoolSize: 20,
 };
+
+export const WAVE_3: TDWaveDefinition = {
+  id: 3,
+  name: "Traffic Spikes",
+  startingBudget: 600,
+  intensity: 50,
+  composition: new Map([["api_read", 0.7], ["api_write", 0.3]]),
+  duration: 30,
+  ttl: 8,
+  availableComponents: ["server", "database", "cache", "load_balancer"],
+  dropThreshold: 0.05,
+  revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
+  readKeyPoolSize: 15, // Pool=15 vs Cache capacity=10 → ~67% hit rate target
+};

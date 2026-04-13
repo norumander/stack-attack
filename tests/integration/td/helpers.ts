@@ -8,6 +8,8 @@ import { ProcessingCapability } from "@capabilities/processing/processing-capabi
 import { ForwardingCapability } from "@capabilities/forwarding/forwarding-capability";
 import { MonitoringCapability } from "@capabilities/monitoring/monitoring-capability";
 import { StorageCapability } from "@capabilities/storage/storage-capability";
+import { CachingCapability } from "@capabilities/caching/caching-capability";
+import { RoutingCapability } from "@capabilities/routing/routing-capability";
 import { makePort, makeConnection } from "@harness/fixtures";
 import type { Capability } from "@core/capability/capability";
 import type { CapabilityId, ComponentId } from "@core/types/ids";
@@ -217,9 +219,118 @@ export function buildDatabase(id: string): {
   return { component, ingressPortId, egressPortId };
 }
 
-// Placeholders for later slices:
-// export function buildCache(id: string): ... (Slice C)
-// export function buildLoadBalancer(id: string): ... (Slice C)
+/**
+ * Build a Cache component with Caching (INTERCEPT) + Forwarding (all traffic) + Monitoring.
+ */
+export function buildCache(id: string): {
+  component: Component;
+  ingressPortId: string;
+  egressPortId: string;
+} {
+  const ingressPortId = `${id}-in`;
+  const egressPortId = `${id}-out`;
+  const ingress = makePort(ingressPortId, "ingress");
+  const egress = makePort(egressPortId, "egress");
+
+  const cachingCap = new CachingCapability("caching" as CapabilityId);
+  // Cache's Forwarding handles ALL traffic passing through (cache misses
+  // for reads, pass-through for writes), so needs high throughput (~55/tick
+  // to handle Wave 3's 50 req/tick).
+  const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
+    handledTypes: ["api_read", "api_write"],
+    throughputPerTier: 55,
+  });
+  const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
+
+  const capabilities = new Map<CapabilityId, Capability>([
+    ["caching" as CapabilityId, cachingCap],
+    ["forwarding" as CapabilityId, forwardingCap],
+    ["monitoring" as CapabilityId, monitoringCap],
+  ]);
+  const tiers = new Map<CapabilityId, number>([
+    ["caching" as CapabilityId, 1],
+    ["forwarding" as CapabilityId, 1],
+    ["monitoring" as CapabilityId, 1],
+  ]);
+
+  const component = new Component({
+    id: id as ComponentId,
+    type: "cache",
+    name: "Cache",
+    description: "",
+    capabilities,
+    initialTiers: tiers,
+    ports: [ingress, egress],
+    placementCost: 150,
+    position: { x: 0, y: 0 },
+    zone: null,
+    placementTick: 0,
+    conditionProfile: DEFAULT_CONDITION,
+  });
+
+  return { component, ingressPortId, egressPortId };
+}
+
+/**
+ * Build a LoadBalancer component with Routing (INTERCEPT) + Forwarding (all traffic) + Monitoring.
+ * egressCount controls how many egress ports (and downstream servers) can be wired.
+ */
+export function buildLoadBalancer(
+  id: string,
+  egressCount: number,
+): {
+  component: Component;
+  ingressPortId: string;
+  egressPortIds: string[];
+} {
+  const ingressPortId = `${id}-in`;
+  const ingress = makePort(ingressPortId, "ingress");
+
+  const egressPortIds: string[] = [];
+  const egressPorts = [];
+  for (let i = 0; i < egressCount; i++) {
+    const egressPortId = `${id}-out-${i}`;
+    egressPortIds.push(egressPortId);
+    egressPorts.push(makePort(egressPortId, "egress"));
+  }
+
+  const routingCap = new RoutingCapability("routing" as CapabilityId);
+  // LB's Forwarding handles ALL inbound traffic with high throughput
+  // (~55/tick) — it's the pass-through pipe feeding both servers.
+  const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
+    handledTypes: ["api_read", "api_write"],
+    throughputPerTier: 55,
+  });
+  const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
+
+  const capabilities = new Map<CapabilityId, Capability>([
+    ["routing" as CapabilityId, routingCap],
+    ["forwarding" as CapabilityId, forwardingCap],
+    ["monitoring" as CapabilityId, monitoringCap],
+  ]);
+  const tiers = new Map<CapabilityId, number>([
+    ["routing" as CapabilityId, 1],
+    ["forwarding" as CapabilityId, 1],
+    ["monitoring" as CapabilityId, 1],
+  ]);
+
+  const component = new Component({
+    id: id as ComponentId,
+    type: "load_balancer",
+    name: "Load Balancer",
+    description: "",
+    capabilities,
+    initialTiers: tiers,
+    ports: [ingress, ...egressPorts],
+    placementCost: 175,
+    position: { x: 0, y: 0 },
+    zone: null,
+    placementTick: 0,
+    conditionProfile: DEFAULT_CONDITION,
+  });
+
+  return { component, ingressPortId, egressPortIds };
+}
 
 /**
  * Wires a source component's egress port to a target component's ingress port.

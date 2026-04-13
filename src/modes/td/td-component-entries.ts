@@ -52,6 +52,40 @@ export const DATABASE_ENTRY: ComponentRegistryEntry = {
   conditionProfile: DEFAULT_CONDITION_PROFILE,
 };
 
-// Added in later slices:
-// export const CACHE_ENTRY: ComponentRegistryEntry = ...;
-// export const LOAD_BALANCER_ENTRY: ComponentRegistryEntry = ...;
+export const CACHE_ENTRY: ComponentRegistryEntry = {
+  type: "cache",
+  name: "Cache",
+  description: "Remembers recent responses so your database doesn't get hammered twice.",
+  capabilities: [
+    { id: "caching" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "forwarding" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+  ],
+  ports: [
+    { id: "p-in" as PortId, direction: "ingress", dataType: "http", capacity: 2, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "http", capacity: 1, connections: [] },
+  ],
+  placementCost: 150,
+  upgradeCostCurve: [150, 300, 600],
+  visual: { icon: "cache", color: "#F5A623", shape: "diamond" },
+  conditionProfile: DEFAULT_CONDITION_PROFILE,
+};
+
+export const LOAD_BALANCER_ENTRY: ComponentRegistryEntry = {
+  type: "load_balancer",
+  name: "Load Balancer",
+  description: "Splits traffic across multiple servers so no single one gets overwhelmed.",
+  capabilities: [
+    { id: "routing" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "forwarding" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+  ],
+  ports: [
+    { id: "p-in" as PortId, direction: "ingress", dataType: "http", capacity: 1, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "http", capacity: 4, connections: [] },
+  ],
+  placementCost: 175,
+  upgradeCostCurve: [175, 350, 700],
+  visual: { icon: "load-balancer", color: "#50C878", shape: "hexagon" },
+  conditionProfile: DEFAULT_CONDITION_PROFILE,
+};

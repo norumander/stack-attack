@@ -5,7 +5,9 @@ import { ProcessingCapability } from "@capabilities/processing/processing-capabi
 import { ForwardingCapability } from "@capabilities/forwarding/forwarding-capability.js";
 import { MonitoringCapability } from "@capabilities/monitoring/monitoring-capability.js";
 import { StorageCapability } from "@capabilities/storage/storage-capability.js";
-import { SERVER_ENTRY, DATABASE_ENTRY } from "./td-component-entries.js";
+import { CachingCapability } from "@capabilities/caching/caching-capability.js";
+import { RoutingCapability } from "@capabilities/routing/routing-capability.js";
+import { SERVER_ENTRY, DATABASE_ENTRY, CACHE_ENTRY, LOAD_BALANCER_ENTRY } from "./td-component-entries.js";
 
 /**
  * Populate the capability and component registries with the TD-mode
@@ -41,9 +43,19 @@ export function registerTDDefaults(
     id: "storage" as CapabilityId,
     factory: () => new StorageCapability("storage" as CapabilityId),
   });
+  capRegistry.register({
+    id: "caching" as CapabilityId,
+    factory: () => new CachingCapability("caching" as CapabilityId),
+  });
+  capRegistry.register({
+    id: "routing" as CapabilityId,
+    factory: () => new RoutingCapability("routing" as CapabilityId),
+  });
 
   compRegistry.register(SERVER_ENTRY);
   compRegistry.register(DATABASE_ENTRY);
+  compRegistry.register(CACHE_ENTRY);
+  compRegistry.register(LOAD_BALANCER_ENTRY);
 
   compRegistry.validate();
 }
