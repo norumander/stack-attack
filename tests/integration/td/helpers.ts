@@ -4,18 +4,16 @@ import { Component } from "@core/component/component";
 import { TDModeController } from "@modes/td/td-mode-controller";
 import { TDEconomy } from "@modes/td/td-economy";
 import type { TDWaveDefinition } from "@modes/td/td-waves";
-import { ProcessingCapability } from "@capabilities/processing/processing-capability";
 import { ForwardingCapability } from "@capabilities/forwarding/forwarding-capability";
 import { MonitoringCapability } from "@capabilities/monitoring/monitoring-capability";
-import { StorageCapability } from "@capabilities/storage/storage-capability";
-import { CachingCapability } from "@capabilities/caching/caching-capability";
 import { RoutingCapability } from "@capabilities/routing/routing-capability";
 import { makePort, makeConnection } from "@harness/fixtures";
 import { makeRng, bootTDRegistry } from "@harness/td-fixtures";
 import type { Capability } from "@core/capability/capability";
-import type { CapabilityId, ComponentId } from "@core/types/ids";
+import type { CapabilityId, ComponentId, PortId } from "@core/types/ids";
 import type { OutcomeReport } from "@core/types/outcome";
 import type { ConditionProfile } from "@core/types/condition";
+import type { ComponentRegistry } from "@core/registry/component-registry";
 
 const DEFAULT_CONDITION: ConditionProfile = {
   degradedThreshold: 0.7,
@@ -25,6 +23,22 @@ const DEFAULT_CONDITION: ConditionProfile = {
   degradedEffects: [{ kind: "latency_multiplier", factor: 1.5 }],
   criticalEffects: [{ kind: "drop_probability", p: 0.2 }],
 };
+
+/**
+ * Looks up a component's first ingress and egress port ids.
+ * Registry-minted TD Server/Database/Cache have exactly one of each.
+ */
+function singlePortIds(component: Component): {
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const ingress = component.ports.find((p) => p.direction === "ingress");
+  const egress = component.ports.find((p) => p.direction === "egress");
+  if (!ingress || !egress) {
+    throw new Error(`singlePortIds: missing port on ${component.type}`);
+  }
+  return { ingressPortId: ingress.id, egressPortId: egress.id };
+}
 
 export interface WaveRunResult {
   readonly outcome: OutcomeReport;
@@ -121,163 +135,40 @@ export function runWave(
 export { makeRng } from "@harness/td-fixtures";
 
 /**
- * Build a Server component with Processing + Forwarding(writes) + Monitoring.
+ * Build a Server component from the TD registry. Processing+Forwarding+Monitoring
+ * shape (read cap 20/tick, write forward 12/tick) comes from `registerTDDefaults`.
  */
-export function buildServer(id: string): {
+export function buildServer(compRegistry: ComponentRegistry): {
   component: Component;
-  ingressPortId: string;
-  egressPortId: string;
+  ingressPortId: PortId;
+  egressPortId: PortId;
 } {
-  const ingressPortId = `${id}-in`;
-  const egressPortId = `${id}-out`;
-  const ingress = makePort(ingressPortId, "ingress");
-  const egress = makePort(egressPortId, "egress");
-
-  // TD Server: Processing handles reads only (`handledTypes: ["api_read"]`),
-  // bounded at 20/tick, emits PROCESSED events for runWave to count.
-  // Forwarding handles writes only, bounded at 12/tick, emits source-side
-  // FORWARDED events. Server total budget = 20 + 12 = 32 < Wave 3's 50 req/tick
-  // → lone-server loses as required by the learning arc.
-  const processingCap = new ProcessingCapability("processing" as CapabilityId, {
-    handledTypes: ["api_read"],
-    throughputPerTier: 20,
-    emitProcessedEvent: true,
-  });
-  const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
-    handledTypes: ["api_write"],
-    throughputPerTier: 12,
-    emitForwardedEvent: true,
-  });
-  const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
-
-  const capabilities = new Map<CapabilityId, Capability>();
-  capabilities.set("processing" as CapabilityId, processingCap);
-  capabilities.set("forwarding" as CapabilityId, forwardingCap);
-  capabilities.set("monitoring" as CapabilityId, monitoringCap);
-
-  const tiers = new Map<CapabilityId, number>();
-  tiers.set("processing" as CapabilityId, 1);
-  tiers.set("forwarding" as CapabilityId, 1);
-  tiers.set("monitoring" as CapabilityId, 1);
-
-  const component = new Component({
-    id: id as ComponentId,
-    type: "server",
-    name: "Server",
-    description: "",
-    capabilities,
-    initialTiers: tiers,
-    ports: [ingress, egress],
-    placementCost: 100,
-    position: { x: 0, y: 0 },
-    zone: null,
-    placementTick: 0,
-    conditionProfile: DEFAULT_CONDITION,
-  });
-
-  return { component, ingressPortId, egressPortId };
+  const component = compRegistry.create("server", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
 }
 
 /**
- * Build a Database component with Storage + Monitoring.
+ * Build a Database component from the TD registry (Storage 25/tick + Monitoring).
  */
-export function buildDatabase(id: string): {
+export function buildDatabase(compRegistry: ComponentRegistry): {
   component: Component;
-  ingressPortId: string;
-  egressPortId: string;
+  ingressPortId: PortId;
+  egressPortId: PortId;
 } {
-  const ingressPortId = `${id}-in`;
-  const egressPortId = `${id}-out`;
-  const ingress = makePort(ingressPortId, "ingress");
-  const egress = makePort(egressPortId, "egress");
-
-  // TD Database: Storage bounded at 25/tick (default is 5, too low for Wave 3's
-  // 15 writes/tick — Database must not be the bottleneck). Emits PROCESSED
-  // events for runWave to count writes.
-  const storageCap = new StorageCapability("storage" as CapabilityId, {
-    throughputPerTier: 25,
-    emitProcessedEvent: true,
-  });
-  const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
-
-  const capabilities = new Map<CapabilityId, Capability>([
-    ["storage" as CapabilityId, storageCap],
-    ["monitoring" as CapabilityId, monitoringCap],
-  ]);
-  const tiers = new Map<CapabilityId, number>([
-    ["storage" as CapabilityId, 1],
-    ["monitoring" as CapabilityId, 1],
-  ]);
-
-  const component = new Component({
-    id: id as ComponentId,
-    type: "database",
-    name: "Database",
-    description: "",
-    capabilities,
-    initialTiers: tiers,
-    ports: [ingress, egress],
-    placementCost: 200,
-    position: { x: 0, y: 0 },
-    zone: null,
-    placementTick: 0,
-    conditionProfile: DEFAULT_CONDITION,
-  });
-
-  return { component, ingressPortId, egressPortId };
+  const component = compRegistry.create("database", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
 }
 
 /**
- * Build a Cache component with Caching (INTERCEPT) + Forwarding (all traffic) + Monitoring.
+ * Build a Cache component from the TD registry (Caching + forwarding-pipe 55/tick).
  */
-export function buildCache(id: string): {
+export function buildCache(compRegistry: ComponentRegistry): {
   component: Component;
-  ingressPortId: string;
-  egressPortId: string;
+  ingressPortId: PortId;
+  egressPortId: PortId;
 } {
-  const ingressPortId = `${id}-in`;
-  const egressPortId = `${id}-out`;
-  const ingress = makePort(ingressPortId, "ingress");
-  const egress = makePort(egressPortId, "egress");
-
-  const cachingCap = new CachingCapability("caching" as CapabilityId);
-  // Cache's Forwarding handles ALL traffic passing through (cache misses
-  // for reads, pass-through for writes), needs high throughput (~55/tick
-  // to handle Wave 3's 50 req/tick). Emits source-side FORWARDED events.
-  const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
-    handledTypes: ["api_read", "api_write"],
-    throughputPerTier: 55,
-    emitForwardedEvent: true,
-  });
-  const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
-
-  const capabilities = new Map<CapabilityId, Capability>([
-    ["caching" as CapabilityId, cachingCap],
-    ["forwarding" as CapabilityId, forwardingCap],
-    ["monitoring" as CapabilityId, monitoringCap],
-  ]);
-  const tiers = new Map<CapabilityId, number>([
-    ["caching" as CapabilityId, 1],
-    ["forwarding" as CapabilityId, 1],
-    ["monitoring" as CapabilityId, 1],
-  ]);
-
-  const component = new Component({
-    id: id as ComponentId,
-    type: "cache",
-    name: "Cache",
-    description: "",
-    capabilities,
-    initialTiers: tiers,
-    ports: [ingress, egress],
-    placementCost: 150,
-    position: { x: 0, y: 0 },
-    zone: null,
-    placementTick: 0,
-    conditionProfile: DEFAULT_CONDITION,
-  });
-
-  return { component, ingressPortId, egressPortId };
+  const component = compRegistry.create("cache", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
 }
 
 /**
