@@ -77,6 +77,8 @@ CLAUDE.md is a navigation hub. Pull detail from these when the task requires it:
 - **`docs/superpowers/plans/2026-04-11-stage-2b-condition-chaos-upkeep.md`** — Stage 2b implementation plan (16 TDD tasks).
 - **`docs/superpowers/specs/2026-04-12-stage-2c-ttl-scale-routing-design.md`** — Stage 2c bufferable TTL, SCALE processing, RoutingCapability contracts.
 - **`docs/superpowers/plans/2026-04-12-stage-2c-ttl-scale-routing.md`** — Stage 2c implementation plan (13 TDD tasks).
+- **`docs/superpowers/specs/2026-04-12-stage-3a-wave-1-3-playable-slice-design.md`** — Stage 3a playable slice contracts (ProcessingCapability rewrite, ForwardingCapability, Wave 1–3 learning arc). Revised twice post cold audit.
+- **`docs/superpowers/plans/2026-04-12-stage-3a-wave-1-3-playable-slice.md`** — Stage 3a 28-task implementation plan across three slices.
 
 ## Simulation tick (10 steps, fixed order for determinism)
 
@@ -131,14 +133,17 @@ React + TypeScript + Pixi.js planned for the UI stage (not yet built). Simulatio
 - `src/core/` — engine, state, component, capability, types, mode interfaces, registry
 - `src/core/engine/` — one file per tick step (29 files), plus helpers (rng, throughput, visit-order, etc.)
 - `src/modes/sandbox/` — `SandboxModeController`, zone management, scenario system
+- `src/modes/td/` — `TDModeController`, `TDEconomy`, `TDTrafficSource`, wave definitions, TD registry bootstrap
 - `src/capabilities/` — concrete capability implementations (e.g. `ProcessingCapability`)
+- `src/dashboard/` — Vite sandbox visualization app (Chart.js, topology presets, chaos panel)
 
 ## Development workflow
 
 ```bash
-pnpm test                              # run full suite (~3s, 406 tests)
+pnpm test                              # run full suite (~5s, 564 tests)
 pnpm test tests/unit/<name>.test.ts    # run a single file (~1s)
 pnpm typecheck                         # strict tsc --noEmit
+pnpm dev                               # sandbox dashboard on :5173
 git worktree add .worktrees/<branch> -b <branch>   # isolated feature work
 ```
 
@@ -165,5 +170,6 @@ git worktree add .worktrees/<branch> -b <branch>   # isolated feature work
 - **Specs and plans:** designs in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`. Phase 1 is built in sequential stages with explicit exit criteria — write the next stage's plan only after the previous stage merges and its interfaces are locked. For non-trivial specs/plans, run a cold audit loop: dispatch 2 parallel general-purpose agents with different focus angles (types/interfaces vs runtime/semantics), synthesize findings, fix inline, iterate until convergence (cap at 3 rounds). Caught real blockers on Stage 3a spec and plan.
 - **Phase 1 scope reminder:** pure TypeScript simulation. Vercel-plugin skill suggestions that fire on `package.json`/`tsconfig.json` writes are false positives in this phase.
 - **Worktrees:** project-local at `.worktrees/<branch-name>` (gitignored).
+- **`archive/systembuilder/`** contains a prior project iteration (a different game). Ignore it when grepping for patterns — its `CLAUDE.md` files, specs, and source are not authoritative for this repo. Scope searches with `grep -v archive/`.
 - **Before long work sessions:** `git fetch origin && git rev-list --count HEAD..origin/main` to check if teammates pushed. Don't assume linear history. Tag a rollback anchor (`git tag <stage>-pre-merge`) before non-trivial merges.
 - **Merge conflict pattern for capability classes:** when two tracks both rewrite a capability, extend via optional constructor flags rather than picking a winner. `{handledTypes?, throughputPerTier?, emit*Event?}` — defaults match the broader (sandbox/dashboard) usage path, the narrower (TD/test-tuned) usage opts in. `ProcessingCapability`, `ForwardingCapability`, `StorageCapability` follow this pattern.
