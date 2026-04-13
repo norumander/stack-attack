@@ -19,6 +19,7 @@ export class SimulationState {
   readonly pending: Map<ComponentId, Request[]> = new Map();
   readonly activeStreams: Map<RequestId, ActiveStream> = new Map();
   readonly requestLog: Map<RequestId, RequestEvent[]> = new Map();
+  readonly lastTickEvents: RequestEvent[] = [];
   readonly activeChaos: Map<string, ActiveChaosEntry> = new Map();
   readonly zoneTopology: ZoneTopology;
   currentTick = 0;
@@ -61,6 +62,7 @@ export class SimulationState {
     const arr = this.requestLog.get(requestId) ?? [];
     arr.push(event);
     this.requestLog.set(requestId, arr);
+    this.lastTickEvents.push(event);
   }
 
   enqueuePending(componentId: ComponentId, request: Request): void {
