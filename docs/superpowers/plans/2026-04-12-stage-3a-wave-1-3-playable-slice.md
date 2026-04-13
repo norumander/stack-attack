@@ -173,6 +173,9 @@ import type { CapabilityId } from "@core/types/ids";
 
 /**
  * Production ProcessingCapability — handles api_read requests, returns RESPOND.
+ * Emits a PROCESSED RequestEvent so the integration test helper can count
+ * reads handled per component. (The engine does NOT emit PROCESSED events
+ * itself — they're capability-level accounting.)
  * Declares getThroughputPerTick so componentThroughputPerTick returns a bounded
  * number (required for Stage 3a's Wave 3 lone-server failure mode).
  *
@@ -190,20 +193,29 @@ export class ProcessingCapability implements Capability {
     return requestType === "api_read";
   }
 
-  process(_request: Request, _context: ProcessContext): ProcessResult {
+  process(_request: Request, context: ProcessContext): ProcessResult {
     this.processedCount += 1;
     return {
       outcome: { kind: "RESPOND" },
       sideEffects: [],
-      events: [],
+      events: [
+        {
+          tick: context.currentTick,
+          componentId: context.componentId,
+          capabilityId: this.id,
+          connectionId: null,
+          type: "PROCESSED",
+          latencyAdded: 1,
+        },
+      ],
     };
   }
 
   getThroughputPerTick(tier: number): number {
     // Tuning target: lone Server at T1 must fail Wave 3 (50 req/tick mixed).
-    // Revisit during Slice C tuning.
-    const table: Record<number, number> = { 1: 20, 2: 35, 3: 60 };
-    return table[tier] ?? 20;
+    // Server = Processing(18) + Forwarding(12) = 30 budget; Wave 3 = 50 demand.
+    const table: Record<number, number> = { 1: 18, 2: 32, 3: 55 };
+    return table[tier] ?? 18;
   }
 
   getUpkeepCost(tier: number): number {
@@ -245,14 +257,16 @@ function req(type: string): Request {
   };
 }
 
-const ctx: ProcessContext = {
+// Minimal stub — capabilities mostly ignore context. `as unknown as` cast
+// is required because the real ProcessContext has 9 fields including a
+// DeterministicRng object (not a function) and a SimulationStateReader.
+// We provide only the fields the capability actually reads.
+const ctx = {
   currentTick: 0,
   componentId: "c-1" as ComponentId,
-  tier: 1,
   effectiveTier: 1,
-  rng: () => 0.5,
   activeCapabilityIds: new Set([CAP_ID]),
-};
+} as unknown as ProcessContext;
 
 describe("ProcessingCapability (production)", () => {
   it("claims api_read via canHandle", () => {
@@ -287,9 +301,18 @@ describe("ProcessingCapability (production)", () => {
 
   it("declares bounded throughput per tier", () => {
     const cap = new ProcessingCapability(CAP_ID);
-    expect(cap.getThroughputPerTick(1)).toBe(20);
-    expect(cap.getThroughputPerTick(2)).toBe(35);
-    expect(cap.getThroughputPerTick(3)).toBe(60);
+    expect(cap.getThroughputPerTick(1)).toBe(18);
+    expect(cap.getThroughputPerTick(2)).toBe(32);
+    expect(cap.getThroughputPerTick(3)).toBe(55);
+  });
+
+  it("emits a PROCESSED event for counting in integration tests", () => {
+    const cap = new ProcessingCapability(CAP_ID);
+    const result = cap.process(req("api_read"), ctx);
+    const processedEvent = result.events.find((e) => e.type === "PROCESSED");
+    expect(processedEvent).toBeDefined();
+    expect(processedEvent?.componentId).toBe("c-1");
+    expect(processedEvent?.capabilityId).toBe(CAP_ID);
   });
 
   it("has upkeep scaling with tier", () => {
@@ -451,14 +474,16 @@ function req(type: string): Request {
   };
 }
 
-const ctx: ProcessContext = {
+// Minimal stub — capabilities mostly ignore context. `as unknown as` cast
+// is required because the real ProcessContext has 9 fields including a
+// DeterministicRng object (not a function) and a SimulationStateReader.
+// We provide only the fields the capability actually reads.
+const ctx = {
   currentTick: 0,
   componentId: "c-1" as ComponentId,
-  tier: 1,
   effectiveTier: 1,
-  rng: () => 0.5,
   activeCapabilityIds: new Set([CAP_ID]),
-};
+} as unknown as ProcessContext;
 
 describe("ForwardingCapability", () => {
   it("claims only the configured handledTypes", () => {
@@ -481,11 +506,19 @@ describe("ForwardingCapability", () => {
     expect(cap.canHandle("api_write")).toBe(true);
   });
 
-  it("declares bounded throughput per tier", () => {
+  it("declares configurable throughput per tier (default 20/tier)", () => {
     const cap = new ForwardingCapability(CAP_ID, { handledTypes: ["api_read"] });
-    expect(cap.getThroughputPerTick(1)).toBe(40);
-    expect(cap.getThroughputPerTick(2)).toBe(80);
-    expect(cap.getThroughputPerTick(3)).toBe(160);
+    expect(cap.getThroughputPerTick(1)).toBe(20);
+    expect(cap.getThroughputPerTick(2)).toBe(40);
+    expect(cap.getThroughputPerTick(3)).toBe(60);
+  });
+
+  it("accepts configured throughputPerTier", () => {
+    const cap = new ForwardingCapability(CAP_ID, {
+      handledTypes: ["api_read"],
+      throughputPerTier: 55,
+    });
+    expect(cap.getThroughputPerTick(1)).toBe(55);
   });
 
   it("has upkeep scaling with tier", () => {
@@ -493,6 +526,15 @@ describe("ForwardingCapability", () => {
     expect(cap.getUpkeepCost(1)).toBe(1);
     expect(cap.getUpkeepCost(2)).toBe(2);
     expect(cap.getUpkeepCost(3)).toBe(4);
+  });
+
+  it("emits a source-side FORWARDED event for integration test counting", () => {
+    const cap = new ForwardingCapability(CAP_ID, { handledTypes: ["api_read"] });
+    const result = cap.process(req("api_read"), ctx);
+    const fwd = result.events.find((e) => e.type === "FORWARDED");
+    expect(fwd).toBeDefined();
+    expect(fwd?.capabilityId).toBe(CAP_ID); // non-null → source-side
+    expect(fwd?.componentId).toBe("c-1");
   });
 
   it("phase is PROCESS", () => {
@@ -522,6 +564,12 @@ import type { CapabilityId } from "@core/types/ids";
 
 export interface ForwardingCapabilityOptions {
   readonly handledTypes: readonly string[];
+  /**
+   * Per-tier throughput contribution. Configurable per-instance so that
+   * e.g. Server's Forwarding (writes only) can be small (12) while LB's
+   * Forwarding (all traffic) can be large (60). Default: 20 per tier.
+   */
+  readonly throughputPerTier?: number;
 }
 
 /**
@@ -529,6 +577,12 @@ export interface ForwardingCapabilityOptions {
  * type is in the configured handledTypes list. Used by Server (writes),
  * Cache (read misses), and LoadBalancer (all traffic) to move requests
  * to egress connections.
+ *
+ * Emits a FORWARDED RequestEvent at the source component (with the
+ * capability's own `capabilityId` attached). The engine ALSO emits a
+ * FORWARDED event at the target component when it delivers the request —
+ * that one has `capabilityId: null`. Integration tests distinguish the
+ * two: source-side forwards are events where `capabilityId !== null`.
  *
  * The engine does not auto-forward when a component's PROCESS phase produces
  * PASS (no matching capability); requests in that state are silently dropped
@@ -539,30 +593,40 @@ export class ForwardingCapability implements Capability {
   readonly phase = "PROCESS" as const;
   private forwardedCount = 0;
   private readonly handledTypes: ReadonlySet<string>;
+  private readonly throughputPerTier: number;
 
   constructor(
     readonly id: CapabilityId,
     options: ForwardingCapabilityOptions,
   ) {
     this.handledTypes = new Set(options.handledTypes);
+    this.throughputPerTier = options.throughputPerTier ?? 20;
   }
 
   canHandle(requestType: string): boolean {
     return this.handledTypes.has(requestType);
   }
 
-  process(_request: Request, _context: ProcessContext): ProcessResult {
+  process(_request: Request, context: ProcessContext): ProcessResult {
     this.forwardedCount += 1;
     return {
       outcome: { kind: "FORWARD" },
       sideEffects: [],
-      events: [],
+      events: [
+        {
+          tick: context.currentTick,
+          componentId: context.componentId,
+          capabilityId: this.id,
+          connectionId: null,
+          type: "FORWARDED",
+          latencyAdded: 0,
+        },
+      ],
     };
   }
 
   getThroughputPerTick(tier: number): number {
-    const table: Record<number, number> = { 1: 40, 2: 80, 3: 160 };
-    return table[tier] ?? 40;
+    return this.throughputPerTier * tier;
   }
 
   getUpkeepCost(tier: number): number {
@@ -639,14 +703,16 @@ function req(type: string): Request {
   };
 }
 
-const ctx: ProcessContext = {
+// Minimal stub — capabilities mostly ignore context. `as unknown as` cast
+// is required because the real ProcessContext has 9 fields including a
+// DeterministicRng object (not a function) and a SimulationStateReader.
+// We provide only the fields the capability actually reads.
+const ctx = {
   currentTick: 0,
   componentId: "c-1" as ComponentId,
-  tier: 1,
   effectiveTier: 1,
-  rng: () => 0.5,
   activeCapabilityIds: new Set([CAP_ID]),
-};
+} as unknown as ProcessContext;
 
 describe("MonitoringCapability", () => {
   it("claims any request type (canHandle=true)", () => {
@@ -1204,8 +1270,9 @@ export interface TDTrafficSourceOptions {
  * sees a realistic working set instead of collapsing to a single bucket.
  */
 export class TDTrafficSource implements TrafficSource {
+  // `targetEntryPointId` must be public — TrafficSource interface declares it readonly public.
+  readonly targetEntryPointId: ComponentId;
   private readonly wave: TDWaveDefinition;
-  private readonly targetEntryPointId: ComponentId;
   private readonly rng: () => number;
   private readonly readKeyPoolSize: number;
   private requestCounter = 0;
@@ -1482,14 +1549,15 @@ export class TDModeController implements ModeController {
   }
 
   getBuildConstraints(): BuildConstraints {
-    const constraints: BuildConstraints = {
-      availableComponentTypes: this.wave.availableComponents,
-    };
-    if (this.wave.maxPlacements !== undefined) {
-      (constraints as { maxPlacements?: number }).maxPlacements =
-        this.wave.maxPlacements;
-    }
-    return constraints;
+    // exactOptionalPropertyTypes: only include maxPlacements if set.
+    return this.wave.maxPlacements !== undefined
+      ? {
+          availableComponentTypes: this.wave.availableComponents,
+          maxPlacements: this.wave.maxPlacements,
+        }
+      : {
+          availableComponentTypes: this.wave.availableComponents,
+        };
   }
 
   getTrafficSource(): TrafficSource {
@@ -1622,19 +1690,19 @@ Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
 
 ```ts
 import type { ComponentRegistryEntry } from "@core/registry/component-registry";
-import type { CapabilityId } from "@core/types/ids";
+import type { CapabilityId, PortId } from "@core/types/ids";
+import type { ConditionProfile } from "@core/types/condition";
 
-const DEFAULT_CONDITION_PROFILE = {
+const DEFAULT_CONDITION_PROFILE: ConditionProfile = {
   degradedThreshold: 0.7,
   criticalThreshold: 0.3,
   decayRate: 0.05,
   recoveryRate: 0.02,
-  triggerWindow: 3,
   degradedEffects: [
-    { kind: "latency_bonus" as const, add: 1 },
+    { kind: "latency_multiplier", factor: 1.5 },
   ],
   criticalEffects: [
-    { kind: "drop_probability" as const, p: 0.2 },
+    { kind: "drop_probability", p: 0.2 },
   ],
 };
 
@@ -1648,13 +1716,13 @@ export const SERVER_ENTRY: ComponentRegistryEntry = {
     { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
   ],
   ports: [
-    { id: "p-in", direction: "ingress", dataType: "http", capacity: 1, connections: [] },
-    { id: "p-out", direction: "egress", dataType: "data", capacity: 2, connections: [] },
+    { id: "p-in" as PortId, direction: "ingress", dataType: "http", capacity: 1, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "data", capacity: 2, connections: [] },
   ],
   placementCost: 100,
   upgradeCostCurve: [100, 200, 400],
   visual: { icon: "server", color: "#4A90D9", shape: "rectangle" },
-  conditionProfile: DEFAULT_CONDITION_PROFILE as any, // Cast — the real ConditionProfile type lives in src/core/types/condition.ts; align if strict
+  conditionProfile: DEFAULT_CONDITION_PROFILE,
 };
 
 // Added in later slices:
@@ -1691,6 +1759,12 @@ export function registerTDDefaults(
   });
   capRegistry.register({
     id: "forwarding" as CapabilityId,
+    // Default factory registers a generic "forwards everything" instance.
+    // Integration tests build components via tests/integration/td/helpers.ts
+    // (buildServer, buildCache, etc.) which construct per-instance
+    // ForwardingCapability with appropriate throughputPerTier values.
+    // The registry instance is only used by registerTDDefaults.validate() —
+    // never instantiated for actual wave simulation in Stage 3a.
     factory: () =>
       new ForwardingCapability("forwarding" as CapabilityId, {
         handledTypes: ["api_read", "api_write"],
@@ -1798,8 +1872,7 @@ const DEFAULT_CONDITION: ConditionProfile = {
   criticalThreshold: 0.3,
   decayRate: 0.05,
   recoveryRate: 0.02,
-  triggerWindow: 3,
-  degradedEffects: [{ kind: "latency_bonus", add: 1 }],
+  degradedEffects: [{ kind: "latency_multiplier", factor: 1.5 }],
   criticalEffects: [{ kind: "drop_probability", p: 0.2 }],
 };
 
@@ -1853,12 +1926,17 @@ export function runWave(
   for (const events of state.requestLog.values()) {
     for (const ev of events) {
       eventCountsByType.set(ev.type, (eventCountsByType.get(ev.type) ?? 0) + 1);
-      if (ev.type === "FORWARDED") {
+      if (ev.type === "FORWARDED" && ev.capabilityId !== null) {
+        // Source-side FORWARDED: emitted by ForwardingCapability.process() with
+        // capabilityId set. Engine also emits FORWARDED at delivery time with
+        // capabilityId=null — we filter those out to get "who forwarded" counts.
         forwardedCountByComponent.set(
           ev.componentId,
           (forwardedCountByComponent.get(ev.componentId) ?? 0) + 1,
         );
       } else if (ev.type === "PROCESSED") {
+        // PROCESSED is capability-emitted (ProcessingCapability, StorageCapability).
+        // The engine does not emit PROCESSED events directly.
         processedCountByComponent.set(
           ev.componentId,
           (processedCountByComponent.get(ev.componentId) ?? 0) + 1,
@@ -1912,8 +1990,12 @@ export function buildServer(id: string): {
   const egress = makePort(egressPortId, "egress");
 
   const processingCap = new ProcessingCapability("processing" as CapabilityId);
+  // Server's Forwarding handles writes only, with small throughput (12/tick)
+  // so Server's total budget = Processing(18) + Forwarding(12) = 30 < Wave 3's
+  // 50 req/tick → lone-server fails as required by the learning arc.
   const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
     handledTypes: ["api_write"],
+    throughputPerTier: 12,
   });
   const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
 
@@ -2161,14 +2243,16 @@ function req(type: string): Request {
   };
 }
 
-const ctx: ProcessContext = {
+// Minimal stub — capabilities mostly ignore context. `as unknown as` cast
+// is required because the real ProcessContext has 9 fields including a
+// DeterministicRng object (not a function) and a SimulationStateReader.
+// We provide only the fields the capability actually reads.
+const ctx = {
   currentTick: 0,
   componentId: "c-1" as ComponentId,
-  tier: 1,
   effectiveTier: 1,
-  rng: () => 0.5,
   activeCapabilityIds: new Set([CAP_ID]),
-};
+} as unknown as ProcessContext;
 
 describe("StorageCapability", () => {
   it("claims api_write", () => {
@@ -2185,6 +2269,14 @@ describe("StorageCapability", () => {
     const cap = new StorageCapability(CAP_ID);
     const result = cap.process(req("api_write"), ctx);
     expect(result.outcome.kind).toBe("RESPOND");
+  });
+
+  it("emits a PROCESSED event for integration test counting", () => {
+    const cap = new StorageCapability(CAP_ID);
+    const result = cap.process(req("api_write"), ctx);
+    const ev = result.events.find((e) => e.type === "PROCESSED");
+    expect(ev).toBeDefined();
+    expect(ev?.componentId).toBe("c-1");
   });
 
   it("increments writeCount", () => {
@@ -2234,8 +2326,10 @@ import type { CapabilityId } from "@core/types/ids";
 
 /**
  * Production Storage — PROCESS phase, handles api_write, RESPOND outcome.
- * Stage 3a: no replication, no sharding, no query capability. Just the
- * minimum that lets writes reach a persistent component.
+ * Emits a PROCESSED event so integration tests can count writes handled
+ * per component. Stage 3a: no replication, no sharding, no query
+ * capability. Just the minimum that lets writes reach a persistent
+ * component.
  */
 export class StorageCapability implements Capability {
   readonly phase = "PROCESS" as const;
@@ -2247,12 +2341,21 @@ export class StorageCapability implements Capability {
     return requestType === "api_write";
   }
 
-  process(_request: Request, _context: ProcessContext): ProcessResult {
+  process(_request: Request, context: ProcessContext): ProcessResult {
     this.writeCount += 1;
     return {
       outcome: { kind: "RESPOND" },
       sideEffects: [],
-      events: [],
+      events: [
+        {
+          tick: context.currentTick,
+          componentId: context.componentId,
+          capabilityId: this.id,
+          connectionId: null,
+          type: "PROCESSED",
+          latencyAdded: 2,
+        },
+      ],
     };
   }
 
@@ -2315,13 +2418,13 @@ export const DATABASE_ENTRY: ComponentRegistryEntry = {
     { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
   ],
   ports: [
-    { id: "p-in", direction: "ingress", dataType: "data", capacity: 3, connections: [] },
-    { id: "p-out", direction: "egress", dataType: "data", capacity: 2, connections: [] },
+    { id: "p-in" as PortId, direction: "ingress", dataType: "data", capacity: 3, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "data", capacity: 2, connections: [] },
   ],
   placementCost: 200,
   upgradeCostCurve: [200, 400, 800],
   visual: { icon: "database", color: "#7B68EE", shape: "cylinder" },
-  conditionProfile: DEFAULT_CONDITION_PROFILE as any,
+  conditionProfile: DEFAULT_CONDITION_PROFILE,
 };
 ```
 
@@ -2620,14 +2723,16 @@ function req(type: string, payload: string, id = "r-1"): Request {
   };
 }
 
-const ctx: ProcessContext = {
+// Minimal stub — capabilities mostly ignore context. `as unknown as` cast
+// is required because the real ProcessContext has 9 fields including a
+// DeterministicRng object (not a function) and a SimulationStateReader.
+// We provide only the fields the capability actually reads.
+const ctx = {
   currentTick: 0,
   componentId: "c-1" as ComponentId,
-  tier: 1,
   effectiveTier: 1,
-  rng: () => 0.5,
   activeCapabilityIds: new Set([CAP_ID]),
-};
+} as unknown as ProcessContext;
 
 describe("CachingCapability", () => {
   it("passes non-read requests through", () => {
@@ -2821,13 +2926,13 @@ export const CACHE_ENTRY: ComponentRegistryEntry = {
     { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
   ],
   ports: [
-    { id: "p-in", direction: "ingress", dataType: "http", capacity: 2, connections: [] },
-    { id: "p-out", direction: "egress", dataType: "http", capacity: 1, connections: [] },
+    { id: "p-in" as PortId, direction: "ingress", dataType: "http", capacity: 2, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "http", capacity: 1, connections: [] },
   ],
   placementCost: 150,
   upgradeCostCurve: [150, 300, 600],
   visual: { icon: "cache", color: "#F5A623", shape: "diamond" },
-  conditionProfile: DEFAULT_CONDITION_PROFILE as any,
+  conditionProfile: DEFAULT_CONDITION_PROFILE,
 };
 
 export const LOAD_BALANCER_ENTRY: ComponentRegistryEntry = {
@@ -2840,13 +2945,13 @@ export const LOAD_BALANCER_ENTRY: ComponentRegistryEntry = {
     { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
   ],
   ports: [
-    { id: "p-in", direction: "ingress", dataType: "http", capacity: 1, connections: [] },
-    { id: "p-out", direction: "egress", dataType: "http", capacity: 4, connections: [] },
+    { id: "p-in" as PortId, direction: "ingress", dataType: "http", capacity: 1, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "http", capacity: 4, connections: [] },
   ],
   placementCost: 175,
   upgradeCostCurve: [175, 350, 700],
   visual: { icon: "load-balancer", color: "#50C878", shape: "hexagon" },
-  conditionProfile: DEFAULT_CONDITION_PROFILE as any,
+  conditionProfile: DEFAULT_CONDITION_PROFILE,
 };
 ```
 
@@ -2905,8 +3010,12 @@ export function buildCache(id: string): {
   const egress = makePort(egressPortId, "egress");
 
   const cachingCap = new CachingCapability("caching" as CapabilityId);
+  // Cache's Forwarding handles ALL traffic passing through (cache misses
+  // for reads, pass-through for writes), so needs high throughput (~55/tick
+  // to handle Wave 3's 50 req/tick).
   const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
     handledTypes: ["api_read", "api_write"],
+    throughputPerTier: 55,
   });
   const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
 
@@ -2956,8 +3065,11 @@ export function buildLoadBalancer(id: string, egressCount: number): {
   }
 
   const routingCap = new RoutingCapability("routing" as CapabilityId);
+  // LB's Forwarding handles ALL inbound traffic with high throughput
+  // (~55/tick) — it's the pass-through pipe feeding both servers.
   const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
     handledTypes: ["api_read", "api_write"],
+    throughputPerTier: 55,
   });
   const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
 
@@ -3041,7 +3153,7 @@ export const WAVE_3: TDWaveDefinition = {
   availableComponents: ["server", "database", "cache", "load_balancer"],
   dropThreshold: 0.05,
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
-  readKeyPoolSize: 20,
+  readKeyPoolSize: 15, // Pool=15 vs Cache capacity=10 → ~67% hit rate target
 };
 ```
 
