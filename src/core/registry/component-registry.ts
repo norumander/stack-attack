@@ -16,6 +16,10 @@ export interface ComponentRegistryEntry {
   type: string;
   name: string;
   description: string;
+  /** Stage 3c+: 1-2 paragraph role explanation for the TD info panel. */
+  longDescription?: string;
+  /** Stage 3c+: human-readable capability bullets for the TD info panel. */
+  capabilitiesHuman?: string[];
   capabilities: Array<{
     id: CapabilityId;
     defaultTier: number;
