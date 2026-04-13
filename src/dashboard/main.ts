@@ -483,8 +483,8 @@ function bootTDMode(): void {
   const compRegistry = new ComponentRegistry(capRegistry);
   registerTDDefaults(capRegistry, compRegistry);
 
-  // Seed the entry-point Client at (0,0).
-  const client = compRegistry.create("client", { x: 0, y: 0 }, null);
+  // Seed the entry-point Client on the left side of the grid (visible).
+  const client = compRegistry.create("client", { x: 2, y: 5 }, null);
   state.placeComponent(client);
 
   const economy = new TDEconomy({

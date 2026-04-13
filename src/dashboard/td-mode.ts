@@ -38,6 +38,7 @@ export function createTDDashboard(args: {
   );
 
   hudEl.hidden = false;
+  topologyContainer.classList.add("td-mode");
 
   const dash: TDDashboardState = {
     cursor: "idle",
@@ -66,36 +67,51 @@ export function createTDDashboard(args: {
     if (!type) return;
     dash.cursor = "placing";
     dash.placingType = type;
+    dash.connectingFromId = null;
     paletteButtons.forEach((b) => b.classList.remove("placing"));
     this.classList.add("placing");
+    rerenderTopology();
   }
   paletteButtons.forEach((btn) => btn.addEventListener("click", onPaletteClick));
 
   // === Topology click handler (delegated) ===
   function onTopologyClick(ev: MouseEvent): void {
-    if (controller.getPhase() !== "build") return;
+    if (controller.getPhase() !== "build") {
+      // eslint-disable-next-line no-console
+      console.log("[td] topology click ignored — phase is", controller.getPhase());
+      return;
+    }
     const targetEl = ev.target as HTMLElement;
 
     // CASE 1: clicked an existing component → connect or start connecting
     const componentEl = targetEl.closest<HTMLElement>("[data-component-id]");
     if (componentEl) {
       const id = componentEl.dataset["componentId"] as ComponentId;
+      // eslint-disable-next-line no-console
+      console.log("[td] component click", id, "cursor=", dash.cursor);
       if (dash.cursor === "connecting" && dash.connectingFromId !== null) {
-        // Complete a connection: clicked component is the source, stored id is target
-        const result = controller.tryConnect(state, id, dash.connectingFromId);
+        // Complete a connection. The convention: connectingFromId is the SOURCE
+        // (set when the user clicked the first component), the just-clicked
+        // component is the TARGET.
+        const result = controller.tryConnect(state, dash.connectingFromId, id);
         if (result.ok) {
+          // eslint-disable-next-line no-console
+          console.log("[td] tryConnect ok", result.connectionId);
           args.onConnect?.();
-          rerenderTopology();
         } else {
           // eslint-disable-next-line no-console
-          console.warn(`tryConnect failed: ${result.reason}`, result);
+          console.warn("[td] tryConnect failed:", result.reason, result);
         }
         dash.cursor = "idle";
         dash.connectingFromId = null;
+        rerenderTopology();
       } else {
         // Begin connecting from this component
         dash.cursor = "connecting";
         dash.connectingFromId = id;
+        // eslint-disable-next-line no-console
+        console.log("[td] connecting from", id, "— click another component to connect");
+        rerenderTopology();
       }
       return;
     }
@@ -109,25 +125,32 @@ export function createTDDashboard(args: {
       };
       const result = controller.tryPlace(state, dash.placingType, position, null);
       if (result.ok) {
+        // eslint-disable-next-line no-console
+        console.log("[td] tryPlace ok", result.componentId, "at", position);
         args.onPlace?.(result.componentId);
-        rerenderTopology();
-        // Auto-enter connecting mode with the new component as the to-be-connected target
-        dash.cursor = "connecting";
-        dash.connectingFromId = result.componentId;
       } else {
         // eslint-disable-next-line no-console
-        console.warn(`tryPlace failed: ${result.reason}`, result);
+        console.warn("[td] tryPlace failed:", result.reason, result);
       }
-      paletteButtons.forEach((b) => b.classList.remove("placing"));
+      // Return to idle after placement. The user clicks two components
+      // explicitly to draw a connection — no implicit auto-connect.
+      dash.cursor = "idle";
       dash.placingType = null;
+      paletteButtons.forEach((b) => b.classList.remove("placing"));
+      rerenderTopology();
       return;
     }
 
     // CASE 3: clicked empty space in idle mode → cancel any in-progress action
+    if (dash.cursor === "connecting") {
+      // eslint-disable-next-line no-console
+      console.log("[td] connecting cancelled (clicked empty)");
+    }
     dash.cursor = "idle";
     dash.placingType = null;
     dash.connectingFromId = null;
     paletteButtons.forEach((b) => b.classList.remove("placing"));
+    rerenderTopology();
   }
 
   topologyContainer.addEventListener("click", onTopologyClick);
@@ -142,9 +165,79 @@ export function createTDDashboard(args: {
     while (topologyContainer.firstChild) {
       topologyContainer.removeChild(topologyContainer.firstChild);
     }
+    // Status banner: show the player what action is in progress
+    const status = document.createElement("div");
+    status.className = "td-status";
+    if (dash.cursor === "placing" && dash.placingType !== null) {
+      status.textContent = `Placing ${dash.placingType} — click an empty cell`;
+    } else if (dash.cursor === "connecting") {
+      const fromName = dash.connectingFromId
+        ? state.components.get(dash.connectingFromId)?.type ?? "?"
+        : "?";
+      status.textContent = `Connecting from ${fromName} — click another component to wire it`;
+    } else if (controller.getPhase() === "build") {
+      status.textContent = "Click a palette button or click a component to start a connection";
+    } else {
+      status.textContent = `Phase: ${controller.getPhase().toUpperCase()}`;
+    }
+    topologyContainer.appendChild(status);
+
+    // SVG layer for connection lines (drawn behind components via z-index)
+    const svgNs = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNs, "svg");
+    svg.setAttribute("class", "td-connections-svg");
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", "100%");
+    svg.style.position = "absolute";
+    svg.style.left = "0";
+    svg.style.top = "0";
+    svg.style.pointerEvents = "none";
+    svg.style.zIndex = "1";
+
+    // Arrowhead marker
+    const defs = document.createElementNS(svgNs, "defs");
+    const marker = document.createElementNS(svgNs, "marker");
+    marker.setAttribute("id", "td-arrow");
+    marker.setAttribute("viewBox", "0 0 10 10");
+    marker.setAttribute("refX", "8");
+    marker.setAttribute("refY", "5");
+    marker.setAttribute("markerWidth", "6");
+    marker.setAttribute("markerHeight", "6");
+    marker.setAttribute("orient", "auto-start-reverse");
+    const arrowPath = document.createElementNS(svgNs, "path");
+    arrowPath.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+    arrowPath.setAttribute("fill", "#22c55e");
+    marker.appendChild(arrowPath);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+
+    // Draw one line per connection
+    for (const conn of state.connections.values()) {
+      const sourceComp = state.components.get(conn.source.componentId);
+      const targetComp = state.components.get(conn.target.componentId);
+      if (!sourceComp || !targetComp) continue;
+      const x1 = sourceComp.position.x * 40;
+      const y1 = sourceComp.position.y * 40;
+      const x2 = targetComp.position.x * 40;
+      const y2 = targetComp.position.y * 40;
+      const line = document.createElementNS(svgNs, "line");
+      line.setAttribute("x1", String(x1));
+      line.setAttribute("y1", String(y1));
+      line.setAttribute("x2", String(x2));
+      line.setAttribute("y2", String(y2));
+      line.setAttribute("stroke", "#22c55e");
+      line.setAttribute("stroke-width", "2");
+      line.setAttribute("marker-end", "url(#td-arrow)");
+      svg.appendChild(line);
+    }
+    topologyContainer.appendChild(svg);
+
     for (const [id, comp] of state.components) {
       const el = document.createElement("div");
       el.className = "td-comp";
+      if (dash.connectingFromId === id) {
+        el.classList.add("connecting-source");
+      }
       el.dataset["componentId"] = id;
       el.style.position = "absolute";
       el.style.left = `${comp.position.x * 40}px`;
@@ -172,6 +265,10 @@ export function createTDDashboard(args: {
     rerenderTopology,
     destroy: () => {
       hudEl.hidden = true;
+      topologyContainer.classList.remove("td-mode");
+      while (topologyContainer.firstChild) {
+        topologyContainer.removeChild(topologyContainer.firstChild);
+      }
       topologyContainer.removeEventListener("click", onTopologyClick);
       readyBtn.removeEventListener("click", onReady);
       paletteButtons.forEach((btn) => btn.removeEventListener("click", onPaletteClick));
