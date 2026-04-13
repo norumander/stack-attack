@@ -19,6 +19,7 @@ export class SimulationState {
   readonly pending: Map<ComponentId, Request[]> = new Map();
   readonly activeStreams: Map<RequestId, ActiveStream> = new Map();
   readonly requestLog: Map<RequestId, RequestEvent[]> = new Map();
+  /** Per-tick event view. Cleared at the start of Engine.tick(), filled via appendEvent. Consumers read between ticks. */
   readonly lastTickEvents: RequestEvent[] = [];
   readonly activeChaos: Map<string, ActiveChaosEntry> = new Map();
   readonly zoneTopology: ZoneTopology;
