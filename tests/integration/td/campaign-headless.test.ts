@@ -63,11 +63,12 @@ describe("TD campaign headless — full 3-wave registry path", () => {
     const w1Conn = tdc.tryConnect(state, client.id, w1Server.componentId);
     expect(w1Conn.ok).toBe(true);
 
-    // Fresh Engine per wave — constructor recomputes visitOrder from the
-    // components placed during this wave's build phase. Mirrors what a
-    // dashboard sim loop would do across a build → simulate handoff.
+    // Per-wave visitOrder refresh mirrors the dashboard's build → simulate
+    // handoff: `state.recomputeVisitOrder()` reuses the same Engine
+    // instance while picking up any components placed during this wave's
+    // build phase.
     tdc.advancePhase(state); // build → simulate
-    let engine = new Engine(state);
+    const engine = new Engine(state);
     runUntilDrained(state, tdc, engine);
     tdc.advancePhase(state); // simulate → assess
     const w1Outcome = tdc.evaluateOutcome(tdc.getCurrentWaveMetrics(state));
@@ -95,7 +96,7 @@ describe("TD campaign headless — full 3-wave registry path", () => {
     expect(w2Conn.ok).toBe(true);
 
     tdc.advancePhase(state); // build → simulate
-    engine = new Engine(state);
+    state.recomputeVisitOrder();
     runUntilDrained(state, tdc, engine);
     tdc.advancePhase(state); // simulate → assess
     const w2Outcome = tdc.evaluateOutcome(tdc.getCurrentWaveMetrics(state));
@@ -137,7 +138,7 @@ describe("TD campaign headless — full 3-wave registry path", () => {
     ).toBe(true);
 
     tdc.advancePhase(state); // build → simulate
-    engine = new Engine(state);
+    state.recomputeVisitOrder();
     runUntilDrained(state, tdc, engine);
     tdc.advancePhase(state); // simulate → assess
     const w3Outcome = tdc.evaluateOutcome(tdc.getCurrentWaveMetrics(state));

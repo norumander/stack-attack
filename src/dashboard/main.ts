@@ -707,11 +707,10 @@ function bootTDMode(): void {
     componentRegistry: compRegistry,
   });
 
-  // Engine is reconstructed each time phase enters simulate — visitOrder is
-  // computed only in the Engine constructor, and state.placeComponent does
-  // not update it, so without a fresh Engine newly-placed components are
-  // never visited.
-  let engine = new Engine(state);
+  // visitOrder is refreshed via state.recomputeVisitOrder() on each
+  // build→simulate transition (newly placed components are otherwise
+  // invisible to the engine's per-tick loop).
+  const engine = new Engine(state);
   tdEngine = engine;
   tdState = state;
   tdController = controller;
@@ -762,13 +761,11 @@ function bootTDMode(): void {
         // Snapshot the wave-start tick so the per-tick HUD can show
         // wave-relative tick numbers (rather than the engine's global tick).
         waveStartTick = state.currentTick;
-        // Rebuild engine so visitOrder picks up freshly-placed components,
-        // then swap it into the SimLoop via reset() (which also stops it).
-        engine = new Engine(state);
-        tdEngine = engine;
+        // Refresh visitOrder so freshly-placed components are visited.
+        state.recomputeVisitOrder();
         // eslint-disable-next-line no-console
         console.warn(
-          `[td-engine] reconstructed; visitOrder=[${state.visitOrder.join(",")}] components=${state.components.size} connections=${state.connections.size}`,
+          `[td-engine] visitOrder refreshed; [${state.visitOrder.join(",")}] components=${state.components.size} connections=${state.connections.size}`,
         );
         tdLoop?.reset(engine, state, controller);
         tdLoop?.play();
