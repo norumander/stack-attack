@@ -59,7 +59,17 @@ export class SandboxModeController implements ModeController {
   private readonly _pairLatency: Map<string, number> = new Map();
 
   getActiveCapabilities(component: ComponentReader): ReadonlySet<CapabilityId> {
-    return new Set(component.getCapabilityIds());
+    // Tier 0 means "locked / not yet unlocked" in the registry.
+    // Exclude tier-0 capabilities so locked ones (e.g. rate-limit at
+    // defaultTier 0 on Load Balancer) don't activate with zero-config
+    // and cause unexpected behavior.
+    const active = new Set<CapabilityId>();
+    for (const id of component.getCapabilityIds()) {
+      if (component.getPlayerTier(id) > 0) {
+        active.add(id);
+      }
+    }
+    return active;
   }
 
   getTierCap(_component: ComponentReader, _capabilityId: CapabilityId): number {

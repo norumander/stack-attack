@@ -74,9 +74,9 @@ describe("ProcessingCapability stub", () => {
     expect(cap.getUpkeepCost(3)).toBe(9);
   });
 
-  it("getThroughputPerTick returns tier * 10 (Stage 3)", () => {
+  it("getThroughputPerTick returns tier * 25 (Stage 3)", () => {
     const cap = new ProcessingCapability("cap-proc" as CapabilityId);
-    expect(cap.getThroughputPerTick(1)).toBe(10);
-    expect(cap.getThroughputPerTick(3)).toBe(30);
+    expect(cap.getThroughputPerTick(1)).toBe(25);
+    expect(cap.getThroughputPerTick(3)).toBe(75);
   });
 });

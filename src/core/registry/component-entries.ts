@@ -39,7 +39,7 @@ export const COMPONENT_ENTRIES: ComponentRegistryEntry[] = [
     type: "client",
     name: "Client",
     description: "Traffic entry point. Forwards requests into the architecture.",
-    capabilities: [],
+    capabilities: [cap("forwarding", 1, 1)],
     ports: [port("out", "egress", "http", 100)],
     placementCost: 0,
     upgradeCostCurve: [],
@@ -104,6 +104,7 @@ export const COMPONENT_ENTRIES: ComponentRegistryEntry[] = [
       cap("filter", 0, 2),
       cap("rate-limit", 0, 3),
       cap("routing", 1, 3),
+      cap("forwarding", 1, 1),
       cap("health-check", 1, 2),
       cap("monitoring", 1, 2),
     ],
@@ -134,6 +135,7 @@ export const COMPONENT_ENTRIES: ComponentRegistryEntry[] = [
     capabilities: [
       cap("filter", 1, 1),
       cap("caching", 1, 2),
+      cap("forwarding", 1, 1),
       cap("monitoring", 1, 2),
     ],
     ports: [port("in", "ingress", "http", 100), port("out", "egress", "http", 100)],
@@ -150,6 +152,7 @@ export const COMPONENT_ENTRIES: ComponentRegistryEntry[] = [
       cap("auth", 1, 2),
       cap("rate-limit", 1, 3),
       cap("routing", 1, 3),
+      cap("forwarding", 1, 1),
       cap("monitoring", 1, 2),
     ],
     ports: [port("in", "ingress", "http", 100), port("out", "egress", "http", 100)],
@@ -194,6 +197,7 @@ export const COMPONENT_ENTRIES: ComponentRegistryEntry[] = [
     description: "Prevents cascading failures. Opens circuit when downstream is unhealthy.",
     capabilities: [
       cap("circuit-breaker", 1, 3),
+      cap("forwarding", 1, 1),
       cap("monitoring", 1, 2),
     ],
     ports: [port("in", "ingress", "any", 100), port("out", "egress", "any", 100)],
@@ -208,6 +212,7 @@ export const COMPONENT_ENTRIES: ComponentRegistryEntry[] = [
     description: "Geographic routing to nearest healthy zone. Multi-region architecture enabler.",
     capabilities: [
       cap("geo-routing", 1, 2),
+      cap("forwarding", 1, 1),
       cap("health-check", 1, 2),
       cap("monitoring", 1, 2),
     ],

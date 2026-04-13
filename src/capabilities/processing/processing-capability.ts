@@ -55,7 +55,7 @@ export class ProcessingCapability implements Capability {
   }
 
   getThroughputPerTick(tier: number): number {
-    return tier * 10;
+    return tier * 25;
   }
 
   getUpkeepCost(tier: number): number {

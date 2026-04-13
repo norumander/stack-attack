@@ -24,6 +24,7 @@ import { RetryCapability } from "./retry/retry-capability.js";
 import { RoutingCapability } from "./routing/routing-capability.js";
 import { GeoRoutingCapability } from "./geo-routing/geo-routing-capability.js";
 import { AutoScaleCapability } from "./auto-scale/auto-scale-capability.js";
+import { ForwardingCapability } from "./forwarding/forwarding-capability.js";
 
 export function registerAllCapabilities(registry: CapabilityRegistry): void {
   type SubIface = "EngineConsultable" | "EngineBufferable" | "EnginePullable" | "InstanceDirectory";
@@ -58,6 +59,7 @@ export function registerAllCapabilities(registry: CapabilityRegistry): void {
 
   // PROCESS
   r("processing", () => new ProcessingCapability("processing" as CapabilityId));
+  r("forwarding", () => new ForwardingCapability("forwarding" as CapabilityId));
   r("storage", () => new StorageCapability("storage" as CapabilityId));
   r("search", () => new SearchCapability("search" as CapabilityId));
   r("query", () => new QueryCapability("query" as CapabilityId));

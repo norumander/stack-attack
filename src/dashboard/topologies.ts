@@ -1,11 +1,10 @@
 import { SimulationState } from "@core/state/simulation-state";
-import { Component } from "@core/component/component";
 import { SandboxModeController } from "@modes/sandbox/sandbox-mode-controller";
 import { Engine } from "@core/engine/engine";
-import { ProcessingCapability } from "@capabilities/processing/processing-capability";
-import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
-import type { Capability } from "@core/capability/capability";
-import type { CapabilityId, ComponentId } from "@core/types/ids";
+import { bootstrapRegistries } from "@core/registry/register-all";
+import { makeConnection } from "@harness/fixtures";
+import type { Component } from "@core/component/component";
+import type { ComponentId } from "@core/types/ids";
 
 export interface TopologyInfo {
   state: SimulationState;
@@ -16,214 +15,165 @@ export interface TopologyInfo {
   connections: { id: string; from: string; to: string }[];
 }
 
-function fwdCap(id: string): Map<CapabilityId, Capability> {
-  return new Map([[id as CapabilityId, new ProcessingCapability(id as CapabilityId, { outcomeKind: "FORWARD" })]]);
+const { components: registry } = bootstrapRegistries();
+
+function wire(
+  state: SimulationState,
+  connId: string,
+  from: Component,
+  to: Component,
+  opts: { bandwidth?: number; latency?: number } = {},
+): { id: string; from: string; to: string } {
+  const egressPort = from.ports.find((p) => p.direction === "egress")!;
+  const ingressPort = to.ports.find((p) => p.direction === "ingress")!;
+  const conn = makeConnection(
+    connId,
+    { componentId: from.id as string, portId: egressPort.id as string },
+    { componentId: to.id as string, portId: ingressPort.id as string },
+    opts,
+  );
+  egressPort.connections.push(conn.id);
+  ingressPort.connections.push(conn.id);
+  state.addConnection(conn);
+  return { id: connId, from: from.name, to: to.name };
 }
 
-function fwdTier(id: string): Map<CapabilityId, number> {
-  return new Map([[id as CapabilityId, 1]]);
+function compInfo(c: Component): { id: ComponentId; name: string; type: string } {
+  return { id: c.id, name: c.name, type: c.type };
 }
 
-function respCap(id: string): Map<CapabilityId, Capability> {
-  return new Map([[id as CapabilityId, new ProcessingCapability(id as CapabilityId, { outcomeKind: "RESPOND" })]]);
-}
-
-function respTier(id: string): Map<CapabilityId, number> {
-  return new Map([[id as CapabilityId, 1]]);
-}
-
+/**
+ * Server only — simplest topology. Traffic enters at the Server directly.
+ * Shows: throughput limits, upkeep costs, condition degradation under load.
+ */
 export function createSimpleTopology(): TopologyInfo {
   const controller = new SandboxModeController();
   const state = new SimulationState(controller.getInitialZoneTopology());
 
-  const clientEgress = makePort("p-c-out", "egress");
-  const client = makeComponent({ id: "client", type: "client", ports: [clientEgress], capabilities: fwdCap("cap-fwd"), tiers: fwdTier("cap-fwd") });
-
-  const serverIngress = makePort("p-s-in", "ingress");
-  const server = makeComponent({ id: "server", type: "server", ports: [serverIngress], capabilities: respCap("cap-resp"), tiers: respTier("cap-resp") });
-
-  state.placeComponent(client);
+  const server = registry.create("server", { x: 0, y: 0 }, "default");
   state.placeComponent(server);
 
-  const conn = makeConnection("cx-cs", { componentId: "client", portId: "p-c-out" }, { componentId: "server", portId: "p-s-in" });
-  clientEgress.connections.push(conn.id);
-  serverIngress.connections.push(conn.id);
-  state.addConnection(conn);
-
-  const engine = new Engine(state);
-
   return {
-    state, controller, engine,
-    entryPointId: "client" as ComponentId,
-    components: [
-      { id: "client" as ComponentId, name: "Client", type: "client" },
-      { id: "server" as ComponentId, name: "Server", type: "server" },
-    ],
-    connections: [{ id: "cx-cs", from: "Client", to: "Server" }],
+    state, controller, engine: new Engine(state),
+    entryPointId: server.id,
+    components: [compInfo(server)],
+    connections: [],
   };
 }
 
+/**
+ * Cache → Server. Traffic enters at Cache.
+ * Shows: cache hits intercept reads before they reach the server,
+ * cache misses fall through. Hit rate depends on key space vs capacity.
+ */
 export function createCacheTopology(): TopologyInfo {
   const controller = new SandboxModeController();
   const state = new SimulationState(controller.getInitialZoneTopology());
 
-  const clientEgress = makePort("p-c-out", "egress");
-  const client = makeComponent({ id: "client", type: "client", ports: [clientEgress], capabilities: fwdCap("cap-fwd-c"), tiers: fwdTier("cap-fwd-c") });
+  const cache = registry.create("cache", { x: 0, y: 0 }, "default");
+  const server = registry.create("server", { x: 1, y: 0 }, "default");
 
-  const cacheIngress = makePort("p-cache-in", "ingress");
-  const cacheEgress = makePort("p-cache-out", "egress");
-  const cache = makeComponent({ id: "cache", type: "cache", ports: [cacheIngress, cacheEgress], capabilities: fwdCap("cap-fwd-cache"), tiers: fwdTier("cap-fwd-cache") });
-
-  const serverIngress = makePort("p-s-in", "ingress");
-  const server = makeComponent({ id: "server", type: "server", ports: [serverIngress], capabilities: respCap("cap-resp"), tiers: respTier("cap-resp") });
-
-  state.placeComponent(client);
   state.placeComponent(cache);
   state.placeComponent(server);
 
-  const conn1 = makeConnection("cx-cc", { componentId: "client", portId: "p-c-out" }, { componentId: "cache", portId: "p-cache-in" }, { latency: 1 });
-  clientEgress.connections.push(conn1.id);
-  cacheIngress.connections.push(conn1.id);
-  state.addConnection(conn1);
-
-  const conn2 = makeConnection("cx-cs", { componentId: "cache", portId: "p-cache-out" }, { componentId: "server", portId: "p-s-in" }, { latency: 2 });
-  cacheEgress.connections.push(conn2.id);
-  serverIngress.connections.push(conn2.id);
-  state.addConnection(conn2);
-
-  const engine = new Engine(state);
+  const conns = [wire(state, "cx-cs", cache, server, { latency: 2 })];
 
   return {
-    state, controller, engine,
-    entryPointId: "client" as ComponentId,
-    components: [
-      { id: "client" as ComponentId, name: "Client", type: "client" },
-      { id: "cache" as ComponentId, name: "Cache", type: "cache" },
-      { id: "server" as ComponentId, name: "Server", type: "server" },
-    ],
-    connections: [
-      { id: "cx-cc", from: "Client", to: "Cache" },
-      { id: "cx-cs", from: "Cache", to: "Server" },
-    ],
+    state, controller, engine: new Engine(state),
+    entryPointId: cache.id,
+    components: [compInfo(cache), compInfo(server)],
+    connections: conns,
   };
 }
 
+/**
+ * Load Balancer → Server×2. Traffic enters at LB.
+ * Shows: round-robin distribution (T1), least-load (T2), condition-aware (T3).
+ * Kill one server to see routing adapt.
+ */
 export function createLoadBalancedTopology(): TopologyInfo {
   const controller = new SandboxModeController();
   const state = new SimulationState(controller.getInitialZoneTopology());
 
-  const clientEgress = makePort("p-c-out", "egress");
-  const client = makeComponent({ id: "client", type: "client", ports: [clientEgress], capabilities: fwdCap("cap-fwd-c"), tiers: fwdTier("cap-fwd-c") });
+  const lb = registry.create("load_balancer", { x: 0, y: 0 }, "default");
+  const server1 = registry.create("server", { x: 1, y: -1 }, "default");
+  const server2 = registry.create("server", { x: 1, y: 1 }, "default");
 
-  const lbIngress = makePort("p-lb-in", "ingress");
-  const lbEgress = makePort("p-lb-out", "egress");
-  const lb = makeComponent({ id: "lb", type: "load-balancer", ports: [lbIngress, lbEgress], capabilities: fwdCap("cap-fwd-lb"), tiers: fwdTier("cap-fwd-lb") });
-
-  const s1Ingress = makePort("p-s1-in", "ingress");
-  const server1 = makeComponent({ id: "server-1", type: "server", ports: [s1Ingress], capabilities: respCap("cap-resp-1"), tiers: respTier("cap-resp-1") });
-
-  const s2Ingress = makePort("p-s2-in", "ingress");
-  const server2 = makeComponent({ id: "server-2", type: "server", ports: [s2Ingress], capabilities: respCap("cap-resp-2"), tiers: respTier("cap-resp-2") });
-
-  state.placeComponent(client);
   state.placeComponent(lb);
   state.placeComponent(server1);
   state.placeComponent(server2);
 
-  const conn1 = makeConnection("cx-clb", { componentId: "client", portId: "p-c-out" }, { componentId: "lb", portId: "p-lb-in" });
-  clientEgress.connections.push(conn1.id);
-  lbIngress.connections.push(conn1.id);
-  state.addConnection(conn1);
-
-  const conn2 = makeConnection("cx-lb-s1", { componentId: "lb", portId: "p-lb-out" }, { componentId: "server-1", portId: "p-s1-in" });
-  lbEgress.connections.push(conn2.id);
-  s1Ingress.connections.push(conn2.id);
-  state.addConnection(conn2);
-
-  const conn3 = makeConnection("cx-lb-s2", { componentId: "lb", portId: "p-lb-out" }, { componentId: "server-2", portId: "p-s2-in" });
-  lbEgress.connections.push(conn3.id);
-  s2Ingress.connections.push(conn3.id);
-  state.addConnection(conn3);
-
-  const engine = new Engine(state);
+  const conns = [
+    wire(state, "cx-lb-s1", lb, server1),
+    wire(state, "cx-lb-s2", lb, server2),
+  ];
 
   return {
-    state, controller, engine,
-    entryPointId: "client" as ComponentId,
-    components: [
-      { id: "client" as ComponentId, name: "Client", type: "client" },
-      { id: "lb" as ComponentId, name: "Load Balancer", type: "load-balancer" },
-      { id: "server-1" as ComponentId, name: "Server 1", type: "server" },
-      { id: "server-2" as ComponentId, name: "Server 2", type: "server" },
-    ],
-    connections: [
-      { id: "cx-clb", from: "Client", to: "LB" },
-      { id: "cx-lb-s1", from: "LB", to: "Server 1" },
-      { id: "cx-lb-s2", from: "LB", to: "Server 2" },
-    ],
+    state, controller, engine: new Engine(state),
+    entryPointId: lb.id,
+    components: [compInfo(lb), compInfo(server1), compInfo(server2)],
+    connections: conns,
   };
 }
 
+/**
+ * Cache → Server → Database. Traffic enters at Cache.
+ * Shows: caching reduces server load, server forwards writes to DB,
+ * DB has lower throughput than server (bottleneck).
+ */
 export function createFullStackTopology(): TopologyInfo {
   const controller = new SandboxModeController();
   const state = new SimulationState(controller.getInitialZoneTopology());
 
-  const clientEgress = makePort("p-c-out", "egress");
-  const client = makeComponent({ id: "client", type: "client", ports: [clientEgress], capabilities: fwdCap("cap-fwd-c"), tiers: fwdTier("cap-fwd-c") });
+  const cache = registry.create("cache", { x: 0, y: 0 }, "default");
+  const server = registry.create("server", { x: 1, y: 0 }, "default");
+  const db = registry.create("database", { x: 2, y: 0 }, "default");
 
-  const lbIngress = makePort("p-lb-in", "ingress");
-  const lbEgress = makePort("p-lb-out", "egress");
-  const lb = makeComponent({ id: "lb", type: "load-balancer", ports: [lbIngress, lbEgress], capabilities: fwdCap("cap-fwd-lb"), tiers: fwdTier("cap-fwd-lb") });
-
-  const serverIngress = makePort("p-s-in", "ingress");
-  const serverEgress = makePort("p-s-out", "egress");
-  const server = makeComponent({ id: "server", type: "server", ports: [serverIngress, serverEgress], capabilities: fwdCap("cap-fwd-s"), tiers: fwdTier("cap-fwd-s") });
-
-  const dbIngress = makePort("p-db-in", "ingress");
-  const db = makeComponent({ id: "database", type: "database", ports: [dbIngress], capabilities: respCap("cap-resp-db"), tiers: respTier("cap-resp-db") });
-
-  state.placeComponent(client);
-  state.placeComponent(lb);
+  state.placeComponent(cache);
   state.placeComponent(server);
   state.placeComponent(db);
 
-  const c1 = makeConnection("cx-clb", { componentId: "client", portId: "p-c-out" }, { componentId: "lb", portId: "p-lb-in" });
-  clientEgress.connections.push(c1.id);
-  lbIngress.connections.push(c1.id);
-  state.addConnection(c1);
-
-  const c2 = makeConnection("cx-lb-s", { componentId: "lb", portId: "p-lb-out" }, { componentId: "server", portId: "p-s-in" });
-  lbEgress.connections.push(c2.id);
-  serverIngress.connections.push(c2.id);
-  state.addConnection(c2);
-
-  const c3 = makeConnection("cx-s-db", { componentId: "server", portId: "p-s-out" }, { componentId: "database", portId: "p-db-in" }, { latency: 3 });
-  serverEgress.connections.push(c3.id);
-  dbIngress.connections.push(c3.id);
-  state.addConnection(c3);
-
-  const engine = new Engine(state);
+  const conns = [
+    wire(state, "cx-cs", cache, server, { latency: 1 }),
+    wire(state, "cx-sd", server, db, { latency: 3 }),
+  ];
 
   return {
-    state, controller, engine,
-    entryPointId: "client" as ComponentId,
-    components: [
-      { id: "client" as ComponentId, name: "Client", type: "client" },
-      { id: "lb" as ComponentId, name: "Load Balancer", type: "load-balancer" },
-      { id: "server" as ComponentId, name: "Server", type: "server" },
-      { id: "database" as ComponentId, name: "Database", type: "database" },
-    ],
-    connections: [
-      { id: "cx-clb", from: "Client", to: "LB" },
-      { id: "cx-lb-s", from: "LB", to: "Server" },
-      { id: "cx-s-db", from: "Server", to: "Database" },
-    ],
+    state, controller, engine: new Engine(state),
+    entryPointId: cache.id,
+    components: [compInfo(cache), compInfo(server), compInfo(db)],
+    connections: conns,
+  };
+}
+
+/**
+ * API Gateway → Server with rate limiting + auth.
+ * Shows: rate limiting drops excess traffic, auth handles auth_required efficiently.
+ */
+export function createApiGatewayTopology(): TopologyInfo {
+  const controller = new SandboxModeController();
+  const state = new SimulationState(controller.getInitialZoneTopology());
+
+  const gw = registry.create("api_gateway", { x: 0, y: 0 }, "default");
+  const server = registry.create("server", { x: 1, y: 0 }, "default");
+
+  state.placeComponent(gw);
+  state.placeComponent(server);
+
+  const conns = [wire(state, "cx-gs", gw, server)];
+
+  return {
+    state, controller, engine: new Engine(state),
+    entryPointId: gw.id,
+    components: [compInfo(gw), compInfo(server)],
+    connections: conns,
   };
 }
 
 export const TOPOLOGIES: Record<string, () => TopologyInfo> = {
-  "Simple: Client → Server": createSimpleTopology,
-  "With Cache: Client → Cache → Server": createCacheTopology,
-  "Load Balanced: Client → LB → Server×2": createLoadBalancedTopology,
-  "Full Stack: Client → LB → Server → DB": createFullStackTopology,
+  "Server Only": createSimpleTopology,
+  "Cache → Server": createCacheTopology,
+  "Load Balanced → Server×2": createLoadBalancedTopology,
+  "Cache → Server → Database": createFullStackTopology,
+  "API Gateway → Server": createApiGatewayTopology,
 };
