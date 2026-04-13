@@ -146,6 +146,20 @@ stage):
 - **Wave-gated capability unlocks.** `TDModeController.getActiveCapabilities()`
   returns every capability the component has — no wave-based gating.
   Wave-based capability availability is a 3b+ concern.
+- **Intra-wave satisfaction pressure.** Stage 3a gates wave pass/fail on
+  `dropThreshold` at wave-end only (via `evaluateOutcome`). There is no
+  mid-wave feedback loop that punishes the player while requests are
+  still being dropped — no "user satisfaction bar" decrementing as
+  drops accumulate, no lives system, no per-drop revenue penalty
+  beyond the missing credit. A player whose architecture drops 30% of
+  requests loses the wave at `assess` time, but during `simulate` the
+  feedback is indirect (budget creeps up slower than it could, drop
+  counter visible in `requestLog`, but no dramatic signal). This is
+  intentional — the choice between "satisfaction bar," "lives," and
+  "per-drop economic penalty" is a game-feel decision that should be
+  made against a rendered UI where the player can react live, not
+  against a headless integration test. Tracked for Stage 3b+ design
+  work, probably as its own brainstorm session.
 
 ## 4. New files and directory layout
 

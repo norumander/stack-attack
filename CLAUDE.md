@@ -17,7 +17,12 @@ The game must stand on its own as a strategy game first. The learning is the lon
 - SCALE side effects processed in `deliverStaged` with `minInstances`/`maxInstances` clamping and `SCALED` event emission; per-component `instanceCount` in metrics snapshot.
 - `selectEgressConnection` computes real `effectiveTier` via `modeController`; new `RoutingCapability` in `src/capabilities/routing/` with T1 round-robin / T2 least-load / T3 condition-weighted.
 
-**Next:** Stage 3 — no spec yet. Candidate work: implement remaining 23 capabilities and 14 component registry entries. Write the spec only after revisiting scope; Stage 3 is large and may need decomposition.
+**Next:** Stage 3a — Wave 1–3 playable headless slice. Spec and plan merged at `e5ddde6` / `cdd0c5d`. 28 tasks across three vertical slices (Slice A: Wave 1 infrastructure + `ProcessingCapability` production rewrite + `ForwardingCapability` + TD mode stack; Slice B: `StorageCapability` + Wave 2; Slice C: `CachingCapability` + Cache + LoadBalancer + Wave 3 learning arc). Exits when four integration tests are green: Wave 1 passes trivially, Wave 2 passes with Server+DB + write-routing verified, Wave 3 lone-server loses, Wave 3 Cache-rescue and LB-rescue both win.
+
+**Candidate work after Stage 3a** (no specs yet):
+- **Intra-wave satisfaction pressure.** Current design gates on `dropThreshold` at wave-end only. No mid-wave "user satisfaction bar" / lives / per-drop revenue penalty. Better designed once the UI can show live feedback — needs its own brainstorm to choose between satisfaction bar, lives-based game-over, and per-drop economic cost. Tracking issue.
+- **UI stage.** React + Pixi.js rendering of engine state. The whole point of Stage 3a is to make Stage UI possible on a proven engine.
+- **Remaining ~18 capabilities + ~9 components** from `component-architecture.md`. Probably Stage 3b+ depending on what UI work surfaces as needed.
 
 **History:** Stage-by-stage detail lives in `docs/superpowers/specs/` and `docs/superpowers/plans/` (see nav hub below).
 
