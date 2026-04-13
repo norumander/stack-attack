@@ -55,9 +55,9 @@ describe("ForwardingCapability", () => {
 
   it("declares configurable throughput per tier (default 20/tier)", () => {
     const cap = new ForwardingCapability(CAP_ID, { handledTypes: ["api_read"] });
-    expect(cap.getThroughputPerTick(1)).toBe(20);
-    expect(cap.getThroughputPerTick(2)).toBe(40);
-    expect(cap.getThroughputPerTick(3)).toBe(60);
+    expect(cap.getThroughputPerTick!(1)).toBe(20);
+    expect(cap.getThroughputPerTick!(2)).toBe(40);
+    expect(cap.getThroughputPerTick!(3)).toBe(60);
   });
 
   it("accepts configured throughputPerTier", () => {
@@ -65,7 +65,7 @@ describe("ForwardingCapability", () => {
       handledTypes: ["api_read"],
       throughputPerTier: 55,
     });
-    expect(cap.getThroughputPerTick(1)).toBe(55);
+    expect(cap.getThroughputPerTick!(1)).toBe(55);
   });
 
   it("has upkeep scaling with tier", () => {

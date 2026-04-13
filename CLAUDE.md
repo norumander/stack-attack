@@ -34,7 +34,6 @@ The game must stand on its own as a strategy game first. The learning is the lon
 - **`FORWARDED` events come from two sources.** The engine's `deliverStaged` emits a `FORWARDED` at the **target** component with `capabilityId: null`. `ForwardingCapability` emits its own `FORWARDED` at the **source** component with `capabilityId: this.id` **when constructed with `emitForwardedEvent: true`**. Integration test helpers filter `ev.capabilityId !== null` to count source-side forwards.
 - **PASS at PROCESS phase is a silent drop.** `deliverStaged`'s switch statement has `default: return false` for any outcome that isn't RESPOND/FORWARD/DROP/QUEUE_HOLD. A component whose PROCESS phase produces `PASS` (no matching `canHandle`) has the request vanish with no event. `ForwardingCapability` is the explicit primitive that produces FORWARD — "let it fall through to egress" is not a pipeline behavior.
 - **`componentThroughputPerTick` sums all PROCESS capabilities whose `getThroughputPerTick` is defined.** A Server with `ProcessingCapability(throughputPerTier=20)` + `ForwardingCapability(throughputPerTier=12)` has a total budget of 32 req/tick (at T1). An intermediary LB/Gateway/CDN with `ForwardingCapability` (no throughput option) contributes nothing and the component has unbounded throughput — the sandbox/dashboard default.
-- **`getThroughputPerTick` must be `undefined` (not `0`) to signal unbounded.** Engine's `componentThroughputPerTick` returns `Infinity` when any PROCESS capability's method is missing. A method that returns `0` would cap the component at 0 — silently breaking throughput. Use the pattern: conditionally assign `this.getThroughputPerTick = (tier) => ...` in the constructor only when a cap is configured.
 - **Registry factories instantiate throwaway capabilities.** `ComponentRegistry.validate()` calls each capability's factory once to check phases and sub-interfaces. These instances don't run in simulation; per-tick components are constructed separately (via `registry.create(type, ...)` in sandbox, or via `buildX` harness helpers in TD tests). Registry-side defaults and per-component options can diverge.
 - **`tryPlace` is a stub on both ModeControllers.** `SandboxModeController.tryPlace` and `TDModeController.tryPlace` increment counters and return fake IDs without touching `state.components`. Integration tests place via `state.placeComponent()` or the dashboard's `topologies.ts`. `tryPlace` exists for eventual UI-driven placement but is not test-exercised.
 
@@ -77,8 +76,6 @@ CLAUDE.md is a navigation hub. Pull detail from these when the task requires it:
 - **`docs/superpowers/plans/2026-04-11-stage-2b-condition-chaos-upkeep.md`** — Stage 2b implementation plan (16 TDD tasks).
 - **`docs/superpowers/specs/2026-04-12-stage-2c-ttl-scale-routing-design.md`** — Stage 2c bufferable TTL, SCALE processing, RoutingCapability contracts.
 - **`docs/superpowers/plans/2026-04-12-stage-2c-ttl-scale-routing.md`** — Stage 2c implementation plan (13 TDD tasks).
-- **`docs/superpowers/specs/2026-04-12-stage-3a-wave-1-3-playable-slice-design.md`** — Stage 3a playable slice contracts (ProcessingCapability rewrite, ForwardingCapability, Wave 1–3 learning arc). Revised twice post cold audit.
-- **`docs/superpowers/plans/2026-04-12-stage-3a-wave-1-3-playable-slice.md`** — Stage 3a 28-task implementation plan across three slices.
 
 ## Simulation tick (10 steps, fixed order for determinism)
 
@@ -133,17 +130,14 @@ React + TypeScript + Pixi.js planned for the UI stage (not yet built). Simulatio
 - `src/core/` — engine, state, component, capability, types, mode interfaces, registry
 - `src/core/engine/` — one file per tick step (29 files), plus helpers (rng, throughput, visit-order, etc.)
 - `src/modes/sandbox/` — `SandboxModeController`, zone management, scenario system
-- `src/modes/td/` — `TDModeController`, `TDEconomy`, `TDTrafficSource`, wave definitions, TD registry bootstrap
 - `src/capabilities/` — concrete capability implementations (e.g. `ProcessingCapability`)
-- `src/dashboard/` — Vite sandbox visualization app (Chart.js, topology presets, chaos panel)
 
 ## Development workflow
 
 ```bash
-pnpm test                              # run full suite (~5s, 564 tests)
+pnpm test                              # run full suite (~3s, 406 tests)
 pnpm test tests/unit/<name>.test.ts    # run a single file (~1s)
 pnpm typecheck                         # strict tsc --noEmit
-pnpm dev                               # sandbox dashboard on :5173
 git worktree add .worktrees/<branch> -b <branch>   # isolated feature work
 ```
 
@@ -158,7 +152,6 @@ git worktree add .worktrees/<branch> -b <branch>   # isolated feature work
   - `test-economy.ts` — `TestEconomyStrategy` with `creditLog`/`debitLog` + configurable `revenuePerRequest`/`insolvencyRule`
   - `test-chaos-controller.ts` — `TestChaosController` wraps `NoOpModeController` with a scripted `Map<tick, ChaosEvent[]>`
 - **Test harness gotchas:**
-  - `ProcessContext` test stubs: use `{...} as unknown as ProcessContext` when the capability ignores context, or build a real one with `createRng("test")` from `@core/engine/rng` (returns a real `DeterministicRng`) when `ctx.rng` matters. The real `ProcessContext` has 9 required fields including `state`, `effectiveTiers`, `directories`, `childResponses` — don't try to stub all of them inline.
   - `NoOpModeController` constructor takes `{ targetEntryPointId, intensity, requestType }` (from `FixedIntensityConfig`), not `{ requestsPerTick, originComponentId }`.
   - `FixedIntensityTrafficSource` hardcodes `ttl: 10` on generated requests — not configurable. TTL-sensitive tests must live within that window or inject requests manually.
   - Populate `state.visitOrder` before running engine steps in unit tests: `state.visitOrder.push(...computeVisitOrder(state.components))`. Not `buildVisitOrder`.
@@ -166,10 +159,6 @@ git worktree add .worktrees/<branch> -b <branch>   # isolated feature work
   - `readonly` fields on `Component` (e.g. `minInstances`, `maxInstances`) are TS-only; tests can override at runtime via `(comp as { maxInstances: number }).maxInstances = 5`.
 - **Path aliases:** `@core/*`, `@capabilities/*`, `@harness/*`. Must be mirrored in both `tsconfig.json` paths and `vitest.config.ts` resolve.alias — changing one without the other silently breaks tests or typecheck.
 - **TypeScript:** strict with `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`. ESM — relative imports use `.js` extension on `.ts` sources (bundler moduleResolution). Branded IDs (`RequestId`, `ComponentId`, etc.) require `as RequestId` casts in test fixtures.
-- **Branded IDs in inline object literals:** `Port.id` is `PortId`, `Connection.id` is `ConnectionId`. Inline registry port literals (`{id: "p-in", ...}`) fail strict typecheck — use `{id: "p-in" as PortId, ...}` and import `PortId` from `@core/types/ids`.
-- **Specs and plans:** designs in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`. Phase 1 is built in sequential stages with explicit exit criteria — write the next stage's plan only after the previous stage merges and its interfaces are locked. For non-trivial specs/plans, run a cold audit loop: dispatch 2 parallel general-purpose agents with different focus angles (types/interfaces vs runtime/semantics), synthesize findings, fix inline, iterate until convergence (cap at 3 rounds). Caught real blockers on Stage 3a spec and plan.
+- **Specs and plans:** designs in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`. Phase 1 is built in sequential stages with explicit exit criteria — write the next stage's plan only after the previous stage merges and its interfaces are locked.
 - **Phase 1 scope reminder:** pure TypeScript simulation. Vercel-plugin skill suggestions that fire on `package.json`/`tsconfig.json` writes are false positives in this phase.
 - **Worktrees:** project-local at `.worktrees/<branch-name>` (gitignored).
-- **`archive/systembuilder/`** contains a prior project iteration (a different game). Ignore it when grepping for patterns — its `CLAUDE.md` files, specs, and source are not authoritative for this repo. Scope searches with `grep -v archive/`.
-- **Before long work sessions:** `git fetch origin && git rev-list --count HEAD..origin/main` to check if teammates pushed. Don't assume linear history. Tag a rollback anchor (`git tag <stage>-pre-merge`) before non-trivial merges.
-- **Merge conflict pattern for capability classes:** when two tracks both rewrite a capability, extend via optional constructor flags rather than picking a winner. `{handledTypes?, throughputPerTier?, emit*Event?}` — defaults match the broader (sandbox/dashboard) usage path, the narrower (TD/test-tuned) usage opts in. `ProcessingCapability`, `ForwardingCapability`, `StorageCapability` follow this pattern.

@@ -138,7 +138,7 @@ export function buildServer(id: string): {
   const ingress = makePort(ingressPortId, "ingress");
   const egress = makePort(egressPortId, "egress");
 
-  const processingCap = new ProcessingCapability("processing" as CapabilityId);
+  const processingCap = new ProcessingCapability("processing" as CapabilityId, { handledTypes: ["api_read"], emitProcessedEvent: true });
   // Server's Forwarding handles writes only, with small throughput (12/tick)
   // so Server's total budget = Processing(20) + Forwarding(12) = 32 < Wave 3's
   // 50 req/tick → lone-server fails as required by the learning arc.
@@ -189,7 +189,7 @@ export function buildDatabase(id: string): {
   const ingress = makePort(ingressPortId, "ingress");
   const egress = makePort(egressPortId, "egress");
 
-  const storageCap = new StorageCapability("storage" as CapabilityId);
+  const storageCap = new StorageCapability("storage" as CapabilityId, { emitProcessedEvent: true });
   const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
 
   const capabilities = new Map<CapabilityId, Capability>([

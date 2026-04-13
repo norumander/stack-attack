@@ -61,8 +61,8 @@ export class ForwardingCapability implements Capability {
     this.handledTypes = options.handledTypes
       ? new Set(options.handledTypes)
       : null;
-    this.throughputPerTier = options.throughputPerTier ?? null;
-    this.emitForwardedEvent = options.emitForwardedEvent ?? false;
+    this.throughputPerTier = options.throughputPerTier ?? (options.handledTypes ? 20 : null);
+    this.emitForwardedEvent = options.emitForwardedEvent ?? (options.handledTypes ? true : false);
     if (this.throughputPerTier !== null) {
       const perTier = this.throughputPerTier;
       this.getThroughputPerTick = (tier: number) => tier * perTier;
@@ -98,8 +98,11 @@ export class ForwardingCapability implements Capability {
     return { outcome: { kind: "FORWARD" }, sideEffects: [], events };
   }
 
-  getUpkeepCost(_tier: number): number {
-    return 0;
+  getUpkeepCost(tier: number): number {
+    // Intermediary default (no handledTypes): free pass-through, zero upkeep.
+    // Typed forwarder (handledTypes set): scales with tier.
+    if (this.handledTypes === null) return 0;
+    return tier <= 1 ? 1 : tier === 2 ? 2 : tier + 1;
   }
 
   getStats(): CapabilityStats {
