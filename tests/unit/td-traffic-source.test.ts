@@ -93,6 +93,11 @@ describe("TDTrafficSource", () => {
       targetEntryPointId: "c-server" as ComponentId,
       rng: makeRng(1),
     });
+    // Call generate() WAVE_1.duration times to exhaust the internal counter
+    for (let i = 0; i < WAVE_1.duration; i++) {
+      src.generate(i);
+    }
+    // The next call should return empty
     const afterEnd = src.generate(WAVE_1.duration);
     expect(afterEnd.length).toBe(0);
   });

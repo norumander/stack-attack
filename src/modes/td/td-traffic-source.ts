@@ -22,6 +22,7 @@ export class TDTrafficSource implements TrafficSource {
   private readonly rng: () => number;
   private readonly readKeyPoolSize: number;
   private requestCounter = 0;
+  private ticksGenerated = 0;
 
   constructor(options: TDTrafficSourceOptions) {
     this.wave = options.wave;
@@ -30,8 +31,13 @@ export class TDTrafficSource implements TrafficSource {
     this.readKeyPoolSize = options.wave.readKeyPoolSize ?? 20;
   }
 
+  isExhausted(): boolean {
+    return this.ticksGenerated >= this.wave.duration;
+  }
+
   generate(tick: number): Request[] {
-    if (tick >= this.wave.duration) return [];
+    if (this.ticksGenerated >= this.wave.duration) return [];
+    this.ticksGenerated += 1;
 
     const out: Request[] = [];
     for (let i = 0; i < this.wave.intensity; i++) {
