@@ -1,6 +1,6 @@
 import type { SimulationState } from "../state/simulation-state.js";
 import type { TickMetrics } from "../types/metrics.js";
-import type { ComponentId } from "../types/ids.js";
+import type { ComponentId, ConnectionId } from "../types/ids.js";
 
 type PerComponentReader = TickMetrics["perComponent"] extends ReadonlyMap<ComponentId, infer V>
   ? V
@@ -70,6 +70,15 @@ export function recordMetrics(state: SimulationState): void {
     sumBackpressured += raw.backpressured;
   }
 
+  // Snapshot per-connection load BEFORE step 9 clears connectionLoadThisTick.
+  const perConnection = new Map<
+    ConnectionId,
+    { readonly loadThisTick: number }
+  >();
+  for (const [connId, load] of state.connectionLoadThisTick) {
+    perConnection.set(connId, { loadThisTick: load });
+  }
+
   const snapshot: TickMetrics = {
     tick: state.currentTick,
     requestsProcessed: sumProcessed,
@@ -82,6 +91,7 @@ export function recordMetrics(state: SimulationState): void {
     upkeepPaid: state.upkeepPaidThisTick,
     avgLatency,
     perComponent,
+    perConnection,
   };
 
   state.metricsHistory.push(snapshot);

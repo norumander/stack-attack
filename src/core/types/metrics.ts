@@ -1,4 +1,4 @@
-import type { ComponentId } from "./ids.js";
+import type { ComponentId, ConnectionId } from "./ids.js";
 
 export interface TickMetrics {
   readonly tick: number;
@@ -24,5 +24,9 @@ export interface TickMetrics {
       blockedAtEndOfTick: number;
       instanceCount: number;
     }
+  >;
+  readonly perConnection?: ReadonlyMap<
+    ConnectionId,
+    { readonly loadThisTick: number }
   >;
 }
