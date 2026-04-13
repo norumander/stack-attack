@@ -25,7 +25,7 @@ export const SERVER_ENTRY: ComponentRegistryEntry = {
     { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
   ],
   ports: [
-    { id: "p-in" as PortId, direction: "ingress", dataType: "http", capacity: 1, connections: [] },
+    { id: "p-in" as PortId, direction: "ingress", dataType: "http", capacity: 2, connections: [] },
     { id: "p-out" as PortId, direction: "egress", dataType: "data", capacity: 2, connections: [] },
   ],
   placementCost: 100,
