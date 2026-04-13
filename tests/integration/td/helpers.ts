@@ -7,6 +7,7 @@ import type { TDWaveDefinition } from "@modes/td/td-waves";
 import { ProcessingCapability } from "@capabilities/processing/processing-capability";
 import { ForwardingCapability } from "@capabilities/forwarding/forwarding-capability";
 import { MonitoringCapability } from "@capabilities/monitoring/monitoring-capability";
+import { StorageCapability } from "@capabilities/storage/storage-capability";
 import { makePort, makeConnection } from "@harness/fixtures";
 import type { Capability } from "@core/capability/capability";
 import type { CapabilityId, ComponentId } from "@core/types/ids";
@@ -173,8 +174,50 @@ export function buildServer(id: string): {
   return { component, ingressPortId, egressPortId };
 }
 
+/**
+ * Build a Database component with Storage + Monitoring.
+ */
+export function buildDatabase(id: string): {
+  component: Component;
+  ingressPortId: string;
+  egressPortId: string;
+} {
+  const ingressPortId = `${id}-in`;
+  const egressPortId = `${id}-out`;
+  const ingress = makePort(ingressPortId, "ingress");
+  const egress = makePort(egressPortId, "egress");
+
+  const storageCap = new StorageCapability("storage" as CapabilityId);
+  const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
+
+  const capabilities = new Map<CapabilityId, Capability>([
+    ["storage" as CapabilityId, storageCap],
+    ["monitoring" as CapabilityId, monitoringCap],
+  ]);
+  const tiers = new Map<CapabilityId, number>([
+    ["storage" as CapabilityId, 1],
+    ["monitoring" as CapabilityId, 1],
+  ]);
+
+  const component = new Component({
+    id: id as ComponentId,
+    type: "database",
+    name: "Database",
+    description: "",
+    capabilities,
+    initialTiers: tiers,
+    ports: [ingress, egress],
+    placementCost: 200,
+    position: { x: 0, y: 0 },
+    zone: null,
+    placementTick: 0,
+    conditionProfile: DEFAULT_CONDITION,
+  });
+
+  return { component, ingressPortId, egressPortId };
+}
+
 // Placeholders for later slices:
-// export function buildDatabase(id: string): ... (Slice B)
 // export function buildCache(id: string): ... (Slice C)
 // export function buildLoadBalancer(id: string): ... (Slice C)
 

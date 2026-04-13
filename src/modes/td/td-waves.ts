@@ -33,3 +33,17 @@ export const WAVE_1: TDWaveDefinition = {
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
   readKeyPoolSize: 20,
 };
+
+export const WAVE_2: TDWaveDefinition = {
+  id: 2,
+  name: "Users Start Signing Up",
+  startingBudget: 500,
+  intensity: 25,
+  composition: new Map([["api_read", 0.7], ["api_write", 0.3]]),
+  duration: 30,
+  ttl: 10,
+  availableComponents: ["server", "database"],
+  dropThreshold: 0.05,
+  revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
+  readKeyPoolSize: 20,
+};
