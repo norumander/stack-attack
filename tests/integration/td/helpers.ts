@@ -11,6 +11,7 @@ import { StorageCapability } from "@capabilities/storage/storage-capability";
 import { CachingCapability } from "@capabilities/caching/caching-capability";
 import { RoutingCapability } from "@capabilities/routing/routing-capability";
 import { makePort, makeConnection } from "@harness/fixtures";
+import { makeRng } from "@harness/td-fixtures";
 import type { Capability } from "@core/capability/capability";
 import type { CapabilityId, ComponentId } from "@core/types/ids";
 import type { OutcomeReport } from "@core/types/outcome";
@@ -114,16 +115,9 @@ export function runWave(
   };
 }
 
-/**
- * Deterministic LCG for test determinism.
- */
-export function makeRng(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 9301 + 49297) % 233280;
-    return s / 233280;
-  };
-}
+// makeRng is re-exported from @harness/td-fixtures for any callers still
+// importing it from this module.
+export { makeRng } from "@harness/td-fixtures";
 
 /**
  * Build a Server component with Processing + Forwarding(writes) + Monitoring.

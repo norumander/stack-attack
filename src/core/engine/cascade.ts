@@ -108,13 +108,13 @@ export function applyStrictCascade(
     getOrInitCounters(state, attributeTo).drops += 1;
 
     // Recursive cascade: if the sibling itself is a blocking parent, propagate.
-    // (In Stage 2a this edge case rarely triggers but the recursion is free.)
     if (state.blockedParents.has(siblingId)) {
       const siblingEntry = state.blockedParents.get(siblingId)!;
       state.blockedParents.delete(siblingId);
       for (const grandchildId of siblingEntry.blockedOn) {
         state.childToParent.delete(grandchildId);
-        // TODO(stage-2b): recurse into grandchild's own blocked descendants
+        // KNOWN GAP (Stage 2c): grandchildren stuck in pending/bufferables are
+        // not scanned here. They time out via Scan 3 on the next tick.
       }
     }
   }

@@ -2,42 +2,13 @@ import { describe, expect, it } from "vitest";
 import { SimulationState } from "@core/state/simulation-state";
 import { TDModeController } from "@modes/td/td-mode-controller";
 import { TDEconomy } from "@modes/td/td-economy";
-import { ComponentRegistry } from "@core/registry/component-registry";
-import { CapabilityRegistry } from "@core/registry/capability-registry";
-import { registerTDDefaults } from "@modes/td/register-td-defaults";
-import { WAVE_1, WAVE_2, WAVE_3 } from "@modes/td/td-waves";
+import { WAVE_1 } from "@modes/td/td-waves";
+import { bootTDRegistry, makeRng, makeTDController } from "@harness/td-fixtures";
 import type { ComponentId } from "@core/types/ids";
-
-function makeRng(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 9301 + 49297) % 233280;
-    return s / 233280;
-  };
-}
-
-function setup(opts?: { startingBudget?: number }) {
-  const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
-  const capRegistry = new CapabilityRegistry();
-  const compRegistry = new ComponentRegistry(capRegistry);
-  registerTDDefaults(capRegistry, compRegistry);
-  const economy = new TDEconomy({
-    startingBudget: opts?.startingBudget ?? WAVE_1.startingBudget,
-    revenuePerRequestType: WAVE_1.revenuePerRequestType,
-  });
-  const tdc = new TDModeController({
-    waves: [WAVE_1, WAVE_2, WAVE_3],
-    economy,
-    entryPointId: "entry-stub" as ComponentId,
-    rng: makeRng(1),
-    componentRegistry: compRegistry,
-  });
-  return { state, tdc, economy };
-}
 
 describe("TDModeController.tryPlace", () => {
   it("places a server, debits the economy, mutates state", () => {
-    const { state, tdc, economy } = setup();
+    const { state, tdc, economy } = makeTDController();
     const before = economy.getBudget();
     const result = tdc.tryPlace(state, "server", { x: 1, y: 0 }, null);
     expect(result.ok).toBe(true);
@@ -47,8 +18,8 @@ describe("TDModeController.tryPlace", () => {
   });
 
   it("rejects with disallowed_by_mode in simulate phase", () => {
-    const { state, tdc } = setup();
-    tdc.advancePhase(state);  // build → simulate
+    const { state, tdc } = makeTDController();
+    tdc.advancePhase(state); // build → simulate
     const result = tdc.tryPlace(state, "server", { x: 1, y: 0 }, null);
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error();
@@ -56,7 +27,7 @@ describe("TDModeController.tryPlace", () => {
   });
 
   it("rejects with disallowed_by_mode for type not in availableComponents", () => {
-    const { state, tdc } = setup();
+    const { state, tdc } = makeTDController();
     // Wave 1 only allows server + database
     const result = tdc.tryPlace(state, "cache", { x: 1, y: 0 }, null);
     expect(result.ok).toBe(false);
@@ -74,9 +45,7 @@ describe("TDModeController.tryPlace", () => {
       startingBudget: 1000,
       revenuePerRequestType: customWave.revenuePerRequestType,
     });
-    const capRegistry = new CapabilityRegistry();
-    const compRegistry = new ComponentRegistry(capRegistry);
-    registerTDDefaults(capRegistry, compRegistry);
+    const compRegistry = bootTDRegistry();
     const tdc = new TDModeController({
       waves: [customWave],
       economy,
@@ -91,12 +60,12 @@ describe("TDModeController.tryPlace", () => {
   });
 
   it("rejects with insufficient_budget when balance is too low", () => {
-    const { state, tdc, economy } = setup({ startingBudget: 50 });  // SERVER_ENTRY costs 100
+    const { state, tdc, economy } = makeTDController({ startingBudget: 50 }); // SERVER_ENTRY costs 100
     const result = tdc.tryPlace(state, "server", { x: 1, y: 0 }, null);
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error();
     expect(result.reason).toBe("insufficient_budget");
-    expect(economy.getBudget()).toBe(50);  // unchanged
+    expect(economy.getBudget()).toBe(50); // unchanged
     expect(state.components.size).toBe(0);
   });
 });

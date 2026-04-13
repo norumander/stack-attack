@@ -1,16 +1,10 @@
 import type { Capability, CapabilityStats } from "@core/capability/capability";
 import type { Request } from "@core/types/request";
-import type { ProcessResult, PrimaryOutcome } from "@core/types/result";
+import type { ProcessResult } from "@core/types/result";
 import type { ProcessContext } from "@core/capability/process-context";
 import type { CapabilityId } from "@core/types/ids";
 
 export interface ProcessingCapabilityOptions {
-  /**
-   * Test-only override. When set, process() always returns this outcome
-   * regardless of request type, preserving backward compatibility with
-   * all Stage 1/2 tests and the dashboard topologies.
-   */
-  outcomeKind?: "PASS" | "RESPOND" | "FORWARD";
   /**
    * When set, restricts `canHandle` to only the listed request types.
    * Used by TD mode's Server to handle reads only (writes fall through
@@ -36,14 +30,10 @@ export interface ProcessingCapabilityOptions {
  * PROCESS-phase capability for general-purpose request processing.
  * The workhorse capability on Server components.
  *
- * Stage 3 upgrade: adds getThroughputPerTick (tier * 25 default) and
- * request-type-aware processing. Backward compatible with the
- * outcomeKind test override.
- *
- * Stage 3a extension: optional `handledTypes`, `throughputPerTier`, and
- * `emitProcessedEvent` options so the TD-mode Server can run reads only
- * at a specific throughput cap and emit events for integration tests
- * that count "who handled this request."
+ * Default behavior is `RESPOND` on every handled request. `handledTypes`
+ * narrows which types `canHandle` accepts; `throughputPerTier` overrides
+ * the default `tier * 25` cap; `emitProcessedEvent` opts into per-process
+ * PROCESSED events so integration tests can count handled requests.
  */
 export class ProcessingCapability implements Capability {
   readonly phase = "PROCESS" as const;
@@ -55,7 +45,7 @@ export class ProcessingCapability implements Capability {
 
   constructor(
     readonly id: CapabilityId,
-    private readonly options: ProcessingCapabilityOptions = {},
+    options: ProcessingCapabilityOptions = {},
   ) {
     this.handledTypes = options.handledTypes
       ? new Set(options.handledTypes)
@@ -72,18 +62,6 @@ export class ProcessingCapability implements Capability {
   process(_request: Request, context: ProcessContext): ProcessResult {
     this.processedThisTick += 1;
 
-    // Backward-compatible override for tests
-    if (this.options.outcomeKind !== undefined) {
-      const kind = this.options.outcomeKind;
-      const outcome: PrimaryOutcome =
-        kind === "RESPOND"
-          ? { kind: "RESPOND" }
-          : kind === "FORWARD"
-            ? { kind: "FORWARD" }
-            : { kind: "PASS" };
-      return { outcome, sideEffects: [], events: [] };
-    }
-
     const events = this.emitProcessedEvent
       ? [
           {
@@ -97,7 +75,6 @@ export class ProcessingCapability implements Capability {
         ]
       : [];
 
-    // Stage 3: default behavior — RESPOND for handled requests
     return { outcome: { kind: "RESPOND" }, sideEffects: [], events };
   }
 

@@ -291,9 +291,6 @@ export class TDModeController implements ModeController {
     return { zones: ["default"], pairLatency: new Map() };
   }
 
-  // === Stage 3b: real tryPlace + new tryConnect ===
-  // (Filled in by Tasks 7 and 8 — leave as stubs for now)
-
   tryPlace(
     state: SimulationState,
     type: string,

@@ -1,15 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { TDTrafficSource } from "@modes/td/td-traffic-source.js";
 import { WAVE_1 } from "@modes/td/td-waves.js";
+import { makeRng } from "@harness/td-fixtures";
 import type { ComponentId } from "@core/types/ids.js";
-
-function makeRng(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 9301 + 49297) % 233280;
-    return s / 233280;
-  };
-}
 
 describe("TDTrafficSource self-counting", () => {
   it("isExhausted is false on a fresh source", () => {

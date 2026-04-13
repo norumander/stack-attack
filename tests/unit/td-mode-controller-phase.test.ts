@@ -1,27 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { TDModeController } from "@modes/td/td-mode-controller";
 import { TDEconomy } from "@modes/td/td-economy";
-import { ComponentRegistry } from "@core/registry/component-registry";
-import { CapabilityRegistry } from "@core/registry/capability-registry";
-import { registerTDDefaults } from "@modes/td/register-td-defaults";
 import { WAVE_1, WAVE_2, WAVE_3 } from "@modes/td/td-waves";
 import { SimulationState } from "@core/state/simulation-state";
+import { bootTDRegistry as bootRegistry, makeRng } from "@harness/td-fixtures";
 import type { ComponentId } from "@core/types/ids";
-
-function makeRng(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 9301 + 49297) % 233280;
-    return s / 233280;
-  };
-}
-
-function bootRegistry(): ComponentRegistry {
-  const capRegistry = new CapabilityRegistry();
-  const compRegistry = new ComponentRegistry(capRegistry);
-  registerTDDefaults(capRegistry, compRegistry);
-  return compRegistry;
-}
 
 describe("TDModeController constructor", () => {
   it("accepts multi-wave options", () => {

@@ -54,20 +54,6 @@ describe("ProcessingCapability stub", () => {
     expect(result.events).toEqual([]);
   });
 
-  it("process returns PASS when outcomeKind is explicitly PASS (backward compat)", () => {
-    const cap = new ProcessingCapability("cap-proc" as CapabilityId, { outcomeKind: "PASS" });
-    const result = cap.process(req(), ctx());
-    expect(result.outcome.kind).toBe("PASS");
-  });
-
-  it("can be constructed with a test-only outcome override", () => {
-    const cap = new ProcessingCapability("cap-proc" as CapabilityId, {
-      outcomeKind: "RESPOND",
-    });
-    const result = cap.process(req(), ctx());
-    expect(result.outcome.kind).toBe("RESPOND");
-  });
-
   it("getUpkeepCost returns tier * 3 (Stage 3)", () => {
     const cap = new ProcessingCapability("cap-proc" as CapabilityId);
     expect(cap.getUpkeepCost(0)).toBe(0);

@@ -83,7 +83,7 @@ export function createTDDashboard(args: {
   function onTopologyClick(ev: MouseEvent): void {
     if (controller.getPhase() !== "build") {
       // eslint-disable-next-line no-console
-      console.log("[td] topology click ignored — phase is", controller.getPhase());
+      console.warn("[td] topology click ignored — phase is", controller.getPhase());
       return;
     }
     const targetEl = ev.target as HTMLElement;
@@ -93,7 +93,7 @@ export function createTDDashboard(args: {
     if (componentEl) {
       const id = componentEl.dataset["componentId"] as ComponentId;
       // eslint-disable-next-line no-console
-      console.log("[td] component click", id, "cursor=", dash.cursor);
+      console.warn("[td] component click", id, "cursor=", dash.cursor);
       if (dash.cursor === "connecting" && dash.connectingFromId !== null) {
         // Complete a connection. The convention: connectingFromId is the SOURCE
         // (set when the user clicked the first component), the just-clicked
@@ -101,7 +101,7 @@ export function createTDDashboard(args: {
         const result = controller.tryConnect(state, dash.connectingFromId, id);
         if (result.ok) {
           // eslint-disable-next-line no-console
-          console.log("[td] tryConnect ok", result.connectionId);
+          console.warn("[td] tryConnect ok", result.connectionId);
           args.onConnect?.(result.connectionId);
         } else {
           // eslint-disable-next-line no-console
@@ -115,7 +115,7 @@ export function createTDDashboard(args: {
         dash.cursor = "connecting";
         dash.connectingFromId = id;
         // eslint-disable-next-line no-console
-        console.log("[td] connecting from", id, "— click another component to connect");
+        console.warn("[td] connecting from", id, "— click another component to connect");
         rerenderTopology();
       }
       return;
@@ -131,7 +131,7 @@ export function createTDDashboard(args: {
       const result = controller.tryPlace(state, dash.placingType, position, null);
       if (result.ok) {
         // eslint-disable-next-line no-console
-        console.log("[td] tryPlace ok", result.componentId, "at", position);
+        console.warn("[td] tryPlace ok", result.componentId, "at", position);
         args.onPlace?.(result.componentId);
       } else {
         // eslint-disable-next-line no-console
@@ -149,7 +149,7 @@ export function createTDDashboard(args: {
     // CASE 3: clicked empty space in idle mode → cancel any in-progress action
     if (dash.cursor === "connecting") {
       // eslint-disable-next-line no-console
-      console.log("[td] connecting cancelled (clicked empty)");
+      console.warn("[td] connecting cancelled (clicked empty)");
     }
     dash.cursor = "idle";
     dash.placingType = null;

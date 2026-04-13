@@ -1,15 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { TDTrafficSource } from "@modes/td/td-traffic-source";
 import { WAVE_1 } from "@modes/td/td-waves";
+import { makeRng } from "@harness/td-fixtures";
 import type { ComponentId } from "@core/types/ids";
-
-function makeRng(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 9301 + 49297) % 233280;
-    return s / 233280;
-  };
-}
 
 describe("TDTrafficSource", () => {
   it("generates the wave's intensity count per tick", () => {
