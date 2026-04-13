@@ -4,7 +4,7 @@ import { SimulationState } from "@core/state/simulation-state";
 import { SandboxModeController } from "@modes/sandbox/sandbox-mode-controller";
 import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
 import {
-  ForwardingCapability,
+  TestForwardingCapability,
   RespondingCapability,
   TestQueueCapability,
 } from "@harness/test-capabilities";
@@ -18,7 +18,7 @@ describe("Sandbox backpressure", () => {
     // Client: forwards traffic
     const clientEgress = makePort("p-c-out", "egress");
     const clientCaps = new Map<CapabilityId, Capability>([
-      ["cap-fwd" as CapabilityId, new ForwardingCapability("cap-fwd" as CapabilityId)],
+      ["cap-fwd" as CapabilityId, new TestForwardingCapability("cap-fwd" as CapabilityId)],
     ]);
     const clientTiers = new Map<CapabilityId, number>([["cap-fwd" as CapabilityId, 1]]);
     const client = makeComponent({
@@ -28,12 +28,12 @@ describe("Sandbox backpressure", () => {
       tiers: clientTiers,
     });
 
-    // Queue: has TestQueueCapability (EngineBufferable) + ForwardingCapability
+    // Queue: has TestQueueCapability (EngineBufferable) + TestForwardingCapability
     const queueIngress = makePort("p-q-in", "ingress");
     const queueEgress = makePort("p-q-out", "egress");
     const queueCaps = new Map<CapabilityId, Capability>([
       ["cap-queue" as CapabilityId, new TestQueueCapability("cap-queue" as CapabilityId)],
-      ["cap-q-fwd" as CapabilityId, new ForwardingCapability("cap-q-fwd" as CapabilityId)],
+      ["cap-q-fwd" as CapabilityId, new TestForwardingCapability("cap-q-fwd" as CapabilityId)],
     ]);
     const queueTiers = new Map<CapabilityId, number>([
       ["cap-queue" as CapabilityId, 1],

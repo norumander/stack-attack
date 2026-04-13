@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Engine } from "@core/engine/engine";
 import { SimulationState } from "@core/state/simulation-state";
-import { ProcessingCapability } from "@capabilities/processing/processing-capability";
+import { TestForwardingCapability, RespondingCapability } from "@harness/test-capabilities";
 import { NoOpModeController } from "@harness/noop-mode-controller";
 import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
 import type { Capability } from "@core/capability/capability";
@@ -12,9 +12,7 @@ describe("Stage 1 smoke test", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
 
     const clientEgress = makePort("p-c-out", "egress");
-    const clientCap = new ProcessingCapability("cap-client" as CapabilityId, {
-      outcomeKind: "FORWARD",
-    });
+    const clientCap = new TestForwardingCapability("cap-client" as CapabilityId);
     const clientCaps = new Map<CapabilityId, Capability>([
       ["cap-client" as CapabilityId, clientCap],
     ]);
@@ -30,7 +28,7 @@ describe("Stage 1 smoke test", () => {
     const caps = new Map<CapabilityId, Capability>([
       [
         "cap-proc" as CapabilityId,
-        new ProcessingCapability("cap-proc" as CapabilityId, { outcomeKind: "RESPOND" }),
+        new RespondingCapability("cap-proc" as CapabilityId),
       ],
     ]);
     const tiers = new Map<CapabilityId, number>([["cap-proc" as CapabilityId, 1]]);

@@ -1,6 +1,6 @@
 import { SimulationState } from "@core/state/simulation-state";
 import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
-import { ForwardingCapability, RespondingCapability } from "@harness/test-capabilities";
+import { TestForwardingCapability, RespondingCapability } from "@harness/test-capabilities";
 import type { DeterministicRng } from "@core/engine/rng";
 import type { Capability } from "@core/capability/capability";
 import type { CapabilityId, ComponentId } from "@core/types/ids";
@@ -14,9 +14,9 @@ export interface RandomTopology {
 
 /**
  * Build a deterministic random linear chain topology:
- *   entry (ForwardingCapability)
- *   → mid1 (ForwardingCapability)
- *   → ... → midN-1 (ForwardingCapability)
+ *   entry (TestForwardingCapability)
+ *   → mid1 (TestForwardingCapability)
+ *   → ... → midN-1 (TestForwardingCapability)
  *   → tail (RespondingCapability)
  *
  * Chain length is drawn from rng.nextInt(maxChain - minChain + 1) + minChain.
@@ -43,7 +43,7 @@ export function makeRandomTopology(
     const capId = `cap-${i}` as CapabilityId;
     const cap: Capability = isTail
       ? new RespondingCapability(capId)
-      : new ForwardingCapability(capId);
+      : new TestForwardingCapability(capId);
     const caps = new Map<CapabilityId, Capability>([[capId, cap]]);
     const tiers = new Map<CapabilityId, number>([[capId, 1]]);
 

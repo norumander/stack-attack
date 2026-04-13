@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { SandboxModeController } from "@modes/sandbox/sandbox-mode-controller";
 import { SandboxEconomy } from "@modes/sandbox/sandbox-economy";
 import { SimulationState } from "@core/state/simulation-state";
-import { ProcessingCapability } from "@capabilities/processing/processing-capability";
+import { RespondingCapability } from "@harness/test-capabilities";
 import { makeComponent, makePort } from "@harness/fixtures";
 import type { Capability } from "@core/capability/capability";
 import type { CapabilityId, ComponentId } from "@core/types/ids";
@@ -13,7 +13,7 @@ function makeServerComponent() {
   const caps = new Map<CapabilityId, Capability>([
     [
       "cap-proc" as CapabilityId,
-      new ProcessingCapability("cap-proc" as CapabilityId, { outcomeKind: "RESPOND" }),
+      new RespondingCapability("cap-proc" as CapabilityId),
     ],
   ]);
   const tiers = new Map<CapabilityId, number>([["cap-proc" as CapabilityId, 1]]);

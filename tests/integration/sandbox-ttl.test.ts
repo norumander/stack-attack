@@ -3,7 +3,7 @@ import { Engine } from "@core/engine/engine";
 import { SimulationState } from "@core/state/simulation-state";
 import { SandboxModeController } from "@modes/sandbox/sandbox-mode-controller";
 import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
-import { ForwardingCapability, DroppingCapability } from "@harness/test-capabilities";
+import { TestForwardingCapability, DroppingCapability } from "@harness/test-capabilities";
 import type { Capability } from "@core/capability/capability";
 import type { CapabilityId, ComponentId } from "@core/types/ids";
 
@@ -23,7 +23,7 @@ describe("Sandbox TTL", () => {
 
     const clientEgress = makePort("p-c-out", "egress");
     const clientCaps = new Map<CapabilityId, Capability>([
-      ["cap-fwd" as CapabilityId, new ForwardingCapability("cap-fwd" as CapabilityId)],
+      ["cap-fwd" as CapabilityId, new TestForwardingCapability("cap-fwd" as CapabilityId)],
     ]);
     const clientTiers = new Map<CapabilityId, number>([["cap-fwd" as CapabilityId, 1]]);
     const client = makeComponent({

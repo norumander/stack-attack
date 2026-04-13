@@ -4,7 +4,7 @@ import { checkTTL } from "@core/engine/check-ttl";
 import { makeComponent } from "@harness/fixtures";
 import {
   TestQueueCapability,
-  ForwardingCapability,
+  TestForwardingCapability,
 } from "@harness/test-capabilities";
 import { computeVisitOrder } from "@core/engine/visit-order";
 import type { Request } from "@core/types/request";
@@ -45,7 +45,7 @@ describe("checkTTL Scan 3: bufferable partitions", () => {
   it("expires a buffered request whose TTL has elapsed", () => {
     const state = new SimulationState({ zones: [], pairLatency: new Map() });
     const queueCap = new TestQueueCapability("q1" as CapabilityId);
-    const fwdCap = new ForwardingCapability("fwd" as CapabilityId);
+    const fwdCap = new TestForwardingCapability("fwd" as CapabilityId);
     const caps = new Map<CapabilityId, Capability>();
     caps.set("q1" as CapabilityId, queueCap);
     caps.set("fwd" as CapabilityId, fwdCap);

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Engine } from "@core/engine/engine";
 import { SimulationState } from "@core/state/simulation-state";
-import { ProcessingCapability } from "@capabilities/processing/processing-capability";
+import { TestForwardingCapability, RespondingCapability } from "@harness/test-capabilities";
 import { SandboxModeController } from "@modes/sandbox/sandbox-mode-controller";
 import { makeComponent, makePort, makeConnection } from "@harness/fixtures";
 import type { Capability } from "@core/capability/capability";
@@ -15,7 +15,7 @@ describe("Sandbox mode smoke test", () => {
     const clientCaps = new Map<CapabilityId, Capability>([
       [
         "cap-client" as CapabilityId,
-        new ProcessingCapability("cap-client" as CapabilityId, { outcomeKind: "FORWARD" }),
+        new TestForwardingCapability("cap-client" as CapabilityId),
       ],
     ]);
     const clientTiers = new Map<CapabilityId, number>([["cap-client" as CapabilityId, 1]]);
@@ -30,7 +30,7 @@ describe("Sandbox mode smoke test", () => {
     const caps = new Map<CapabilityId, Capability>([
       [
         "cap-proc" as CapabilityId,
-        new ProcessingCapability("cap-proc" as CapabilityId, { outcomeKind: "RESPOND" }),
+        new RespondingCapability("cap-proc" as CapabilityId),
       ],
     ]);
     const tiers = new Map<CapabilityId, number>([["cap-proc" as CapabilityId, 1]]);
@@ -86,7 +86,7 @@ describe("Sandbox mode smoke test", () => {
     const clientCaps = new Map<CapabilityId, Capability>([
       [
         "cap-client" as CapabilityId,
-        new ProcessingCapability("cap-client" as CapabilityId, { outcomeKind: "FORWARD" }),
+        new TestForwardingCapability("cap-client" as CapabilityId),
       ],
     ]);
     const clientTiers = new Map<CapabilityId, number>([["cap-client" as CapabilityId, 1]]);
@@ -101,7 +101,7 @@ describe("Sandbox mode smoke test", () => {
     const caps = new Map<CapabilityId, Capability>([
       [
         "cap-proc" as CapabilityId,
-        new ProcessingCapability("cap-proc" as CapabilityId, { outcomeKind: "RESPOND" }),
+        new RespondingCapability("cap-proc" as CapabilityId),
       ],
     ]);
     const tiers = new Map<CapabilityId, number>([["cap-proc" as CapabilityId, 1]]);
@@ -164,7 +164,7 @@ describe("Sandbox mode smoke test", () => {
     const clientCaps = new Map<CapabilityId, Capability>([
       [
         "cap-client" as CapabilityId,
-        new ProcessingCapability("cap-client" as CapabilityId, { outcomeKind: "FORWARD" }),
+        new TestForwardingCapability("cap-client" as CapabilityId),
       ],
     ]);
     const clientTiers = new Map<CapabilityId, number>([["cap-client" as CapabilityId, 1]]);
@@ -179,7 +179,7 @@ describe("Sandbox mode smoke test", () => {
     const caps = new Map<CapabilityId, Capability>([
       [
         "cap-proc" as CapabilityId,
-        new ProcessingCapability("cap-proc" as CapabilityId, { outcomeKind: "RESPOND" }),
+        new RespondingCapability("cap-proc" as CapabilityId),
       ],
     ]);
     const tiers = new Map<CapabilityId, number>([["cap-proc" as CapabilityId, 1]]);
