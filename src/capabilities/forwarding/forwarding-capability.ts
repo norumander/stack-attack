@@ -1,79 +1,105 @@
-import type { Capability, CapabilityStats } from "@core/capability/capability";
-import type { Request } from "@core/types/request";
-import type { ProcessResult } from "@core/types/result";
-import type { ProcessContext } from "@core/capability/process-context";
-import type { CapabilityId } from "@core/types/ids";
+import type { Capability, CapabilityStats } from "../../core/capability/capability.js";
+import type { Request } from "../../core/types/request.js";
+import type { ProcessContext } from "../../core/capability/process-context.js";
+import type { ProcessResult } from "../../core/types/result.js";
+import type { CapabilityId } from "../../core/types/ids.js";
 
 export interface ForwardingCapabilityOptions {
-  readonly handledTypes: readonly string[];
   /**
-   * Per-tier throughput contribution. Configurable per-instance so that
-   * e.g. Server's Forwarding (writes only) can be small (12) while LB's
-   * Forwarding (all traffic) can be large (60). Default: 20 per tier.
+   * Optional list of request types this instance handles. When omitted,
+   * the capability accepts every request type — the default used by the
+   * sandbox dashboard and intermediary components (LB, API Gateway, CDN,
+   * Circuit Breaker, DNS/GTM, Client).
+   */
+  readonly handledTypes?: readonly string[];
+  /**
+   * When set, enables a per-tier throughput cap of `throughputPerTier * tier`.
+   * When omitted, `getThroughputPerTick` is undefined and the capability
+   * contributes no bound (unbounded throughput — the intermediary default).
+   * TD mode's Server uses `12` for writes; Cache and LoadBalancer use `55`
+   * so they can handle Wave 3's 50 req/tick.
    */
   readonly throughputPerTier?: number;
+  /**
+   * When true, emits a source-side FORWARDED RequestEvent with
+   * `capabilityId: this.id` so integration tests can distinguish it from
+   * the engine's target-side FORWARDED event (which has `capabilityId: null`).
+   * Default: false.
+   */
+  readonly emitForwardedEvent?: boolean;
 }
 
 /**
- * Production capability that produces a FORWARD outcome for requests whose
- * type is in the configured handledTypes list. Used by Server (writes),
- * Cache (read misses), and LoadBalancer (all traffic) to move requests
- * to egress connections.
+ * PROCESS-phase capability that forwards requests to an egress connection.
  *
- * Emits a FORWARDED RequestEvent at the source component (with the
- * capability's own `capabilityId` attached). The engine ALSO emits a
- * FORWARDED event at the target component when it delivers the request —
- * that one has `capabilityId: null`. Integration tests distinguish the
- * two: source-side forwards are events where `capabilityId !== null`.
+ * Default behavior (no options): unconditional forwarder, unbounded
+ * throughput, no event emission, zero upkeep. Intermediary components
+ * (LB, API Gateway, CDN, Circuit Breaker, DNS/GTM, Client) use this
+ * default for pass-through.
  *
- * The engine does not auto-forward when a component's PROCESS phase produces
- * PASS (no matching capability); requests in that state are silently dropped
- * by deliverStaged. ForwardingCapability is the explicit primitive for
- * producing the FORWARD outcome.
+ * Optional behavior (with options): restrict handled types, cap
+ * throughput per tier, or emit source-side FORWARDED events. Used by
+ * TD mode's Server (writes only, bounded), Cache (all traffic, bounded),
+ * and LoadBalancer (all traffic, bounded) to shape wave-level behavior.
+ *
+ * Note: the engine does not auto-forward when a component's PROCESS
+ * phase produces PASS (no matching capability). ForwardingCapability is
+ * the explicit primitive for producing the FORWARD outcome.
  */
 export class ForwardingCapability implements Capability {
   readonly phase = "PROCESS" as const;
+
   private forwardedCount = 0;
-  private readonly handledTypes: ReadonlySet<string>;
-  private readonly throughputPerTier: number;
+  private readonly handledTypes: ReadonlySet<string> | null;
+  private readonly throughputPerTier: number | null;
+  private readonly emitForwardedEvent: boolean;
 
   constructor(
     readonly id: CapabilityId,
-    options: ForwardingCapabilityOptions,
+    options: ForwardingCapabilityOptions = {},
   ) {
-    this.handledTypes = new Set(options.handledTypes);
-    this.throughputPerTier = options.throughputPerTier ?? 20;
+    this.handledTypes = options.handledTypes
+      ? new Set(options.handledTypes)
+      : null;
+    this.throughputPerTier = options.throughputPerTier ?? null;
+    this.emitForwardedEvent = options.emitForwardedEvent ?? false;
+    if (this.throughputPerTier !== null) {
+      const perTier = this.throughputPerTier;
+      this.getThroughputPerTick = (tier: number) => tier * perTier;
+    }
   }
 
+  /**
+   * Optional; only defined when `throughputPerTier` is configured. Matches
+   * the `Capability.getThroughputPerTick?` contract — omitting it signals
+   * unbounded throughput to `componentThroughputPerTick`.
+   */
+  getThroughputPerTick?: (tier: number) => number;
+
   canHandle(requestType: string): boolean {
+    if (this.handledTypes === null) return true;
     return this.handledTypes.has(requestType);
   }
 
   process(_request: Request, context: ProcessContext): ProcessResult {
     this.forwardedCount += 1;
-    return {
-      outcome: { kind: "FORWARD" },
-      sideEffects: [],
-      events: [
-        {
-          tick: context.currentTick,
-          componentId: context.componentId,
-          capabilityId: this.id,
-          connectionId: null,
-          type: "FORWARDED",
-          latencyAdded: 0,
-        },
-      ],
-    };
+    const events = this.emitForwardedEvent
+      ? [
+          {
+            tick: context.currentTick,
+            componentId: context.componentId,
+            capabilityId: this.id,
+            connectionId: null,
+            type: "FORWARDED" as const,
+            latencyAdded: 0,
+          },
+        ]
+      : [];
+    return { outcome: { kind: "FORWARD" }, sideEffects: [], events };
   }
 
-  getThroughputPerTick(tier: number): number {
-    return this.throughputPerTier * tier;
-  }
-
-  getUpkeepCost(tier: number): number {
-    const table: Record<number, number> = { 1: 1, 2: 2, 3: 4 };
-    return table[tier] ?? 1;
+  getUpkeepCost(_tier: number): number {
+    return 0;
   }
 
   getStats(): CapabilityStats {

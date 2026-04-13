@@ -3,16 +3,15 @@ import { ProcessingCapability } from "@capabilities/processing/processing-capabi
 import type { CapabilityId, ComponentId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
 import type { ProcessContext } from "@core/capability/process-context";
+import { createRng } from "@core/engine/rng";
 
-const CAP_ID = "processing" as CapabilityId;
-
-function req(type: string): Request {
+function req(): Request {
   return {
     id: "r-1" as RequestId,
     parentId: null,
-    type,
+    type: "api_read",
     payload: null,
-    origin: "c-1" as ComponentId,
+    origin: "c-a" as ComponentId,
     createdAt: 0,
     ttl: 10,
     originZone: null,
@@ -21,73 +20,63 @@ function req(type: string): Request {
   };
 }
 
-// Minimal stub — capabilities mostly ignore context. `as unknown as` cast
-// is required because the real ProcessContext has 9 fields including a
-// DeterministicRng object (not a function) and a SimulationStateReader.
-// We provide only the fields the capability actually reads.
-const ctx = {
-  currentTick: 0,
-  componentId: "c-1" as ComponentId,
-  effectiveTier: 1,
-  activeCapabilityIds: new Set([CAP_ID]),
-} as unknown as ProcessContext;
+function ctx(): ProcessContext {
+  return {
+    state: { currentTick: 0 } as any,
+    componentId: "c-a" as ComponentId,
+    effectiveTier: 1,
+    effectiveTiers: new Map(),
+    activeCapabilityIds: new Set(),
+    currentTick: 0,
+    rng: createRng("t"),
+    directories: [],
+    childResponses: new Map(),
+  };
+}
 
-describe("ProcessingCapability (production)", () => {
-  it("claims api_read via canHandle", () => {
-    const cap = new ProcessingCapability(CAP_ID);
+describe("ProcessingCapability stub", () => {
+  it("has PROCESS phase", () => {
+    const cap = new ProcessingCapability("cap-proc" as CapabilityId);
+    expect(cap.phase).toBe("PROCESS");
+  });
+
+  it("canHandle returns true for any request type", () => {
+    const cap = new ProcessingCapability("cap-proc" as CapabilityId);
     expect(cap.canHandle("api_read")).toBe(true);
+    expect(cap.canHandle("stream")).toBe(true);
   });
 
-  it("rejects api_write via canHandle", () => {
-    const cap = new ProcessingCapability(CAP_ID);
-    expect(cap.canHandle("api_write")).toBe(false);
-  });
-
-  it("rejects unknown types", () => {
-    const cap = new ProcessingCapability(CAP_ID);
-    expect(cap.canHandle("static_asset")).toBe(false);
-    expect(cap.canHandle("batch")).toBe(false);
-  });
-
-  it("returns RESPOND outcome on api_read", () => {
-    const cap = new ProcessingCapability(CAP_ID);
-    const result = cap.process(req("api_read"), ctx);
+  it("process returns RESPOND by default (Stage 3)", () => {
+    const cap = new ProcessingCapability("cap-proc" as CapabilityId);
+    const result = cap.process(req(), ctx());
     expect(result.outcome.kind).toBe("RESPOND");
     expect(result.sideEffects).toEqual([]);
+    expect(result.events).toEqual([]);
   });
 
-  it("increments processedCount on each process call", () => {
-    const cap = new ProcessingCapability(CAP_ID);
-    cap.process(req("api_read"), ctx);
-    cap.process(req("api_read"), ctx);
-    expect(cap.getStats().processedCount).toBe(2);
+  it("process returns PASS when outcomeKind is explicitly PASS (backward compat)", () => {
+    const cap = new ProcessingCapability("cap-proc" as CapabilityId, { outcomeKind: "PASS" });
+    const result = cap.process(req(), ctx());
+    expect(result.outcome.kind).toBe("PASS");
   });
 
-  it("declares bounded throughput per tier", () => {
-    const cap = new ProcessingCapability(CAP_ID);
-    expect(cap.getThroughputPerTick(1)).toBe(20);
-    expect(cap.getThroughputPerTick(2)).toBe(35);
-    expect(cap.getThroughputPerTick(3)).toBe(60);
+  it("can be constructed with a test-only outcome override", () => {
+    const cap = new ProcessingCapability("cap-proc" as CapabilityId, {
+      outcomeKind: "RESPOND",
+    });
+    const result = cap.process(req(), ctx());
+    expect(result.outcome.kind).toBe("RESPOND");
   });
 
-  it("emits a PROCESSED event for counting in integration tests", () => {
-    const cap = new ProcessingCapability(CAP_ID);
-    const result = cap.process(req("api_read"), ctx);
-    const processedEvent = result.events.find((e) => e.type === "PROCESSED");
-    expect(processedEvent).toBeDefined();
-    expect(processedEvent?.componentId).toBe("c-1");
-    expect(processedEvent?.capabilityId).toBe(CAP_ID);
+  it("getUpkeepCost returns tier * 3 (Stage 3)", () => {
+    const cap = new ProcessingCapability("cap-proc" as CapabilityId);
+    expect(cap.getUpkeepCost(0)).toBe(0);
+    expect(cap.getUpkeepCost(3)).toBe(9);
   });
 
-  it("has upkeep scaling with tier", () => {
-    const cap = new ProcessingCapability(CAP_ID);
-    expect(cap.getUpkeepCost(1)).toBe(2);
-    expect(cap.getUpkeepCost(2)).toBe(5);
-    expect(cap.getUpkeepCost(3)).toBe(10);
-  });
-
-  it("phase is PROCESS", () => {
-    const cap = new ProcessingCapability(CAP_ID);
-    expect(cap.phase).toBe("PROCESS");
+  it("getThroughputPerTick returns tier * 25 (Stage 3)", () => {
+    const cap = new ProcessingCapability("cap-proc" as CapabilityId);
+    expect(cap.getThroughputPerTick(1)).toBe(25);
+    expect(cap.getThroughputPerTick(3)).toBe(75);
   });
 });

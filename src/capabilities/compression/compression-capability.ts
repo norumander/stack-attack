@@ -5,16 +5,13 @@ import type { ProcessResult } from "../../core/types/result.js";
 import type { CapabilityId } from "../../core/types/ids.js";
 
 /**
- * OBSERVE-phase capability that tracks per-tick processing stats.
- * Present on every component. Exposes metrics via getStats() for
- * other capabilities (AutoScale, HealthCheck) and the HUD to read.
+ * INTERCEPT-phase capability that models response compression.
+ * Reduces effective bandwidth consumption on responses.
+ * Returns PASS always — the bandwidth savings are modeled via
+ * reduced upkeep cost per tier (hardware-accelerated at tier 2).
  */
-export class MonitoringCapability implements Capability {
-  readonly phase = "OBSERVE" as const;
-
-  private processedThisTick = 0;
-  private droppedThisTick = 0;
-  private latencySumThisTick = 0;
+export class CompressionCapability implements Capability {
+  readonly phase = "INTERCEPT" as const;
 
   constructor(readonly id: CapabilityId) {}
 
@@ -23,7 +20,6 @@ export class MonitoringCapability implements Capability {
   }
 
   process(_request: Request, _context: ProcessContext): ProcessResult {
-    this.processedThisTick += 1;
     return { outcome: { kind: "PASS" }, sideEffects: [], events: [] };
   }
 
@@ -32,16 +28,6 @@ export class MonitoringCapability implements Capability {
   }
 
   getStats(): CapabilityStats {
-    return {
-      processedThisTick: this.processedThisTick,
-      droppedThisTick: this.droppedThisTick,
-      latencyAdded: this.latencySumThisTick,
-    };
-  }
-
-  resetPerTickState(): void {
-    this.processedThisTick = 0;
-    this.droppedThisTick = 0;
-    this.latencySumThisTick = 0;
+    return {};
   }
 }

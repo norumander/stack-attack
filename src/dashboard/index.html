@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BrainLift — Sandbox Dashboard</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <div class="header">
+    <h1>BrainLift Sandbox</h1>
+    <div class="controls-row">
+      <select id="topology-select"></select>
+      <select id="traffic-select"></select>
+    </div>
+    <div class="controls-row">
+      <button id="btn-play">&#9654; Play</button>
+      <button id="btn-step" class="secondary">Step</button>
+      <button id="btn-reset" class="secondary">Reset</button>
+      <label>Speed</label>
+      <input type="range" id="speed-slider" min="20" max="1000" value="300" />
+    </div>
+    <div class="tick-display">Tick <span id="tick-counter">0</span></div>
+  </div>
+
+  <div id="topology-visual" class="topology-visual"></div>
+
+  <div class="grid">
+    <!-- Charts -->
+    <div class="panel">
+      <h2>Throughput</h2>
+      <div class="chart-container">
+        <canvas id="chart-throughput"></canvas>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Latency</h2>
+      <div class="chart-container">
+        <canvas id="chart-latency"></canvas>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="panel full-width">
+      <h2>Summary</h2>
+      <div class="stats-grid">
+        <div class="stat-card green">
+          <div class="value" id="stat-resolved">0</div>
+          <div class="label">Resolved</div>
+        </div>
+        <div class="stat-card red">
+          <div class="value" id="stat-dropped">0</div>
+          <div class="label">Dropped</div>
+        </div>
+        <div class="stat-card yellow">
+          <div class="value" id="stat-timedout">0</div>
+          <div class="label">Timed Out</div>
+        </div>
+        <div class="stat-card orange">
+          <div class="value" id="stat-backpressured">0</div>
+          <div class="label">Backpressured</div>
+        </div>
+        <div class="stat-card blue">
+          <div class="value" id="stat-reliability">100%</div>
+          <div class="label">Reliability</div>
+        </div>
+        <div class="stat-card">
+          <div class="value" id="stat-latency">0</div>
+          <div class="label">Avg Latency</div>
+        </div>
+        <div class="stat-card green">
+          <div class="value" id="stat-revenue">0</div>
+          <div class="label">Revenue</div>
+        </div>
+        <div class="stat-card red">
+          <div class="value" id="stat-upkeep">0</div>
+          <div class="label">Upkeep</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Component Health -->
+    <div class="panel">
+      <h2>Component Health</h2>
+      <div id="health-bars"></div>
+    </div>
+
+    <!-- Chaos Panel -->
+    <div class="panel">
+      <h2>Chaos Events</h2>
+      <div class="controls-row" style="margin-bottom: 8px;">
+        <select id="chaos-target"></select>
+      </div>
+      <div class="chaos-grid">
+        <button class="danger" id="btn-chaos-kill">Kill Component</button>
+        <button class="danger" id="btn-chaos-latency">Inject Latency</button>
+        <button class="danger" id="btn-chaos-zone">Zone Outage</button>
+        <button class="danger" id="btn-chaos-sever">Sever Connection</button>
+      </div>
+    </div>
+
+    <!-- Scenario IO -->
+    <div class="panel full-width">
+      <h2>Scenario</h2>
+      <div class="scenario-row">
+        <button id="btn-save" class="secondary">Save Scenario</button>
+        <button id="btn-load" class="secondary">Load Scenario</button>
+        <input type="file" id="file-input" accept=".json" style="display:none" />
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

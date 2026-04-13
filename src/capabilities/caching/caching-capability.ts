@@ -1,83 +1,129 @@
-import type { Capability, CapabilityStats } from "@core/capability/capability";
-import type { Request } from "@core/types/request";
-import type { ProcessResult, PrimaryOutcome } from "@core/types/result";
-import type { ProcessContext } from "@core/capability/process-context";
-import type { CapabilityId } from "@core/types/ids";
+import type { Capability, CapabilityStats } from "../../core/capability/capability.js";
+import type { Request } from "../../core/types/request.js";
+import type { ProcessContext } from "../../core/capability/process-context.js";
+import type { ProcessResult } from "../../core/types/result.js";
+import type { CapabilityId } from "../../core/types/ids.js";
+
+const CACHEABLE_TYPES = new Set(["api_read", "static_asset"]);
+
+const BASE_KEYS_PER_TYPE: Record<string, number> = {
+  api_read: 10,
+  static_asset: 15,
+  api_write: 5,
+  auth_required: 8,
+  batch: 3,
+  stream: 5,
+  event: 5,
+};
+
+const CAPACITY_PER_TIER = [0, 10, 50, 100] as const;
+
+function simpleHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
 
 /**
- * INTERCEPT-phase cache keyed on stringified request.payload. Hit returns
- * RESPOND with CACHED_HIT event. Miss returns PASS (pipeline continues
- * to PROCESS, which typically runs ForwardingCapability to the egress).
+ * INTERCEPT-phase capability implementing an LRU cache.
  *
- * Cache-on-miss shortcut: the miss path inserts the key immediately. This
- * is observationally correct for homogeneous workloads (Stage 3a) because
- * every api_read returns the same response — it would fail for real
- * heterogeneous payloads, and a proper write-back flow is deferred.
+ * Cache keys are scoped by request type — an api_read to slot 5 and a
+ * static_asset to slot 5 are different entries. Key space is determined
+ * by per-type base keys, so more diverse traffic = larger key space =
+ * harder to cache effectively.
+ *
+ * Hit → RESPOND (short-circuit, request never reaches server).
+ * Miss → PASS (request continues downstream, key is cached for future hits).
+ *
+ * Tier 1: capacity 10. Tier 2: capacity 50. Tier 3: capacity 100.
  */
 export class CachingCapability implements Capability {
   readonly phase = "INTERCEPT" as const;
-  private readonly cache = new Map<string, { tick: number }>();
-  private readonly capacity: number;
-  private hitCount = 0;
-  private missCount = 0;
 
-  constructor(
-    readonly id: CapabilityId,
-    options: { capacity?: number } = {},
-  ) {
-    this.capacity = options.capacity ?? 10;
-  }
+  /** Maps composite key (type:slot) → last access tick */
+  private cache = new Map<string, number>();
+  private hits = 0;
+  private misses = 0;
 
-  canHandle(_requestType: string): boolean {
-    return true;
+  constructor(readonly id: CapabilityId) {}
+
+  canHandle(requestType: string): boolean {
+    return CACHEABLE_TYPES.has(requestType);
   }
 
   process(request: Request, context: ProcessContext): ProcessResult {
-    if (request.type !== "api_read") {
-      return { outcome: { kind: "PASS" } as PrimaryOutcome, sideEffects: [], events: [] };
-    }
+    const tier = context.effectiveTiers.get(this.id) ?? 1;
+    const capacity = CAPACITY_PER_TIER[tier] ?? CAPACITY_PER_TIER[1]!;
+    const baseKeys = BASE_KEYS_PER_TYPE[request.type] ?? 10;
+    const slot = simpleHash(request.type + request.id) % baseKeys;
+    const cacheKey = `${request.type}:${slot}`;
 
-    const key = String(request.payload);
-
-    if (this.cache.has(key)) {
-      this.hitCount += 1;
+    if (this.cache.has(cacheKey)) {
+      // Cache hit — update access time and RESPOND
+      this.cache.set(cacheKey, context.currentTick);
+      this.hits += 1;
       return {
         outcome: { kind: "RESPOND" },
         sideEffects: [],
-        events: [
-          {
-            tick: context.currentTick,
-            componentId: context.componentId,
-            capabilityId: this.id,
-            connectionId: null,
-            type: "CACHED_HIT",
-            latencyAdded: 0,
-          },
-        ],
+        events: [{
+          tick: context.currentTick,
+          componentId: context.componentId,
+          capabilityId: this.id,
+          connectionId: null,
+          type: "CACHED_HIT" as const,
+          latencyAdded: 0,
+        }],
       };
     }
 
-    // Miss: insert (cache-on-miss shortcut — see class docstring) and PASS.
-    if (this.cache.size >= this.capacity) {
-      const firstKey = this.cache.keys().next().value;
-      if (firstKey !== undefined) this.cache.delete(firstKey);
+    // Cache miss — evict LRU if at capacity, store new entry, PASS
+    if (this.cache.size >= capacity) {
+      this.evictLRU();
     }
-    this.cache.set(key, { tick: context.currentTick });
-    this.missCount += 1;
+    this.cache.set(cacheKey, context.currentTick);
+    this.misses += 1;
 
     return {
-      outcome: { kind: "PASS" } as PrimaryOutcome,
+      outcome: { kind: "PASS" },
       sideEffects: [],
-      events: [],
+      events: [{
+        tick: context.currentTick,
+        componentId: context.componentId,
+        capabilityId: this.id,
+        connectionId: null,
+        type: "CACHED_MISS" as const,
+        latencyAdded: 0,
+      }],
     };
   }
 
+  private evictLRU(): void {
+    let oldestKey: string | null = null;
+    let oldestTick = Infinity;
+    for (const [key, tick] of this.cache) {
+      if (tick < oldestTick) {
+        oldestTick = tick;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey !== null) {
+      this.cache.delete(oldestKey);
+    }
+  }
+
   getUpkeepCost(tier: number): number {
-    const table: Record<number, number> = { 1: 3, 2: 6, 3: 12 };
-    return table[tier] ?? 3;
+    return tier * 3;
   }
 
   getStats(): CapabilityStats {
-    return { hitCount: this.hitCount, missCount: this.missCount };
+    const total = this.hits + this.misses;
+    return {
+      hitRate: total > 0 ? this.hits / total : 0,
+      size: this.cache.size,
+      hits: this.hits,
+      misses: this.misses,
+    };
   }
 }

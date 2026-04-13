@@ -3,83 +3,100 @@ import { CachingCapability } from "@capabilities/caching/caching-capability";
 import type { CapabilityId, ComponentId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
 import type { ProcessContext } from "@core/capability/process-context";
+import { createRng } from "@core/engine/rng";
 
-const CAP_ID = "caching" as CapabilityId;
-
-function req(type: string, payload: string, id = "r-1"): Request {
-  return {
-    id: id as RequestId,
-    parentId: null,
-    type,
-    payload,
-    origin: "c-1" as ComponentId,
-    createdAt: 0,
-    ttl: 10,
-    originZone: null,
-    streamDuration: null,
-    streamBandwidth: null,
-  };
+let reqCounter = 0;
+function req(type = "api_read"): Request {
+  reqCounter++;
+  return { id: `r-${reqCounter}` as RequestId, parentId: null, type, payload: null, origin: "c-a" as ComponentId, createdAt: 0, ttl: 10, originZone: null, streamDuration: null, streamBandwidth: null };
 }
 
-// Minimal stub — capabilities mostly ignore context. `as unknown as` cast
-// is required because the real ProcessContext has 9 fields including a
-// DeterministicRng object (not a function) and a SimulationStateReader.
-// We provide only the fields the capability actually reads.
-const ctx = {
-  currentTick: 0,
-  componentId: "c-1" as ComponentId,
-  effectiveTier: 1,
-  activeCapabilityIds: new Set([CAP_ID]),
-} as unknown as ProcessContext;
+function ctx(tier = 1, tick = 0): ProcessContext {
+  return { state: { currentTick: tick } as any, componentId: "c-a" as ComponentId, effectiveTier: tier, effectiveTiers: new Map([["cache" as CapabilityId, tier]]), activeCapabilityIds: new Set(), currentTick: tick, rng: createRng("t"), directories: [], childResponses: new Map() };
+}
 
 describe("CachingCapability", () => {
-  it("passes non-read requests through", () => {
-    const cap = new CachingCapability(CAP_ID);
-    const result = cap.process(req("api_write", "w-1"), ctx);
+  beforeEach(() => { reqCounter = 0; });
+
+  it("has INTERCEPT phase", () => {
+    expect(new CachingCapability("cache" as CapabilityId).phase).toBe("INTERCEPT");
+  });
+
+  it("canHandle returns true for cacheable types", () => {
+    const cap = new CachingCapability("cache" as CapabilityId);
+    expect(cap.canHandle("api_read")).toBe(true);
+    expect(cap.canHandle("static_asset")).toBe(true);
+  });
+
+  it("canHandle returns false for non-cacheable types", () => {
+    const cap = new CachingCapability("cache" as CapabilityId);
+    expect(cap.canHandle("api_write")).toBe(false);
+    expect(cap.canHandle("batch")).toBe(false);
+    expect(cap.canHandle("stream")).toBe(false);
+  });
+
+  it("first request is a cache miss (PASS)", () => {
+    const cap = new CachingCapability("cache" as CapabilityId);
+    const result = cap.process(req("api_read"), ctx());
     expect(result.outcome.kind).toBe("PASS");
+    expect(result.events[0]!.type).toBe("CACHED_MISS");
   });
 
-  it("first read on a key returns PASS (miss)", () => {
-    const cap = new CachingCapability(CAP_ID);
-    const result = cap.process(req("api_read", "key-1"), ctx);
-    expect(result.outcome.kind).toBe("PASS");
-  });
-
-  it("second read on the same key returns RESPOND (hit)", () => {
-    const cap = new CachingCapability(CAP_ID);
-    cap.process(req("api_read", "key-1", "r-1"), ctx);
-    const result = cap.process(req("api_read", "key-1", "r-2"), ctx);
-    expect(result.outcome.kind).toBe("RESPOND");
-    const hitEvent = result.events.find((e) => e.type === "CACHED_HIT");
-    expect(hitEvent).toBeDefined();
-  });
-
-  it("different keys don't collide", () => {
-    const cap = new CachingCapability(CAP_ID);
-    cap.process(req("api_read", "key-1"), ctx);
-    const result = cap.process(req("api_read", "key-2"), ctx);
-    expect(result.outcome.kind).toBe("PASS"); // key-2 is a miss
-  });
-
-  it("FIFO evicts when full (capacity=10 at T1)", () => {
-    const cap = new CachingCapability(CAP_ID);
-    // Fill cache: key-0 through key-9
-    for (let i = 0; i < 10; i++) {
-      cap.process(req("api_read", `key-${i}`), ctx);
+  it("repeated identical cache key produces a hit (RESPOND)", () => {
+    const cap = new CachingCapability("cache" as CapabilityId);
+    // Generate enough requests that one will hash to the same slot as a previous one
+    // With base keys = 10 for api_read, after 10+ requests we should see collisions
+    const results: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      const r = req("api_read");
+      const result = cap.process(r, ctx(1, 0));
+      results.push(result.outcome.kind);
     }
-    // Insert key-10 — should evict key-0
-    cap.process(req("api_read", "key-10"), ctx);
-
-    // key-0 should now be a miss
-    const result0 = cap.process(req("api_read", "key-0"), ctx);
-    expect(result0.outcome.kind).toBe("PASS");
-    // key-9 should still hit
-    const result9 = cap.process(req("api_read", "key-9"), ctx);
-    expect(result9.outcome.kind).toBe("RESPOND");
+    // At least one should be a RESPOND (cache hit)
+    expect(results.filter(k => k === "RESPOND").length).toBeGreaterThan(0);
   });
 
-  it("phase is INTERCEPT", () => {
-    const cap = new CachingCapability(CAP_ID);
-    expect(cap.phase).toBe("INTERCEPT");
+  it("cache miss and hit events are emitted", () => {
+    const cap = new CachingCapability("cache" as CapabilityId);
+    const r1 = cap.process(req("api_read"), ctx());
+    expect(r1.events[0]!.type).toBe("CACHED_MISS");
+
+    // Generate many requests to get a hit
+    let hitFound = false;
+    for (let i = 0; i < 20; i++) {
+      const result = cap.process(req("api_read"), ctx(1, 0));
+      if (result.events[0]?.type === "CACHED_HIT") {
+        hitFound = true;
+        break;
+      }
+    }
+    expect(hitFound).toBe(true);
+  });
+
+  it("stats track hits and misses", () => {
+    const cap = new CachingCapability("cache" as CapabilityId);
+    for (let i = 0; i < 30; i++) {
+      cap.process(req("api_read"), ctx(1, 0));
+    }
+    const stats = cap.getStats();
+    expect((stats.hits ?? 0) + (stats.misses ?? 0)).toBe(30);
+    expect(stats.hits).toBeGreaterThan(0);
+  });
+
+  it("different request types produce different cache entries", () => {
+    const cap = new CachingCapability("cache" as CapabilityId);
+    // A static_asset and api_read with same counter value should be different entries
+    const r1: Request = { id: "r-same" as RequestId, parentId: null, type: "api_read", payload: null, origin: "c-a" as ComponentId, createdAt: 0, ttl: 10, originZone: null, streamDuration: null, streamBandwidth: null };
+    const r2: Request = { id: "r-same" as RequestId, parentId: null, type: "static_asset", payload: null, origin: "c-a" as ComponentId, createdAt: 0, ttl: 10, originZone: null, streamDuration: null, streamBandwidth: null };
+
+    cap.process(r1, ctx()); // miss for api_read:slot
+    const result = cap.process(r2, ctx()); // should also be miss (different type scope)
+    expect(result.outcome.kind).toBe("PASS"); // miss, not hit
+  });
+
+  it("getUpkeepCost scales with tier", () => {
+    const cap = new CachingCapability("cache" as CapabilityId);
+    expect(cap.getUpkeepCost(1)).toBe(3);
+    expect(cap.getUpkeepCost(3)).toBe(9);
   });
 });

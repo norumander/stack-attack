@@ -1,55 +1,89 @@
-import type { Capability, CapabilityStats } from "@core/capability/capability";
-import type { Request } from "@core/types/request";
-import type { ProcessResult } from "@core/types/result";
-import type { ProcessContext } from "@core/capability/process-context";
-import type { CapabilityId } from "@core/types/ids";
+import type { Capability, CapabilityStats } from "../../core/capability/capability.js";
+import type { Request } from "../../core/types/request.js";
+import type { ProcessContext } from "../../core/capability/process-context.js";
+import type { ProcessResult } from "../../core/types/result.js";
+import type { CapabilityId } from "../../core/types/ids.js";
+
+export interface StorageCapabilityOptions {
+  /**
+   * Per-tier throughput contribution. Default: 5 (general-purpose capability
+   * library's base for the sandbox dashboard). TD integration tests override
+   * this to 25 via `buildDatabase` so Wave 3's 15 writes/tick do not make
+   * Database the bottleneck — the Server must be the bottleneck to preserve
+   * the learning arc.
+   */
+  throughputPerTier?: number;
+  /**
+   * When true, emits a PROCESSED RequestEvent on every process() call so
+   * integration tests can count writes handled per component. The engine
+   * does not emit PROCESSED events — capabilities do. Default: false.
+   */
+  emitProcessedEvent?: boolean;
+}
 
 /**
- * Production Storage — PROCESS phase, handles api_write, RESPOND outcome.
- * Emits a PROCESSED event so integration tests can count writes handled
- * per component. Stage 3a: no replication, no sharding, no query
- * capability. Just the minimum that lets writes reach a persistent
- * component.
+ * PROCESS-phase capability for structured data persistence.
+ * Handles api_write and api_read. Slower throughput than ProcessingCapability
+ * but required for write operations.
  */
 export class StorageCapability implements Capability {
   readonly phase = "PROCESS" as const;
-  private writeCount = 0;
 
-  constructor(readonly id: CapabilityId) {}
+  private writesProcessed = 0;
+  private readsProcessed = 0;
+  private readonly throughputPerTier: number;
+  private readonly emitProcessedEvent: boolean;
 
-  canHandle(requestType: string): boolean {
-    return requestType === "api_write";
+  constructor(
+    readonly id: CapabilityId,
+    options: StorageCapabilityOptions = {},
+  ) {
+    this.throughputPerTier = options.throughputPerTier ?? 5;
+    this.emitProcessedEvent = options.emitProcessedEvent ?? false;
   }
 
-  process(_request: Request, context: ProcessContext): ProcessResult {
-    this.writeCount += 1;
-    return {
-      outcome: { kind: "RESPOND" },
-      sideEffects: [],
-      events: [
-        {
-          tick: context.currentTick,
-          componentId: context.componentId,
-          capabilityId: this.id,
-          connectionId: null,
-          type: "PROCESSED",
-          latencyAdded: 2,
-        },
-      ],
-    };
+  canHandle(requestType: string): boolean {
+    return requestType === "api_write" || requestType === "api_read";
+  }
+
+  process(request: Request, context: ProcessContext): ProcessResult {
+    if (request.type === "api_write") {
+      this.writesProcessed += 1;
+    } else {
+      this.readsProcessed += 1;
+    }
+    const events = this.emitProcessedEvent
+      ? [
+          {
+            tick: context.currentTick,
+            componentId: context.componentId,
+            capabilityId: this.id,
+            connectionId: null,
+            type: "PROCESSED" as const,
+            latencyAdded: 2,
+          },
+        ]
+      : [];
+    return { outcome: { kind: "RESPOND" }, sideEffects: [], events };
   }
 
   getThroughputPerTick(tier: number): number {
-    const table: Record<number, number> = { 1: 25, 2: 45, 3: 80 };
-    return table[tier] ?? 25;
+    return tier * this.throughputPerTier;
   }
 
   getUpkeepCost(tier: number): number {
-    const table: Record<number, number> = { 1: 4, 2: 8, 3: 16 };
-    return table[tier] ?? 4;
+    return tier * 5;
   }
 
   getStats(): CapabilityStats {
-    return { writeCount: this.writeCount };
+    return {
+      writesProcessed: this.writesProcessed,
+      readsProcessed: this.readsProcessed,
+    };
+  }
+
+  resetPerTickState(): void {
+    this.writesProcessed = 0;
+    this.readsProcessed = 0;
   }
 }

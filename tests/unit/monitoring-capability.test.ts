@@ -3,66 +3,49 @@ import { MonitoringCapability } from "@capabilities/monitoring/monitoring-capabi
 import type { CapabilityId, ComponentId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
 import type { ProcessContext } from "@core/capability/process-context";
+import { createRng } from "@core/engine/rng";
 
-const CAP_ID = "monitoring" as CapabilityId;
-
-function req(type: string): Request {
-  return {
-    id: "r-1" as RequestId,
-    parentId: null,
-    type,
-    payload: null,
-    origin: "c-1" as ComponentId,
-    createdAt: 0,
-    ttl: 10,
-    originZone: null,
-    streamDuration: null,
-    streamBandwidth: null,
-  };
+function req(): Request {
+  return { id: "r-1" as RequestId, parentId: null, type: "api_read", payload: null, origin: "c-a" as ComponentId, createdAt: 0, ttl: 10, originZone: null, streamDuration: null, streamBandwidth: null };
 }
 
-// Minimal stub — capabilities mostly ignore context. `as unknown as` cast
-// is required because the real ProcessContext has 9 fields including a
-// DeterministicRng object (not a function) and a SimulationStateReader.
-// We provide only the fields the capability actually reads.
-const ctx = {
-  currentTick: 0,
-  componentId: "c-1" as ComponentId,
-  effectiveTier: 1,
-  activeCapabilityIds: new Set([CAP_ID]),
-} as unknown as ProcessContext;
+function ctx(): ProcessContext {
+  return { state: { currentTick: 0 } as any, componentId: "c-a" as ComponentId, effectiveTier: 1, effectiveTiers: new Map(), activeCapabilityIds: new Set(), currentTick: 0, rng: createRng("t"), directories: [], childResponses: new Map() };
+}
 
 describe("MonitoringCapability", () => {
-  it("claims any request type (canHandle=true)", () => {
-    const cap = new MonitoringCapability(CAP_ID);
+  it("has OBSERVE phase", () => {
+    expect(new MonitoringCapability("mon" as CapabilityId).phase).toBe("OBSERVE");
+  });
+
+  it("canHandle returns true for all types", () => {
+    const cap = new MonitoringCapability("mon" as CapabilityId);
     expect(cap.canHandle("api_read")).toBe(true);
-    expect(cap.canHandle("api_write")).toBe(true);
-    expect(cap.canHandle("anything")).toBe(true);
+    expect(cap.canHandle("stream")).toBe(true);
   });
 
-  it("returns PASS outcome (OBSERVE-phase contract)", () => {
-    const cap = new MonitoringCapability(CAP_ID);
-    const result = cap.process(req("api_read"), ctx);
-    expect(result.outcome.kind).toBe("PASS");
+  it("process returns PASS", () => {
+    const cap = new MonitoringCapability("mon" as CapabilityId);
+    expect(cap.process(req(), ctx()).outcome.kind).toBe("PASS");
   });
 
-  it("counts every call via getStats", () => {
-    const cap = new MonitoringCapability(CAP_ID);
-    cap.process(req("api_read"), ctx);
-    cap.process(req("api_write"), ctx);
-    cap.process(req("api_read"), ctx);
-    expect(cap.getStats().observedCount).toBe(3);
+  it("tracks processedThisTick in stats", () => {
+    const cap = new MonitoringCapability("mon" as CapabilityId);
+    cap.process(req(), ctx());
+    cap.process(req(), ctx());
+    expect(cap.getStats().processedThisTick).toBe(2);
   });
 
-  it("has upkeep scaling with tier", () => {
-    const cap = new MonitoringCapability(CAP_ID);
-    expect(cap.getUpkeepCost(1)).toBe(1);
-    expect(cap.getUpkeepCost(2)).toBe(3);
-    expect(cap.getUpkeepCost(3)).toBe(5);
+  it("resetPerTickState clears counters", () => {
+    const cap = new MonitoringCapability("mon" as CapabilityId);
+    cap.process(req(), ctx());
+    cap.resetPerTickState();
+    expect(cap.getStats().processedThisTick).toBe(0);
   });
 
-  it("phase is OBSERVE", () => {
-    const cap = new MonitoringCapability(CAP_ID);
-    expect(cap.phase).toBe("OBSERVE");
+  it("getUpkeepCost scales with tier", () => {
+    const cap = new MonitoringCapability("mon" as CapabilityId);
+    expect(cap.getUpkeepCost(1)).toBe(2);
+    expect(cap.getUpkeepCost(2)).toBe(4);
   });
 });
