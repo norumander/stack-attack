@@ -1,6 +1,6 @@
 # Stage 3a — Wave 1–3 Playable Slice (Design)
 
-**Status:** Design
+**Status:** Design — revised 2026-04-12 post cold-audit (two independent audit passes surfaced seven blockers against the initial draft, fixed in §5–§9 below)
 **Date:** 2026-04-12
 **Depends on:** Stage 2c TTL/SCALE/routing (merged at `167e6d2` on `main`)
 **Supersedes:** — (first spec for Stage 3)
@@ -42,10 +42,14 @@ includes the first meaningful architectural lesson.
 ## 2. Goals
 
 1. Replace the Stage 1 `ProcessingCapability` stub with a production
-   implementation that differentiates by request type, and ship three new
-   production capabilities — `StorageCapability`, `CachingCapability`,
-   `MonitoringCapability` — all implementing the standard `Capability`
-   interface with no engine sub-interfaces.
+   implementation, and ship four new production capabilities —
+   `ForwardingCapability`, `StorageCapability`, `CachingCapability`,
+   `MonitoringCapability`. All implement the standard `Capability`
+   interface with no engine sub-interfaces. Every PROCESS-phase
+   capability in this set declares `getThroughputPerTick(tier)` so
+   `componentThroughputPerTick` returns a bounded number (required for
+   Wave 3's lone-server failure mode — without it the engine cap is
+   `Infinity` and a single Server absorbs all traffic).
 2. Register four component types — `Server`, `Database`, `Cache`,
    `LoadBalancer` — in the `ComponentRegistry` via a new
    `registerTDDefaults()` bootstrap function.
@@ -59,9 +63,51 @@ includes the first meaningful architectural lesson.
    topology, Wave 2 passes with Server+Database, Wave 3 fails with
    lone-Server and passes with either Cache-rescue or LoadBalancer-rescue.
 
-The engine is unchanged. All four capabilities (one rewrite, three new)
+The engine is unchanged. All five capabilities (one rewrite, four new)
 are pure pipeline capabilities. The registry interfaces are unchanged.
 No new engine sub-interfaces, no new tick steps, no new event types.
+
+**Critical engine-behavior facts this spec respects** (discovered in cold
+audit — the first draft of this spec misread all four):
+
+1. **`deliverStaged` drops `PASS` silently.** `src/core/engine/deliver-staged.ts`
+   has `default: return false` for any outcome that isn't `RESPOND`,
+   `FORWARD`, `DROP`, or `QUEUE_HOLD`. A component whose PROCESS phase
+   produces `PASS` (because no capability's `canHandle` matched) emits no
+   event, triggers no cascade, and is silently dropped from the queue.
+   This means **"let the request fall through to the egress connection"
+   is not a primitive** — to forward a request, some capability must
+   return `{ kind: "FORWARD" }`. That's why this spec introduces
+   `ForwardingCapability` rather than relying on pipeline fall-through.
+
+2. **`componentThroughputPerTick` returns `Infinity` if any PROCESS
+   capability omits `getThroughputPerTick`.** `src/core/engine/throughput.ts`
+   iterates all PROCESS caps, sums their throughput, and falls back to
+   `Infinity` on the first missing method. The existing Stage 1
+   `ProcessingCapability` does not implement it — which is why the Stage
+   1 test harness can't exercise throughput-limited backpressure. Every
+   production PROCESS capability this spec ships declares the method.
+
+3. **`OutcomeReport` is `{ verdict, score: {cost,performance,reliability,composite}, notes }`,
+   not a flat pass/fail shape.** `src/core/types/outcome.ts`. The first
+   draft of this spec invented a different shape; the real interface
+   must be honored.
+
+4. **`TickMetrics.perComponent` has counts only — no event-type or
+   per-request-type breakdown.** `src/core/types/metrics.ts`. Assertions
+   like "cache-hit events > 0" or "Database processed api_writes" must
+   read `state.requestLog: Map<RequestId, RequestEvent[]>` (the real
+   per-request event history), not `metricsHistory`.
+
+5. **`SandboxModeController.tryPlace` is a stub** — increments a counter,
+   returns a fake ID, never calls `compRegistry.create()` or places into
+   state. It exists only for interface conformance. Integration tests
+   that need to build topology do not use `tryPlace` — they construct
+   `Component` and `Connection` instances directly via harness fixtures
+   (`new Component({...})`, `makeConnection(...)`), as every existing
+   integration test under `tests/integration/` does. `TDModeController.tryPlace`
+   follows the same stub pattern. Topology assembly is a test-harness
+   concern, not a mode-controller concern, in Stage 3a.
 
 ## 3. Non-goals
 
@@ -138,9 +184,17 @@ only a new bootstrap function consumes them.
 
 ## 5. Capability contracts
 
-All four capabilities implement `Capability` from
+All five capabilities implement `Capability` from
 `src/core/capability/capability.ts`. None implement `EngineConsultable`,
 `EngineBufferable`, `EnginePullable`, or `InstanceDirectory`.
+
+**Throughput model.** Every PROCESS-phase capability in this set declares
+`getThroughputPerTick(tier)`. The engine's `componentThroughputPerTick`
+sums these across all PROCESS capabilities on a component, which means a
+component's total per-tick request budget is the sum of its PROCESS
+capabilities' caps. A `Server` with `ProcessingCapability` (handles
+reads) + `ForwardingCapability` (handles writes) has its budget split
+between the two capabilities' contributions.
 
 ### 5.0 `ProcessingCapability` (stub → production rewrite)
 
@@ -152,32 +206,86 @@ All four capabilities implement `Capability` from
 **Why this isn't just a new capability.** The current implementation is a
 Stage 1 test stub with a `ProcessingCapabilityOptions` config that forces
 a single `outcomeKind`, a `canHandle` that returns `true` unconditionally,
-and a source comment saying "Removed when the real capability lands in
-a later stage." Stage 3a is that stage. The replacement uses the same
-class name and same file location so the ~dozen unit/integration tests
-that already reference `new ProcessingCapability(...)` keep working with
-minimal mechanical updates.
+no throughput cap, and a source comment saying "Removed when the real
+capability lands in a later stage." Stage 3a is that stage. The
+replacement keeps the class name and file location so existing tests
+that reference `new ProcessingCapability(...)` migrate with mechanical
+changes rather than full rewrites. The Stage 1 `outcomeKind: "FORWARD"`
+code path is gone — tests that need pure forwarding migrate to
+`ForwardingCapability` (§5.0.5).
 
 **Behavior:**
-- `canHandle(requestType)`: returns `true` for `"api_read"`, `false` for
-  `"api_write"`. This is the read/write split that makes the Wave 2
-  integration test meaningful — the Server processes reads directly and
-  falls through on writes, which the engine converts to a FORWARD
-  delivery to the Database.
-- `process(request, context)`: returns `RESPOND` for reads with a
-  tier-dependent latency (T1: +1 tick). Emits one `PROCESSED` event.
-  (The capability never runs on writes because `canHandle` filtered
-  them out in the component's PROCESS-phase capability-selection loop.)
+- `canHandle(requestType)`: returns `true` for `"api_read"` only. Every
+  other request type returns `false`. This is the read half of the
+  Server's read/write split.
+- `process(request, context)`: returns `{ kind: "RESPOND" }` with a
+  tier-dependent latency bonus (T1: +1 tick via an event's
+  `latencyAdded`). Emits one `PROCESSED` event.
+- `getThroughputPerTick(tier)`: `{ 1: 20, 2: 35, 3: 60 }[tier] ?? 20`.
+  T1 default of ~20 is a starting point for Slice C tuning; the Wave 3
+  lone-server failure-mode math depends on this landing somewhere
+  that forces a meaningful drop rate at 50 req/tick — numbers are
+  tuned during implementation.
 - `getUpkeepCost(tier)`: `{ 1: 2, 2: 5, 3: 10 }[tier] ?? 2`.
 - Operational state: `{ processedCount: number }`.
-- Migration note: existing tests using `new ProcessingCapability(id, { outcomeKind: "FORWARD" })`
-  need to be re-examined. Many of them exist specifically because the
-  Stage 1 `PASS`-default was insufficient. The real production
-  capability's behavior (RESPOND on reads, fall-through on writes) may
-  replace several test fixtures entirely, but some may still need a
-  forward-only test stub. A minimal `TestForwardingProcessor` harness
-  capability can cover that gap if needed — resolved during Slice A
-  implementation.
+
+### 5.0.5 `ForwardingCapability` (new)
+
+**Location:** `src/capabilities/forwarding/forwarding-capability.ts`
+**Phase:** `PROCESS`
+**Capability ID:** `"forwarding"`
+
+**Why this capability exists.** The engine does not auto-forward requests
+that a component can't handle — `deliverStaged` drops `PASS` silently
+(see §2 engine fact #1). The only way to move a request out of a
+component via an egress connection is for some capability to return a
+`FORWARD` outcome. For a `LoadBalancer` (all traffic), a `Cache` on
+miss (reads), or a `Server` on a write, no existing capability produces
+that outcome — all of `ProcessingCapability`, `StorageCapability`,
+`CachingCapability`, `RoutingCapability`, `MonitoringCapability` have
+non-forwarding roles. `ForwardingCapability` is the primitive: a PROCESS
+capability configured with a set of request types it accepts, returning
+`{ kind: "FORWARD" }` for any matching request. The engine then consults
+`RoutingCapability` (if present, via the existing `EngineConsultable`
+path) or falls back to round-robin to pick the egress connection.
+
+**Behavior:**
+- **Constructor:** `new ForwardingCapability(id, { handledTypes: readonly string[] })`.
+  The `handledTypes` set is fixed per instance; different components
+  instantiate it with different sets. `Server` uses
+  `handledTypes: ["api_write"]`. `Cache` uses `["api_read"]` (for
+  misses — the `CachingCapability` INTERCEPT will have short-circuited
+  hits before this ever runs). `LoadBalancer` uses `["api_read", "api_write"]`.
+- `canHandle(requestType)`: returns `handledTypes.includes(requestType)`.
+- `process(request, context)`: returns
+  `{ outcome: { kind: "FORWARD" }, sideEffects: [], events: [{ type: "FORWARDED", ... }] }`.
+  Emits one `FORWARDED` event.
+- `getThroughputPerTick(tier)`: `{ 1: 40, 2: 80, 3: 160 }[tier] ?? 40`.
+  Forwarding is cheap — higher cap than computation. For a Server with
+  `ProcessingCapability` T1 (~20) + `ForwardingCapability` T1 (~40),
+  total budget is ~60/tick. Wave 3's 50 req/tick (35 read + 15 write)
+  fits within budget *per capability category*: the 15 writes fit in
+  the 40-write-capacity, the 35 reads barely exceed the 20-read-capacity
+  — forcing drops on reads. This is the intended Wave 3 lone-server
+  failure mode.
+- `getUpkeepCost(tier)`: `{ 1: 1, 2: 2, 3: 4 }[tier] ?? 1`.
+- No operational state (or a trivial forward counter if needed for
+  `getStats`).
+
+**Throughput-sharing note.** Because `componentThroughputPerTick` sums
+all PROCESS capabilities' throughputs into a single budget, the
+per-capability cap is not strictly enforced at the engine level — a
+component with Processing(20) + Forwarding(40) can in principle process
+60 requests of any mix per tick. The engine doesn't know which capability
+would have handled a given request until it runs `process-pending`, and
+at that point the budget is already claimed from the aggregate. In
+practice, for the Stage 3a topologies, the per-request `canHandle`
+filter means capability selection happens before the budget is
+consumed, and the engine's fixed-point loop naturally surfaces the
+right failures. If Wave 3 tuning reveals this aggregation is too
+generous, we tune `getThroughputPerTick` down or split the throughput
+budget implementation into per-capability accounting as a Stage 3b
+follow-up.
 
 ### 5.1 `StorageCapability`
 
@@ -188,22 +296,21 @@ minimal mechanical updates.
 **Behavior:**
 - `canHandle(requestType)`: returns `true` for `"api_write"` only.
   Reads are handled at the Server by `ProcessingCapability`, so the
-  Database never receives reads in Stage 3a topologies. Declaring
-  `canHandle` tightly on writes makes the intent explicit and simplifies
-  test assertions. (A later stage can relax this when read-from-DB
-  topologies become meaningful — e.g., when Cache goes in front of DB
-  instead of in front of Server.)
-- `process(request, context)`: returns `RESPOND` with a tier-dependent
-  latency (T1: +2 ticks). Emits one `PROCESSED` event. Increments
-  internal write counter for `getStats()`.
-- `getUpkeepCost(tier)`: `{ 1: 4, 2: 8, 3: 16 }[tier] ?? 4`. Upkeep table
-  is declared for all three tiers even though only T1 runs in Stage 3a —
-  keeps the interface honest for later tier work.
+  Database never receives reads in Stage 3a topologies.
+- `process(request, context)`: returns `{ kind: "RESPOND" }` with a
+  tier-dependent latency bonus (T1: +2 ticks). Emits one `PROCESSED`
+  event. Increments internal write counter for `getStats()`.
+- `getThroughputPerTick(tier)`: `{ 1: 25, 2: 45, 3: 80 }[tier] ?? 25`.
+  Must exceed Wave 2's write load (~7-8 req/tick at 25 req/tick × 0.3)
+  and Wave 3's write load (~15 req/tick at 50 × 0.3) by a healthy
+  margin — the Database is not supposed to be the Wave 3 bottleneck.
+  Numbers tuned during Slice B/C.
+- `getUpkeepCost(tier)`: `{ 1: 4, 2: 8, 3: 16 }[tier] ?? 4`.
 - Operational state: `{ writeCount: number }`. Read by `getStats()`,
   never by the engine.
 - No cache, no replication, no sharding — those are separate capabilities
   in other stages. Stage 3a's `StorageCapability` is "does the write, adds
-  latency, costs upkeep."
+  latency, costs upkeep, bounds throughput."
 
 ### 5.2 `CachingCapability`
 
@@ -213,19 +320,36 @@ minimal mechanical updates.
 
 **Behavior:**
 - Internal state: `Map<string, { tick: number }>` where the key is the
-  stringified `request.payload`. Fixed-capacity (T1: 10 entries) with FIFO
-  eviction when full.
+  stringified `request.payload`. Fixed-capacity (T1: 10 entries) with
+  FIFO eviction when full. Requires `request.payload` to be a
+  distinguishable value — see §7.2 for how `TDTrafficSource` generates
+  a small pool of payload keys so the cache exercises a realistic
+  working set rather than a degenerate single-bucket hit rate.
 - `canHandle()`: returns `true` (INTERCEPT capabilities always do).
 - `process(request, context)`:
-  - If `request.type !== "api_read"`: return `PASS`. Writes and other
-    types flow through to the PROCESS phase.
-  - If the key is present: return `RESPOND` with `CACHED_HIT` event and
-    `latencyAdded: 0`. Short-circuits the pipeline.
+  - If `request.type !== "api_read"`: return `{ kind: "PASS" }`. Writes
+    and other types continue to the component's PROCESS phase, where
+    `ForwardingCapability` (configured for writes if present) emits the
+    `FORWARD` outcome. In the Stage 3a Cache topology, the Cache
+    component has no write handler — writes never reach the Cache
+    because topology routes writes directly from Server to Database
+    without passing through the Cache.
+  - If the key is present in the map: return
+    `{ kind: "RESPOND" }` with a `CACHED_HIT` event and
+    `latencyAdded: 0`. This short-circuits the INTERCEPT phase and
+    resolves the request at the Cache.
   - If the key is absent: insert the key into the map (the cache-on-miss
-    shortcut, see §9), return `PASS`. The PROCESS phase handles the miss
-    (typically by forwarding to Database).
-- `getUpkeepCost(tier)`: `{ 1: 3, 2: 6, 3: 12 }`.
-- Capacity: T1=10, T2=25, T3=50.
+    shortcut — see §10.1), return `{ kind: "PASS" }`. The component's
+    PROCESS phase then runs `ForwardingCapability` (which is registered
+    on the Cache for `api_read`), which emits `FORWARD` and the engine
+    delivers to the egress connection (→ Server → Database in the
+    rescue topology).
+- `getUpkeepCost(tier)`: `{ 1: 3, 2: 6, 3: 12 }[tier] ?? 3`.
+- No `getThroughputPerTick` — `CachingCapability` is INTERCEPT phase,
+  not PROCESS, so it does not contribute to the component's throughput
+  budget. The Cache component's throughput budget comes from its
+  `ForwardingCapability` (see §6.3).
+- Capacity: T1=10 entries, T2=25, T3=50.
 
 ### 5.3 `MonitoringCapability`
 
@@ -254,7 +378,8 @@ unused `upgradeCostCurve`, and default `conditionProfile`.
 ```
 type: "server"
 capabilities (in order):
-  - { id: "processing",  defaultTier: 1, maxTier: 3 }   // PROCESS
+  - { id: "processing",  defaultTier: 1, maxTier: 3 }   // PROCESS, handles api_read
+  - { id: "forwarding",  defaultTier: 1, maxTier: 3 }   // PROCESS, handles api_write (constructed with handledTypes: ["api_write"])
   - { id: "monitoring",  defaultTier: 1, maxTier: 2 }   // OBSERVE
 ports:
   - { direction: "ingress", dataType: "http", capacity: 1 }
@@ -262,6 +387,12 @@ ports:
 placementCost: 100
 upgradeCostCurve: [100, 200, 400]
 ```
+
+The Server has two PROCESS capabilities that partition by request type.
+`ProcessingCapability` runs for reads (RESPOND), `ForwardingCapability`
+runs for writes (FORWARD to egress — Database). The component's pipeline
+picks the one whose `canHandle` matches, and the two sets are disjoint,
+so only one ever runs per request.
 
 Cut from the design-doc spec: `RetryCapability`, `AutoScaleCapability`.
 Both deferred past Stage 3a.
@@ -288,7 +419,8 @@ Cut: `SearchCapability`, `ReplicationCapability`, `ShardingCapability`,
 ```
 type: "cache"
 capabilities:
-  - { id: "caching",     defaultTier: 1, maxTier: 3 }   // INTERCEPT
+  - { id: "caching",     defaultTier: 1, maxTier: 3 }   // INTERCEPT, hit=RESPOND, miss=PASS
+  - { id: "forwarding",  defaultTier: 1, maxTier: 3 }   // PROCESS, handles api_read (constructed with handledTypes: ["api_read"])
   - { id: "monitoring",  defaultTier: 1, maxTier: 2 }   // OBSERVE
 ports:
   - { direction: "ingress", dataType: "http", capacity: 2 }
@@ -297,23 +429,22 @@ placementCost: 150
 upgradeCostCurve: [150, 300, 600]
 ```
 
-**Port dataType note.** Cache uses `"http"` on both sides in Stage 3a
-because the rescue topology places it between the entry point and the
-Server (both http-typed). The design-doc spec uses `"data"` on the
-assumption that Cache sits between Server and Database — that's a
-different architectural pattern (response cache vs. query cache) and
-both have real-world precedent. Stage 3a uses the entry-point-side
-pattern because it makes the Wave 3 rescue arithmetic work: the cache
-INTERCEPTs before Server's `ProcessingCapability` consumes throughput.
-A later stage can add a second Cache variant (or a dataType: "any"
-configuration) if we want to model query caches too.
+On a read: `CachingCapability` INTERCEPT runs first. Hit → RESPOND,
+pipeline short-circuits. Miss → PASS, pipeline continues to PROCESS,
+`ForwardingCapability` matches `api_read` and emits FORWARD to the
+egress connection (→ Server → Database in the Wave 3 rescue topology).
+Writes never reach a Cache in the Stage 3a rescue topologies — writes
+route Server → Database directly. `Port.dataType` is declarative only
+(the engine never reads it — confirmed via audit), so the `"http"`
+labeling on Cache ports is cosmetic; pick whichever reads cleanest.
 
 ### 6.4 `LoadBalancer`
 
 ```
 type: "load_balancer"
 capabilities:
-  - { id: "routing",     defaultTier: 1, maxTier: 3 }   // INTERCEPT, EngineConsultable
+  - { id: "routing",     defaultTier: 1, maxTier: 3 }   // INTERCEPT, EngineConsultable (canHandle: false — engine consults via sub-interface)
+  - { id: "forwarding",  defaultTier: 1, maxTier: 3 }   // PROCESS, handles all types (constructed with handledTypes: ["api_read", "api_write"])
   - { id: "monitoring",  defaultTier: 1, maxTier: 2 }   // OBSERVE
 ports:
   - { direction: "ingress", dataType: "http", capacity: 1 }
@@ -321,6 +452,15 @@ ports:
 placementCost: 175
 upgradeCostCurve: [175, 350, 700]
 ```
+
+`RoutingCapability.canHandle` returns `false` (confirmed in the existing
+implementation), so it never runs in the pipeline — it's consulted by
+`selectEgressConnection` via the `EngineConsultable` sub-interface
+during the FORWARD delivery step. The `ForwardingCapability` is what
+produces the FORWARD outcome that invokes `selectEgressConnection` in
+the first place. Without `ForwardingCapability`, `RoutingCapability`
+would never fire because no outcome would ever reach the FORWARD branch
+of `deliverStaged`.
 
 Cut: `SSLTerminationCapability`, `CompressionCapability`, `FilterCapability`,
 `RateLimitCapability`, `HealthCheckCapability`.
@@ -335,6 +475,7 @@ export function registerTDDefaults(
   compRegistry: ComponentRegistry,
 ): void {
   capRegistry.register({ id: "processing" as CapabilityId, factory: () => new ProcessingCapability(...) });
+  capRegistry.register({ id: "forwarding" as CapabilityId, factory: () => new ForwardingCapability(...) });
   capRegistry.register({ id: "routing"    as CapabilityId, factory: () => new RoutingCapability(...) });
   capRegistry.register({ id: "storage"    as CapabilityId, factory: () => new StorageCapability() });
   capRegistry.register({ id: "caching"    as CapabilityId, factory: () => new CachingCapability() });
@@ -348,6 +489,23 @@ export function registerTDDefaults(
 }
 ```
 
+**Factory note for `ForwardingCapability`.** The registry's factory
+signature is `() => Capability` — zero arguments — but `ForwardingCapability`
+needs per-component `handledTypes`. The registry factory constructs a
+"default" Forwarding instance (e.g., `handledTypes: ["api_read", "api_write"]`
+accepting everything), and each component registry entry's
+`capabilities` array references it by ID. If multiple components need
+different `handledTypes` configurations, one option is multiple registry
+entries (`"forwarding-reads"`, `"forwarding-writes"`, `"forwarding-all"`)
+each with a distinct factory. Simpler option for Stage 3a: register a
+single `"forwarding"` factory that returns a "forwards everything"
+instance, and let the `canHandle` filtering happen in the pipeline —
+the aggregation is harmless for Stage 3a since `canHandle` correctness
+is enforced elsewhere (Server's ProcessingCapability claims reads,
+so a Server's ForwardingCapability would never run on a read even if
+it said it could). Resolved during Slice A implementation — flag for
+the plan.
+
 The existing `ProcessingCapability` and `RoutingCapability` constructors
 take configuration arguments; the exact factory closure arguments get
 decided during implementation. The registry's `validate()` call will
@@ -360,17 +518,31 @@ capability IDs.
 
 Implements `EconomyStrategy` from `src/core/mode/economy-strategy.ts`.
 
+**Honest framing:** `TDEconomy` in Stage 3a is largely ceremonial. A
+back-of-envelope sanity check on the Wave 3 numbers (50 req/tick × 30
+ticks × mixed revenue ~1.3/req = ~1950 gross revenue; lone-server upkeep
+~240 over 30 ticks + 300 placement = ~540 costs; starting budget ~600)
+shows the economy has ~2010 headroom at 0% drops. Even with dropped
+revenue, the economy is not a meaningful pass/fail axis at Stage 3a
+traffic levels. The integration tests use `dropRate < threshold` as the
+primary pass signal and treat `budget >= 0` as a soft secondary check.
+`TDEconomy` exists because `ModeController` requires an `EconomyStrategy`
+and because we want the interface in place for later stages when budget
+pressure becomes real (Wave 4+ with CDN capital expenses, Wave 5+ with
+authentication overhead, etc.). Ship it, wire it, but don't expect it
+to fail tests.
+
 **Constructor:** `new TDEconomy({ startingBudget, revenuePerRequestType })`
 where `revenuePerRequestType: ReadonlyMap<string, number>`.
 
 **Methods:**
-- `getBudget()`: returns current budget (number state, mutated on credit/debit).
+- `getBudget()`: returns current budget.
 - `canAfford(cost)`: returns `budget >= cost`.
 - `creditRevenue(request)`: returns `revenuePerRequestType.get(request.type) ?? 0`
   and adds it to budget. Stage 3a revenue table:
   `{ "api_read": 1, "api_write": 2 }`.
 - `debitUpkeep(totalUpkeep)`: subtracts from budget (can go negative —
-  insolvency is reported by the wave-end assertion, not enforced mid-wave).
+  wave-end assertion checks final balance, no mid-wave enforcement).
 - `debitPlacement(component)`: subtracts `component.placementCost`.
 - `debitUpgrade(component, capabilityId)`: no-op. Upgrades not exercised
   in Stage 3a.
@@ -381,17 +553,41 @@ where `revenuePerRequestType: ReadonlyMap<string, number>`.
 
 Implements `TrafficSource` from `src/core/mode/traffic-source.ts`.
 
-**Constructor:** `new TDTrafficSource({ wave, targetEntryPointId, rng })`
-where `wave: TDWaveDefinition` and `rng` is the simulation RNG.
+**Constructor:** `new TDTrafficSource({ wave, targetEntryPointId, rng, readKeyPoolSize })`
+where `wave: TDWaveDefinition`, `rng` is the simulation RNG, and
+`readKeyPoolSize` defaults to 20.
 
 **Generation:** at each tick during the wave's `duration`, generate
-`wave.intensity` requests. Each request's `type` is sampled from
-`wave.composition` (weighted by the composition map) using `rng`. TTL is
-`wave.ttl`. `originZone: null`, `streamDuration: null`,
-`streamBandwidth: null`, `parentId: null`.
+`wave.intensity` requests. Each request has:
+- `id`: unique (per-request counter).
+- `parentId`: `null`.
+- `type`: sampled from `wave.composition` (weighted) using `rng`.
+- `payload`: for `api_read`, a small string like `"read-${n}"` where
+  `n` is a deterministic int in `[0, readKeyPoolSize)` sampled via
+  `rng`. For `api_write`, `null` (or `"write-${uniqueCounter}"` — writes
+  don't touch the cache so the value only matters for debugging).
+- `origin`: `targetEntryPointId`.
+- `createdAt`: current tick.
+- `ttl`: `wave.ttl`.
+- `originZone`: `null`.
+- `streamDuration`: `null`.
+- `streamBandwidth`: `null`.
+
+**Why a `readKeyPoolSize`.** `CachingCapability` (§5.2) stringifies
+`request.payload` as the cache key. `SandboxTrafficSource` hardcodes
+`payload: null`, which would collapse every `api_read` into a single
+bucket. With `null`-payloads, either the cache hits 100% after tick 1
+(making the Wave 3 cache-rescue pass trivially and architecturally
+meaninglessly) or misses 0% if the key is stored elsewhere. Neither
+exercises the learning arc. A pool of 20 distinct keys at Cache T1
+capacity of 10 means ~50% hit rate after warmup — a realistic working
+set where the cache is doing meaningful but imperfect work. The exact
+numbers are tuned in Slice C: pool size and cache capacity together
+determine the hit rate, which must sit in a range where Cache-rescue
+beats lone-server without reducing Server load to zero.
 
 Replaces the hardcoded `ttl: 10` from `FixedIntensityTrafficSource` with
-`wave.ttl` — per-wave TTL is a required tuning dial for Wave 3.
+`wave.ttl` — per-wave TTL is a tuning dial for Wave 3.
 
 ### 7.3 `TDModeController`
 
@@ -406,23 +602,52 @@ Implements `ModeController`, modeled on `SandboxModeController`.
   IDs on the component — no gating in Stage 3a.
 - `getTierCap(component, capabilityId)`: returns `1` for every capability.
 - `getBuildConstraints()`: returns
-  `{ availableComponentTypes: wave.availableComponents, maxComponents: wave.maxComponents ?? Infinity }`.
+  `{ availableComponentTypes: wave.availableComponents, maxPlacements: wave.maxPlacements ?? Infinity }`.
+  Uses the real field name `maxPlacements` from `BuildConstraints`, not
+  the `maxComponents` typo from the first draft.
 - `getTrafficSource()`: returns the `TDTrafficSource` constructed for the
   injected wave.
-- `evaluateOutcome(metrics)`: walks the tick metrics array, sums dropped
-  and timed-out request counts, computes drop rate as
-  `(dropped + timedOut) / totalGenerated`, reads final budget from the
-  last tick's snapshot, returns
-  `{ passed: budget > 0 && dropRate < wave.dropThreshold, budget, dropRate, totalRequests }`.
-- `tryPlace(state, type, position, zone)`: delegates to `compRegistry`,
-  enforces `availableComponentTypes`, debits `economy.debitPlacement()`.
-  Mirrors `SandboxModeController.tryPlace`.
-- `tryUpgrade(state, componentId, capabilityId)`: delegates to component's
-  `upgrade()` method. Stage 3a tests do not call this but the
-  implementation is required for interface conformance.
+- `evaluateOutcome(metrics)`: returns a proper `OutcomeReport`
+  `{ verdict, score: { cost, performance, reliability, composite }, notes }`
+  per the interface in `src/core/types/outcome.ts`:
+  - Walks `metrics: readonly TickMetrics[]`, summing `requestsDropped`,
+    `requestsTimedOut`, `requestsProcessed` across all ticks. Computes
+    `dropRate = (dropped + timedOut) / (dropped + timedOut + resolved)`.
+    Reads final economy budget (via the injected `TDEconomy.getBudget()`).
+  - `verdict`: `"win"` if `dropRate < wave.dropThreshold`, else `"lose"`.
+    Budget is *not* part of the verdict at Stage 3a (ceremony — see §7.1).
+  - `score.cost`: `budget` (higher = cheaper finish).
+  - `score.performance`: `1 - dropRate`.
+  - `score.reliability`: `1 - (dropped + timedOut) / totalRequests`
+    (equivalent to `score.performance` here but the field exists on the
+    interface and we populate it honestly).
+  - `score.composite`: `0.4 * performance + 0.4 * reliability + 0.2 * (cost / startingBudget)`.
+    Placeholder weights — tuned later when balance matters.
+  - `notes`: `[`\`drop rate: X%\`, \`budget: Y\`, \`total requests: Z\``]`.
+    Integration tests parse these notes for per-assertion detail. The
+    string format is stable within Stage 3a.
+- `tryPlace(state, type, position, zone)`: **stub.** Follows the same
+  pattern as `SandboxModeController.tryPlace` (which increments a
+  counter and returns a fake ID without actually placing). Stage 3a
+  integration tests build topology via harness fixtures
+  (`new Component({...})`, `makeConnection(...)`) and then inject
+  components into `state.components` directly — exactly how every
+  existing integration test under `tests/integration/` does it. The
+  `ModeController.tryPlace` contract exists for the eventual UI stage
+  where placement happens via user input; no Stage 3a test ever calls
+  it. The stub returns
+  `{ ok: true, componentId: "td-placed-${counter}" as ComponentId }`
+  and debits `economy.debitPlacement()` to exercise the economy path
+  for any future test that does call `tryPlace`.
+- `tryUpgrade(state, componentId, capabilityId)`: matches
+  `SandboxModeController.tryUpgrade` shape — delegates to
+  `component.upgrade(capabilityId)` if the capability exists, returns
+  `{ ok: true, newPlayerTier: ... }` or `{ ok: false, reason: "capability_not_found" }`.
+  Stage 3a tests do not call this.
 - `getScheduledChaos(currentTick)`: returns `[]`.
-- `getInitialZoneTopology()`: returns a single default zone (same shape
-  `SandboxModeController` uses when no zones are configured).
+- `getInitialZoneTopology()`: returns a single default zone with an
+  empty `pairLatency` map (same shape `SandboxModeController` uses when
+  no zones are configured).
 - `getPhase()` / `advancePhase()`: build → simulate → assess state machine,
   mirrored from sandbox.
 
@@ -442,7 +667,8 @@ export interface TDWaveDefinition {
   readonly availableComponents: readonly string[];
   readonly dropThreshold: number;
   readonly revenuePerRequestType: ReadonlyMap<string, number>;
-  readonly maxComponents?: number;
+  readonly maxPlacements?: number;   // real BuildConstraints field name
+  readonly readKeyPoolSize?: number; // drives TDTrafficSource payload variety
 }
 
 export const WAVE_1: TDWaveDefinition = { /* see §8 */ };
@@ -495,37 +721,81 @@ may shift the numbers — the constraint is the shape of the outcomes
 
 ## 9. Integration tests
 
-Four test files in `tests/integration/td/`. All construct their topology
-via `TDModeController.tryPlace()`, run `engine.tick(modeController)` for
-`wave.duration` ticks, and read `evaluateOutcome(state.metricsHistory)`.
+Four test files in `tests/integration/td/`. Each test:
+
+1. **Builds topology via harness fixtures**, not `TDModeController.tryPlace`.
+   Constructs `Component` instances directly using
+   `new Component({...conditionProfile, capabilities, ports, ...})`
+   with registry-created capability instances, and wires them with
+   `makeConnection` from `tests/harness/fixtures.ts`. Injects components
+   into `state.components` and connections into `state.connections`.
+   Populates `state.visitOrder` via `computeVisitOrder(state.components)`
+   (Stage 2a gotcha: required before any engine step). This is exactly
+   how existing `tests/integration/*.test.ts` files construct topology,
+   e.g. `condition-routing.test.ts`, `sandbox-backpressure.test.ts`.
+2. **Constructs a `TDModeController`** with the relevant wave and
+   injects it into `engine.tick(modeController)`.
+3. **Runs the engine for `wave.duration` ticks** by calling
+   `engine.tick(modeController)` in a loop.
+4. **Reads assertions from both `state.metricsHistory` (for rollup counts)
+   and `state.requestLog` (for per-request event inspection).** The
+   `requestLog` is a `Map<RequestId, RequestEvent[]>` populated by the
+   engine and capabilities via `state.appendEvent()`. Tests walk this
+   map to count events by type (`CACHED_HIT`, `FORWARDED`, `PROCESSED`)
+   and by component ID.
+5. **Calls `modeController.evaluateOutcome(state.metricsHistory)`** at
+   the end and asserts on the returned `OutcomeReport.verdict`.
+
+A small helper `runWave(mc, engine, state)` lives in
+`tests/integration/td/helpers.ts` to encapsulate the tick loop and
+produce `{ outcome, totalRequests, cacheHits, processedByComponent }`
+from a single run. Each test file then asserts against that struct.
 
 ### 9.1 `wave-1-launch-day.test.ts`
 
 - **Topology:** Entry point → Server → Database. (Database is placed but
-  receives no writes in Wave 1; keeping it simplifies the Wave 2 test.)
-- **Assertion:** `outcome.passed === true`, `outcome.dropRate === 0`,
-  `outcome.budget > 0`.
-- **Purpose:** smoke test. Proves the full mode stack boots, the registry
-  creates components, the engine ticks, and a trivial topology survives.
+  receives no requests in Wave 1; Wave 1 is 100% `api_read` and the
+  Server's `ProcessingCapability` handles reads directly — reads never
+  reach the Database. Keeping Database in the topology simplifies the
+  Wave 2 test's topology reuse.)
+- **Assertions:**
+  - `outcome.verdict === "win"`
+  - No `DROPPED` or `TIMED_OUT` events in `state.requestLog`
+  - `state.economy.getBudget() >= 0`
+- **Purpose:** smoke test. Proves the full mode stack boots, registered
+  capabilities instantiate correctly, the engine ticks, and a trivial
+  topology survives a benign wave.
 
 ### 9.2 `wave-2-signups.test.ts`
 
 - **Topology:** Entry point → Server → Database.
-- **Assertion:** `outcome.passed === true`, `outcome.dropRate < 0.05`.
-  Plus: walk `metricsHistory` to confirm the Database processed a non-zero
-  number of `api_write` requests (proves PROCESS-phase `canHandle()`
-  routing works — Server's `ProcessingCapability` doesn't claim writes,
-  the request forwards to the Database).
-- **Purpose:** proves `StorageCapability` and the read/write split.
+- **Assertions:**
+  - `outcome.verdict === "win"`
+  - `(droppedCount + timedOutCount) / totalRequests < 0.05`
+  - **Write-routing verification** via `state.requestLog`: walk all
+    request events, filter to requests whose type is `api_write`, and
+    confirm their event history contains a `FORWARDED` event with
+    `componentId === serverId` (Server's `ForwardingCapability` emitted
+    it) and a `PROCESSED` event with `componentId === databaseId`
+    (Database's `StorageCapability` handled it). Both counts should
+    be > 0 and approximately equal to the generated write count.
+- **Purpose:** proves `StorageCapability`, `ForwardingCapability`, and
+  the Server's two-capability read/write split (Processing handles
+  reads, Forwarding handles writes).
 
 ### 9.3 `wave-3-traffic-spike.test.ts`
 
 - **Topology:** Entry point → Server → Database (identical to Wave 2).
-- **Assertion:** `outcome.passed === false`. Either `dropRate >= 0.05` or
-  budget ≤ 0 (most likely the former).
+- **Assertion:** `outcome.verdict === "lose"`. `dropRate >= 0.05`
+  (failure is driven by drops, not budget — see §7.1).
 - **Purpose:** proves the lone-server topology collapses under Wave 3
-  load. If this test passes when it shouldn't, the wave is mistuned or
-  the engine's throughput numbers are too generous.
+  load. The collapse mechanism is the Server's bounded throughput
+  (`ProcessingCapability.getThroughputPerTick(1) ≈ 20` + `ForwardingCapability.getThroughputPerTick(1) ≈ 40`,
+  total ≈ 60/tick, below Wave 3's 50 req/tick effective read-rate
+  after the per-capability filter imposes its own pressure — see §10.5
+  for the throughput-sharing nuance). If this test passes when it
+  shouldn't, Slice C's first action is to tune the per-tier throughput
+  numbers down until lone-server actually fails.
 
 ### 9.4 `wave-3-learning-arc.test.ts`
 
@@ -538,29 +808,68 @@ confused with baseline issues.
 
 **(b) Cache rescue passes.**
 - **Topology:** Entry point → Cache → Server → Database.
-- **Assertion:** `outcome.passed === true`, `outcome.dropRate < 0.05`.
-- **Additional assertion:** `metricsHistory` shows cache-hit events > 0
-  (proves the cache is actually short-circuiting reads before the
-  Server processes them, not incidentally passing due to other tuning).
-- **Why Cache sits before Server, not after.** Stage 3a's Server
-  RESPONDs to reads directly via `ProcessingCapability`. If Cache sat
-  between Server and Database, it would never see the reads — they'd
-  be handled upstream. Placing Cache in front of Server means the
-  INTERCEPT phase short-circuits reads before any Server throughput is
-  consumed, which is exactly the Wave 3 rescue mechanism we want to
-  exercise.
+- **Assertions:**
+  - `outcome.verdict === "win"`
+  - `(droppedCount + timedOutCount) / totalRequests < 0.05`
+  - **Cache-hit verification** via `state.requestLog`: count
+    `CACHED_HIT` events. The count must be > 0 AND a meaningful
+    fraction of the read count — ideally the ~50% implied by the
+    `readKeyPoolSize: 20` + Cache capacity 10 tuning. If the count is
+    100% that means every read is hitting a single bucket and the test
+    is not meaningful; if the count is 0%, the cache isn't actually
+    working. A range like "between 20% and 80% of reads hit the cache"
+    is the Slice C tuning target.
+- **Why Cache sits before Server.** Stage 3a's Server RESPONDs to
+  reads directly via `ProcessingCapability`. If Cache sat between
+  Server and Database, it would never see the reads — they'd be
+  handled upstream. Placing Cache in front of Server means the
+  INTERCEPT phase short-circuits reads on hits, and the Cache's
+  `ForwardingCapability` forwards misses to the Server, which then
+  handles them normally.
 
 **(c) Horizontal-scale rescue passes.**
 - **Topology:** Entry point → LoadBalancer → [Server1, Server2] → Database.
-- **Assertion:** `outcome.passed === true`, `outcome.dropRate < 0.05`.
-- **Additional assertion:** both Server1 and Server2 processed non-zero
-  request counts via `metricsHistory` per-component snapshots (proves
-  `RoutingCapability` distributed load).
+- **Assertions:**
+  - `outcome.verdict === "win"`
+  - `(droppedCount + timedOutCount) / totalRequests < 0.05`
+  - **Load-distribution verification** via `state.requestLog`: walk all
+    request events, count `FORWARDED` events where `componentId ===
+    loadBalancerId` grouped by their `connectionId` metadata (which
+    egress connection was chosen). Both Server1-destined and
+    Server2-destined connections must have non-zero counts, and the
+    ratio should be reasonably balanced (Slice C target: each Server
+    receives between 30% and 70% of LB-forwarded traffic). This proves
+    `RoutingCapability`'s round-robin is actually distributing load,
+    not defaulting to one connection.
 
 Both rescues must pass. The test file is the exit criterion for Stage 3a:
 if one rescue works and the other doesn't, Stage 3a is not done.
 
 ## 10. Design notes and known shortcuts
+
+### 10.0 Why `ForwardingCapability` instead of engine changes
+
+The simplest theoretical fix for "writes at Server don't reach Database"
+would be to change `deliverStaged` to treat `PASS` as an implicit
+FORWARD when the component has egress connections. This spec rejects
+that approach because:
+
+1. **It violates the "one outcome kind per semantic" principle.** `PASS`
+   currently means "this capability has nothing to do with this request,
+   try the next one" (INTERCEPT fall-through). Making `PASS` also mean
+   "forward to egress when no PROCESS capability matched" would conflate
+   two distinct pipeline states and introduce subtle bugs the engine's
+   current test suite specifically guards against.
+2. **The capability-based approach is more explicit and composable.**
+   Other stages will need components that don't forward on PASS (e.g.,
+   a TrafficSource endpoint, a terminal sink). Making forwarding a
+   capability decision rather than a default behavior keeps each
+   component's forwarding semantics declarative and visible in the
+   registry entry.
+3. **It keeps `src/core/engine/` unchanged.** Stage 3a's exit criterion
+   §12.5 ("no `src/core/` modifications") stands.
+4. **It's aligned with the "capabilities are atomic behaviors"
+   principle** from `component-architecture.md` §1.
 
 ### 10.1 CachingCapability cache-on-miss shortcut
 
@@ -605,7 +914,36 @@ active. Gating becomes meaningful in Stage 3b when more capabilities
 land. The `TDModeController` interface supports gating; the Stage 3a
 implementation just doesn't use it.
 
-### 10.4 Wave 3 tuning is the load-bearing work
+### 10.4 Throughput-sharing nuance
+
+`componentThroughputPerTick` sums all PROCESS capabilities' throughputs
+into a single budget. This means a Server with `ProcessingCapability(T1) + ForwardingCapability(T1)`
+has a single pooled budget (e.g., 20 + 40 = 60 req/tick at tuned
+numbers). The engine's `process-pending` loop pulls up to 60 requests
+out of the pending queue per tick and processes them; which capability
+actually runs is decided per-request by `canHandle`.
+
+**Consequence for Wave 3 rescue math:** at 50 req/tick (35 reads + 15
+writes), a single Server with a 60-req/tick total budget technically
+has headroom on aggregate, but `ProcessingCapability`'s narrow
+throughput component (~20) combined with the fixed-point loop's
+per-component budget accounting creates effective backpressure once
+the per-tick budget is exhausted, regardless of which capability would
+have handled the excess. In practice, tuning
+`getThroughputPerTick` lower on `ProcessingCapability` (e.g., T1: 15)
+produces the "lone-server drops reads" signal we want while leaving
+enough forwarding budget that writes still route.
+
+If the aggregation turns out to be too generous and we can't tune to
+the right regime, Slice C has two escape hatches: (a) make
+`ForwardingCapability`'s `getThroughputPerTick` very small (e.g., T1=2)
+so the aggregate budget is dominated by `ProcessingCapability`, or
+(b) move to per-capability throughput accounting as a Stage 3b change
+(touches `src/core/engine/throughput.ts` — breaks the "no `src/core/`
+modification" rule but is a known-safe change with focused test
+coverage).
+
+### 10.5 Wave 3 tuning is the load-bearing work
 
 The Wave 3 integration tests depend on a single set of numbers satisfying
 three simultaneous constraints:
@@ -626,10 +964,13 @@ not required.
 Three worktree slices, each ending in a green integration test.
 
 **Slice A — "Wave 1 headless".** Production `ProcessingCapability`
-rewrite (with test migration), skeletons for all TD mode classes,
-`MonitoringCapability`, `Server` registry entry, `WAVE_1`, integration
-test. Slightly larger than it looked pre-review because the
-`ProcessingCapability` rewrite touches existing tests. ~7–9 TDD tasks.
+rewrite (with test migration), new `ForwardingCapability`, new
+`MonitoringCapability`, skeletons for all TD mode classes,
+`Server` registry entry, `WAVE_1`, integration test helpers
+(`runWave`, topology fixtures), `wave-1-launch-day.test.ts`. Largest
+slice because `ProcessingCapability` rewrite touches existing tests
+and `ForwardingCapability` is the spine of all three later slices.
+~9–11 TDD tasks.
 
 **Slice B — "Wave 2 passes".** `StorageCapability`, `Database` registry
 entry, `WAVE_2`, integration test. Tunes Wave 2 economy until Server+DB
@@ -639,11 +980,11 @@ passes cleanly. ~4–5 TDD tasks.
 `LoadBalancer` registry entries, `WAVE_3`, both wave-3 integration test
 files. Load-bearing tuning step. ~6–8 TDD tasks.
 
-Total: ~17–22 TDD tasks across three slices. Slightly larger than the
-pre-review ~15–19 estimate because of the `ProcessingCapability` rewrite
-scope correction. Still within an order of magnitude of Stage 2b
-(16 tasks) as a sanity check. Each slice merges to `main` before the
-next starts.
+Total: ~19–24 TDD tasks across three slices. Expanded from the
+pre-audit ~15–19 because of the `ProcessingCapability` rewrite,
+`ForwardingCapability` addition, and outcome-report conformance.
+Still comparable to Stage 2b (16 tasks). Each slice merges to `main`
+before the next starts.
 
 ## 12. Exit criteria
 
@@ -652,37 +993,91 @@ Stage 3a is complete when all of the following are true:
 1. `pnpm test` passes (all existing tests plus the four new integration
    files).
 2. `pnpm typecheck` is clean.
-3. `registerTDDefaults()` populates both registries and `.validate()`
-   passes.
+3. `registerTDDefaults()` populates both registries and
+   `CapabilityRegistry.validate()` + `ComponentRegistry.validate()` pass.
 4. The four Stage 3a integration tests all assert the intended outcomes:
-   - Wave 1: trivial topology passes
-   - Wave 2: Server+Database passes
-   - Wave 3 lone-server: fails
-   - Wave 3 cache-rescue: passes
-   - Wave 3 LB-rescue: passes
-5. No files under `src/core/` are modified by Stage 3a. (Engine is
-   unchanged. Registry classes are unchanged. Mode interfaces are
-   unchanged.)
+   - Wave 1: trivial topology wins (`verdict === "win"`)
+   - Wave 2: Server+Database wins, with write-routing verified via
+     `requestLog` event inspection
+   - Wave 3 lone-server: loses (`verdict === "lose"`) due to drop rate
+     above threshold
+   - Wave 3 cache-rescue: wins, with meaningful cache-hit rate verified
+     via `requestLog` `CACHED_HIT` event count
+   - Wave 3 LB-rescue: wins, with load distribution verified via
+     `requestLog` `FORWARDED` event counts per egress connection
+5. **No files under `src/core/engine/` are modified.** This is the real
+   invariant. The first draft said "no files under `src/core/`" at all,
+   but the Stage 3a analysis may surface small non-engine adjustments
+   that are cheaper to land here than to carve out as a separate stage
+   (e.g., a minor shape tweak to `BuildConstraints` or `OutcomeReport`
+   if the audit discovers a gap). Engine files under `src/core/engine/`
+   stay untouched; other `src/core/` subdirectories are touched only
+   with explicit justification in the commit message and only if the
+   alternative is a core interface hack in `src/modes/td/`.
+6. The implementation plan (written after this spec is approved)
+   explicitly lists every `ProcessingCapability` test that migrates as
+   part of Slice A, and the migration keeps or replaces each one
+   cleanly — no silent test deletions.
 
 ## 13. Risk register
 
-1. **Wave 3 tuning fragility (high impact, medium likelihood).** Three
-   constraints, one set of dials. If unsatisfiable, accept per-topology
-   threshold variation or tighten Stage 2a throughput as a follow-up.
-2. **CachingCapability semantic hole (low impact in 3a, deferred fix).**
-   Known and documented in §10.1. Becomes a real problem only when Stage
-   3b introduces heterogeneous read payloads.
-3. **MonitoringCapability is a no-op (no impact in 3a).** Known,
-   documented, intentional. Real implementation comes when a later stage
-   needs per-component metric streams.
-4. **TDModeController drift from SandboxModeController (low likelihood).**
-   The two implementations share no code but cover the same interface.
-   If `ModeController` grows a new method during Stage 3a, both
-   implementations need updating. Mitigation: if `ModeController`
-   changes, update both in the same commit.
+1. **Per-capability throughput aggregation (high impact, medium
+   likelihood).** `componentThroughputPerTick` sums PROCESS cap
+   throughputs into a single budget (§10.4). If the tuning space where
+   "lone-server fails, cache rescue passes, LB rescue passes" can't be
+   hit with aggregated accounting, Slice C must either tune around it
+   (e.g., making `ForwardingCapability` throughput trivially small) or
+   move to per-capability accounting in `src/core/engine/throughput.ts`.
+   The latter touches engine code and breaks exit criterion §12.5 — a
+   reason to carve a Stage 3a.5 out. Mitigation: try aggregated tuning
+   first, escalate to per-capability only if forced.
+2. **Cache hit-rate tuning window (medium impact, medium likelihood).**
+   The assertion "20% < cache hit rate < 80%" requires careful tuning of
+   `readKeyPoolSize`, Cache T1 capacity, and FIFO eviction against
+   Wave 3's read volume and duration. If the window is too narrow,
+   determinism-stability is fragile. Mitigation: widen the acceptance
+   window in the test (e.g., "10% < hit rate < 90%") during Slice C
+   tuning, tightening only after the core tuning stabilizes.
+3. **`ProcessingCapability` rewrite breaks existing tests in
+   non-obvious ways (medium impact, high likelihood).** ~dozen test
+   files reference the Stage 1 stub, including tests that use
+   `outcomeKind: "FORWARD"` to build forward-only processors. Slice A
+   must inventory every reference, decide per-test whether to migrate
+   to `ForwardingCapability` or keep a minimal test helper, and verify
+   each migration doesn't change test semantics. Mitigation: Slice A's
+   first task is the inventory + migration plan, checked as a
+   standalone commit before any new capability work.
+4. **`TDModeController` drift from `SandboxModeController` (low impact,
+   low likelihood).** Both implement the same interface but share no
+   code. If `ModeController` grows a method during Stage 3a, both must
+   be updated. Mitigation: co-commit changes.
+5. **CachingCapability semantic hole (no 3a impact, deferred fix).**
+   Documented in §10.1. Only a problem when Stage 3b introduces
+   heterogeneous read payloads with real write-through semantics.
+6. **`MonitoringCapability` is a no-op (no 3a impact, deferred fix).**
+   Documented in §10.2. Real implementation in a later stage when
+   per-component metric streams are needed.
 
 ## 14. Open questions for review
 
-None. This spec was brainstormed interactively and all decision points
-were resolved before writing. If the review surfaces issues, they become
-spec revisions before the implementation plan lands.
+After the two-pass cold audit and revision, two questions remain for
+the user to decide before the plan is written:
+
+1. **Exit criterion strictness on `src/core/` modifications.** §12.5 as
+   revised allows non-engine `src/core/` touches with explicit
+   justification. Is that the right call, or do you want to preserve
+   the stricter "no `src/core/` touches at all" bar and handle any
+   edge cases with a follow-up stage? Default answer (pending your
+   direction): the revised, slightly-relaxed version.
+
+2. **Fallback plan if per-capability throughput aggregation fails
+   Wave 3 tuning.** Risk #1 in §13. If Slice C can't find a tuning
+   regime, escalating to `src/core/engine/throughput.ts` is the
+   cleanest fix but breaks the "engine unchanged" pledge. Alternative
+   is the "tune ForwardingCapability throughput very small" escape
+   hatch in §10.4. Default answer: try escape hatch first, escalate
+   only if forced — but you may want to commit to one approach upfront.
+
+Neither is a blocker; both have reasonable defaults. Flagged so the
+implementation plan can make the right assumption instead of
+re-discovering the choice mid-Slice C.
