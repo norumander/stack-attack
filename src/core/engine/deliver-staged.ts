@@ -326,6 +326,7 @@ export function deliverStaged(
         connectionId,
         type: "FORWARDED",
         latencyAdded: 0,
+        metadata: { requestType: request.type },
       });
       return true;
     }
