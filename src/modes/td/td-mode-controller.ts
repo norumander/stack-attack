@@ -11,7 +11,8 @@ import type {
   UpgradeResult,
 } from "@core/types/build-constraints.js";
 import type { TickMetrics } from "@core/types/metrics.js";
-import type { OutcomeReport } from "@core/types/outcome.js";
+import type { OutcomeReport, SLAResult } from "@core/types/outcome.js";
+import type { SimulationStateReader } from "@core/state/state-reader.js";
 import type { ZoneTopology } from "@core/types/zone.js";
 import type { ChaosEvent } from "@core/types/chaos.js";
 import type { Position } from "@core/types/position.js";
@@ -151,7 +152,47 @@ export class TDModeController implements ModeController {
     return this.trafficSource;
   }
 
+  evaluateSLA(metrics: readonly TickMetrics[]): SLAResult {
+    const wave = this.getCurrentWave();
+    const sla = wave.sla;
+
+    let dropped = 0;
+    let timedOut = 0;
+    let resolved = 0;
+    let weightedLatencySum = 0;
+
+    for (const m of metrics) {
+      dropped += m.requestsDropped;
+      timedOut += m.requestsTimedOut;
+      resolved += m.requestsResolved;
+      weightedLatencySum += m.avgLatency * m.requestsResolved;
+    }
+
+    const total = dropped + timedOut + resolved;
+    const actualAvailability = total > 0 ? resolved / total : 1;
+    const actualLatency = resolved > 0 ? weightedLatencySum / resolved : 0;
+    const actualBudget = this.economy.getBudget();
+
+    const availTarget = sla?.availabilityTarget ?? 0;
+    const latTarget = sla?.maxAvgLatency ?? Infinity;
+    const budgetTarget = sla?.minBudget ?? -Infinity;
+
+    const availPassed = actualAvailability >= availTarget;
+    const latPassed = actualLatency <= latTarget;
+    const budgetPassed = actualBudget >= budgetTarget;
+
+    return {
+      availability: { target: availTarget, actual: actualAvailability, passed: availPassed },
+      latency: { target: latTarget, actual: actualLatency, passed: latPassed },
+      budget: { target: budgetTarget, actual: actualBudget, passed: budgetPassed },
+      allPassed: availPassed && latPassed && budgetPassed,
+    };
+  }
+
   evaluateOutcome(metrics: readonly TickMetrics[]): OutcomeReport {
+    const wave = this.getCurrentWave();
+    const sla = this.evaluateSLA(metrics);
+
     let dropped = 0;
     let timedOut = 0;
     let resolved = 0;
@@ -163,9 +204,12 @@ export class TDModeController implements ModeController {
     const total = dropped + timedOut + resolved;
     const dropRate = total > 0 ? (dropped + timedOut) / total : 0;
     const budget = this.economy.getBudget();
-    const wave = this.getCurrentWave();
-    const verdict: "win" | "lose" | "neutral" =
-      dropRate < wave.dropThreshold ? "win" : "lose";
+
+    // SLA gate: if SLAs are defined, they determine the verdict.
+    // Fallback to legacy dropThreshold for waves without SLA configs.
+    const verdict: "win" | "lose" | "neutral" = wave.sla
+      ? (sla.allPassed ? "win" : "lose")
+      : (dropRate < wave.dropThreshold ? "win" : "lose");
 
     const performance = 1 - dropRate;
     const reliability = 1 - (dropped + timedOut) / Math.max(total, 1);
@@ -175,14 +219,24 @@ export class TDModeController implements ModeController {
       0.4 * reliability +
       0.2 * (cost / wave.startingBudget);
 
+    const notes: string[] = [
+      `availability: ${(sla.availability.actual * 100).toFixed(1)}% (target: ${(sla.availability.target * 100).toFixed(0)}%)`,
+      `latency: ${sla.latency.actual.toFixed(1)} (max: ${sla.latency.target})`,
+      `budget: $${sla.budget.actual} (min: $${sla.budget.target})`,
+    ];
+    if (!sla.allPassed) {
+      const failed: string[] = [];
+      if (!sla.availability.passed) failed.push("availability");
+      if (!sla.latency.passed) failed.push("latency");
+      if (!sla.budget.passed) failed.push("budget");
+      notes.push(`FAILED SLA: ${failed.join(", ")}`);
+    }
+
     return {
       verdict,
       score: { cost, performance, reliability, composite },
-      notes: [
-        `drop rate: ${(dropRate * 100).toFixed(2)}%`,
-        `budget: ${budget}`,
-        `total requests: ${total}`,
-      ],
+      slaResults: sla,
+      notes,
     };
   }
 
@@ -369,5 +423,39 @@ export class TDModeController implements ModeController {
 
   getScheduledChaos(_currentTick: number): readonly ChaosEvent[] {
     return [];
+  }
+
+  /**
+   * Mid-wave SLA penalty. Called by the engine at the end of each tick.
+   * If the rolling availability or latency is breaching the SLA target,
+   * deduct a penalty from the budget — creating real economic pressure
+   * during the wave, not just at the end.
+   */
+  onTick(state: SimulationStateReader): void {
+    if (this.phase !== "simulate") return;
+    const wave = this.getCurrentWave();
+    if (!wave.sla) return;
+
+    const metrics = (state as unknown as SimulationState).metricsHistory.slice(
+      this.waveStartMetricsIndex,
+    );
+    if (metrics.length === 0) return;
+
+    let resolved = 0;
+    let dropped = 0;
+    let timedOut = 0;
+    for (const m of metrics) {
+      resolved += m.requestsResolved;
+      dropped += m.requestsDropped;
+      timedOut += m.requestsTimedOut;
+    }
+
+    const total = resolved + dropped + timedOut;
+    if (total === 0) return;
+
+    const rollingAvailability = resolved / total;
+    if (rollingAvailability < wave.sla.availabilityTarget) {
+      this.economy.debitUpkeep(wave.sla.penaltyPerTick);
+    }
   }
 }

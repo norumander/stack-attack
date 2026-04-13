@@ -18,6 +18,13 @@ export interface TDWaveDefinition {
   readonly revenuePerRequestType: ReadonlyMap<string, number>;
   readonly maxPlacements?: number;
   readonly readKeyPoolSize?: number;
+  /** SLA gate — if present, all three targets must be met to pass the wave. */
+  readonly sla?: {
+    readonly availabilityTarget: number;
+    readonly maxAvgLatency: number;
+    readonly minBudget: number;
+    readonly penaltyPerTick: number;
+  };
 }
 
 export const WAVE_1: TDWaveDefinition = {
@@ -32,6 +39,7 @@ export const WAVE_1: TDWaveDefinition = {
   dropThreshold: 0.05,
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
   readKeyPoolSize: 20,
+  sla: { availabilityTarget: 0.90, maxAvgLatency: 10, minBudget: 0, penaltyPerTick: 2 },
 };
 
 export const WAVE_2: TDWaveDefinition = {
@@ -46,6 +54,7 @@ export const WAVE_2: TDWaveDefinition = {
   dropThreshold: 0.05,
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
   readKeyPoolSize: 20,
+  sla: { availabilityTarget: 0.92, maxAvgLatency: 8, minBudget: 0, penaltyPerTick: 3 },
 };
 
 export const WAVE_3: TDWaveDefinition = {
@@ -60,4 +69,5 @@ export const WAVE_3: TDWaveDefinition = {
   dropThreshold: 0.05,
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
   readKeyPoolSize: 15, // Pool=15 vs Cache capacity=10 → ~67% hit rate target
+  sla: { availabilityTarget: 0.95, maxAvgLatency: 5, minBudget: 0, penaltyPerTick: 5 },
 };
