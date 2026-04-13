@@ -4,7 +4,8 @@ import type { CapabilityId } from "@core/types/ids.js";
 import { ProcessingCapability } from "@capabilities/processing/processing-capability.js";
 import { ForwardingCapability } from "@capabilities/forwarding/forwarding-capability.js";
 import { MonitoringCapability } from "@capabilities/monitoring/monitoring-capability.js";
-import { SERVER_ENTRY } from "./td-component-entries.js";
+import { StorageCapability } from "@capabilities/storage/storage-capability.js";
+import { SERVER_ENTRY, DATABASE_ENTRY } from "./td-component-entries.js";
 
 /**
  * Populate the capability and component registries with the TD-mode
@@ -36,8 +37,13 @@ export function registerTDDefaults(
     id: "monitoring" as CapabilityId,
     factory: () => new MonitoringCapability("monitoring" as CapabilityId),
   });
+  capRegistry.register({
+    id: "storage" as CapabilityId,
+    factory: () => new StorageCapability("storage" as CapabilityId),
+  });
 
   compRegistry.register(SERVER_ENTRY);
+  compRegistry.register(DATABASE_ENTRY);
 
   compRegistry.validate();
 }

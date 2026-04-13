@@ -34,7 +34,24 @@ export const SERVER_ENTRY: ComponentRegistryEntry = {
   conditionProfile: DEFAULT_CONDITION_PROFILE,
 };
 
+export const DATABASE_ENTRY: ComponentRegistryEntry = {
+  type: "database",
+  name: "Database",
+  description: "Persists data so your servers don't have to remember everything.",
+  capabilities: [
+    { id: "storage" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+  ],
+  ports: [
+    { id: "p-in" as PortId, direction: "ingress", dataType: "data", capacity: 3, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "data", capacity: 2, connections: [] },
+  ],
+  placementCost: 200,
+  upgradeCostCurve: [200, 400, 800],
+  visual: { icon: "database", color: "#7B68EE", shape: "cylinder" },
+  conditionProfile: DEFAULT_CONDITION_PROFILE,
+};
+
 // Added in later slices:
-// export const DATABASE_ENTRY: ComponentRegistryEntry = ...;
 // export const CACHE_ENTRY: ComponentRegistryEntry = ...;
 // export const LOAD_BALANCER_ENTRY: ComponentRegistryEntry = ...;
