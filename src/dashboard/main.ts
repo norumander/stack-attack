@@ -384,6 +384,32 @@ let tdLoop: SimLoop<TDModeController> | null = null;
 let tdEngine: Engine | null = null;
 let tdState: SimulationState | null = null;
 let tdController: TDModeController | null = null;
+let tdClientId: ComponentId | null = null;
+
+// === Action log for retry/reset ===
+// Logical actions, NO concrete component ids in the log itself. References to
+// placed components use the place-action's index in the log; references to the
+// entry-point use -1. This makes the log replayable across full reboots where
+// component ids change.
+type TDPlaceAction = { kind: "place"; type: string; position: { x: number; y: number } };
+type TDConnectAction = { kind: "connect"; sourceRef: number; targetRef: number };
+type TDAction = TDPlaceAction | TDConnectAction;
+
+let tdActionLog: TDAction[] = [];
+/** Index into tdActionLog marking the end of the most recent successful wave. */
+let tdSnapshotIndex = 0;
+/** Parallel array: index N → ComponentId minted by the Nth place action. */
+let tdPlaceActionIds: ComponentId[] = [];
+
+function refForId(id: ComponentId): number {
+  if (id === tdClientId) return -1;
+  return tdPlaceActionIds.indexOf(id);
+}
+
+function idForRef(ref: number): ComponentId | null {
+  if (ref === -1) return tdClientId;
+  return tdPlaceActionIds[ref] ?? null;
+}
 
 const $modeSandbox = document.getElementById("mode-sandbox") as HTMLButtonElement;
 const $modeTd = document.getElementById("mode-td") as HTMLButtonElement;
@@ -410,57 +436,238 @@ function clearChildren(el: HTMLElement): void {
 function showWaveResultToast(outcome: OutcomeReport): void {
   const toast = document.createElement("div");
   toast.className = "td-toast";
-  // Inline styling — CSS isn't touched by this task.
   toast.style.position = "fixed";
   toast.style.top = "24px";
   toast.style.left = "50%";
   toast.style.transform = "translateX(-50%)";
-  toast.style.padding = "12px 20px";
-  toast.style.background = "#1a1e2e";
+  toast.style.padding = "16px 28px";
+  toast.style.background = outcome.verdict === "win" ? "#1a3b1f" : "#3b1a1a";
   toast.style.color = "#e1e4ed";
-  toast.style.border = "1px solid #2e3344";
-  toast.style.borderRadius = "6px";
+  toast.style.border = `1px solid ${outcome.verdict === "win" ? "#22c55e" : "#ef4444"}`;
+  toast.style.borderRadius = "8px";
   toast.style.fontWeight = "600";
+  toast.style.fontSize = "14px";
   toast.style.zIndex = "1000";
-  toast.style.boxShadow = "0 4px 16px rgba(0,0,0,0.4)";
-  const noteText = outcome.notes.join(", ");
+  toast.style.boxShadow = "0 8px 24px rgba(0,0,0,0.5)";
+  const noteText = outcome.notes.join(" · ");
   toast.textContent = `Wave ${outcome.verdict.toUpperCase()} — ${noteText}`;
   document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 4000);
+  // 10-second timeout so the player has time to read it
+  setTimeout(() => toast.remove(), 10000);
 }
 
+/** Tracks per-wave start tick so we can compute wave-relative tick number for the HUD. */
+let waveStartTick = 0;
+
 /** The per-tick callback — hoisted so loop reconstruction can reuse it. */
+let tdTickSeq = 0;
 function tdOnTick(controller: TDModeController, state: SimulationState): void {
+  tdTickSeq += 1;
+
+  // Update the in-topology running status every tick (cheap text update).
+  const wave = controller.getCurrentWave();
+  const tickInWave = state.currentTick - waveStartTick;
+  const resolvedThisWave = controller
+    .getCurrentWaveMetrics(state)
+    .reduce((sum, m) => sum + m.requestsResolved, 0);
+  tdDashboard?.updateRunningStatus(tickInWave, wave.duration, resolvedThisWave);
+
   if (!controller.isWaveDrained(state)) return;
 
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[td-wave-end] wave ${controller.getCurrentWaveIndex() + 1} drained at tick=${state.currentTick}`,
+  );
   tdLoop?.stop();
   controller.advancePhase(state); // simulate → assess
   const outcome = controller.evaluateOutcome(
     controller.getCurrentWaveMetrics(state),
   );
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[td-outcome] verdict=${outcome.verdict} notes=${outcome.notes.join(" | ")}`,
+  );
   showWaveResultToast(outcome);
 
-  // Per-wave reset: swap in a fresh economy and refresh condition on all
-  // placed components so the next wave starts clean.
-  const nextIdx = controller.getCurrentWaveIndex() + 1;
-  if (nextIdx < controller.getWaveCount()) {
-    const nextWave = TD_WAVES[nextIdx]!;
-    controller.setEconomy(
-      new TDEconomy({
-        startingBudget: nextWave.startingBudget,
-        revenuePerRequestType: nextWave.revenuePerRequestType,
-      }),
+  if (outcome.verdict === "win") {
+    // === WIN: snapshot the action log and advance to next wave ===
+    tdSnapshotIndex = tdActionLog.length;
+    // eslint-disable-next-line no-console
+    console.warn(`[td-snapshot] saved at action ${tdSnapshotIndex}`);
+
+    const nextIdx = controller.getCurrentWaveIndex() + 1;
+    if (nextIdx < controller.getWaveCount()) {
+      const nextWave = TD_WAVES[nextIdx]!;
+      controller.setEconomy(
+        new TDEconomy({
+          startingBudget: nextWave.startingBudget,
+          revenuePerRequestType: nextWave.revenuePerRequestType,
+        }),
+      );
+      for (const id of state.components.keys()) {
+        state.setCondition(id, 1.0);
+      }
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[td-next-wave] advancing to wave ${nextIdx + 1} of ${controller.getWaveCount()}, fresh economy budget=${nextWave.startingBudget}`,
+      );
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn(`[td-campaign-end] all ${controller.getWaveCount()} waves complete`);
+    }
+    controller.advancePhase(state); // assess → build (or campaign complete)
+    tdTickSeq = 0;
+    tdDashboard?.refreshHud();
+    tdDashboard?.rerenderTopology();
+  } else {
+    // === LOSS: stay in assess phase, show retry/reset modal ===
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[td-loss] wave ${controller.getCurrentWaveIndex() + 1} lost; awaiting Retry or Reset`,
     );
-    for (const id of state.components.keys()) {
-      state.setCondition(id, 1.0);
+    showLossModal(outcome);
+    tdTickSeq = 0;
+    tdDashboard?.refreshHud();
+    tdDashboard?.rerenderTopology();
+  }
+}
+
+// === Loss modal helpers ===
+
+function showLossModal(outcome: OutcomeReport): void {
+  const modal = document.getElementById("td-loss-modal");
+  const title = document.getElementById("td-loss-modal-title");
+  const detail = document.getElementById("td-loss-modal-detail");
+  if (!modal || !title || !detail || !tdController) return;
+  const waveNum = tdController.getCurrentWaveIndex() + 1;
+  title.textContent = `Wave ${waveNum} LOST`;
+  detail.textContent = outcome.notes.join(" · ");
+  // Update Retry button label so the player knows which wave they'll retry.
+  const retryBtn = document.getElementById("td-retry-btn");
+  if (retryBtn) retryBtn.textContent = `Retry Wave ${waveNum}`;
+  modal.hidden = false;
+}
+
+function hideLossModal(): void {
+  const modal = document.getElementById("td-loss-modal");
+  if (modal) modal.hidden = true;
+}
+
+/**
+ * Replays a slice of the action log against the current state + controller.
+ * Used by Retry to reconstruct the topology that existed at the end of the
+ * most recent successful wave. Rebuilds tdPlaceActionIds as a side effect.
+ */
+function replayActions(actions: readonly TDAction[]): void {
+  if (!tdController || !tdState) return;
+  tdPlaceActionIds = [];
+  for (const action of actions) {
+    if (action.kind === "place") {
+      const result = tdController.tryPlace(
+        tdState,
+        action.type,
+        action.position,
+        null,
+      );
+      if (result.ok) {
+        tdPlaceActionIds.push(result.componentId);
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] place failed: ${result.reason}`);
+      }
+    } else {
+      const sourceId = idForRef(action.sourceRef);
+      const targetId = idForRef(action.targetRef);
+      if (!sourceId || !targetId) {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] connect failed: missing ref`);
+        continue;
+      }
+      const result = tdController.tryConnect(tdState, sourceId, targetId);
+      if (!result.ok) {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] connect failed: ${result.reason}`);
+      }
     }
   }
-  controller.advancePhase(state); // assess → build (or campaign complete)
+  // eslint-disable-next-line no-console
+  console.warn(`[td-replay] applied ${actions.length} actions`);
+}
+
+/** Retry the failed wave by rewinding to the end-of-prior-wave snapshot. */
+function retryTDWave(): void {
+  if (!tdController) return;
+  // eslint-disable-next-line no-console
+  console.warn(`[td-retry] rewinding to snapshot=${tdSnapshotIndex}`);
+  hideLossModal();
+
+  // Save the snapshot slice + the wave we were on before nuking state.
+  const snapshotActions = tdActionLog.slice(0, tdSnapshotIndex);
+  const failedWaveIndex = tdController.getCurrentWaveIndex();
+  const failedWaveStartingBudget = TD_WAVES[failedWaveIndex]!.startingBudget;
+  const revenueTable = TD_WAVES[failedWaveIndex]!.revenuePerRequestType;
+
+  // Full state reboot (preserves the action log; we'll restore it after replay).
+  bootTDMode();
+  // bootTDMode resets tdActionLog to [] via the reset path; but we kept the
+  // snapshot slice in `snapshotActions`. The new boot also reset tdSnapshotIndex.
+
+  // Replay snapshotted actions so the topology matches end-of-prior-wave.
+  replayActions(snapshotActions);
+
+  // Restore the action log + snapshot marker.
+  tdActionLog = snapshotActions.slice();
+  tdSnapshotIndex = tdActionLog.length;
+
+  // Advance the controller's wave index to the failed wave (we lost on this one;
+  // bootTDMode put us on wave 0).
+  for (let i = 0; i < failedWaveIndex; i++) {
+    // build → simulate → assess → build (advances waveIndex by 1)
+    tdController!.advancePhase();
+    tdController!.advancePhase();
+    tdController!.advancePhase();
+  }
+
+  // Reset the economy + condition for the failed wave.
+  tdController!.setEconomy(
+    new TDEconomy({
+      startingBudget: failedWaveStartingBudget,
+      revenuePerRequestType: revenueTable,
+    }),
+  );
+  if (tdState) {
+    for (const id of tdState.components.keys()) {
+      tdState.setCondition(id, 1.0);
+    }
+  }
+
   tdDashboard?.refreshHud();
   tdDashboard?.rerenderTopology();
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[td-retry] complete; back to wave ${failedWaveIndex + 1} build phase`,
+  );
+}
+
+/** Reset the campaign — clears the action log and reboots from Wave 1. */
+function resetTDCampaign(): void {
+  // eslint-disable-next-line no-console
+  console.warn(`[td-reset] clearing log and rebooting`);
+  hideLossModal();
+  tdActionLog = [];
+  tdSnapshotIndex = 0;
+  tdPlaceActionIds = [];
+  bootTDMode();
 }
 
 function bootTDMode(): void {
+  // eslint-disable-next-line no-console
+  console.warn("[td-boot] bootTDMode start");
+  // Reset action log on a fresh boot. (Retry uses bootTDMode then re-restores
+  // the log post-replay; that's why we always start clean here.)
+  tdActionLog = [];
+  tdSnapshotIndex = 0;
+  tdPlaceActionIds = [];
   // Stop sandbox loop (don't tear it down entirely — re-entry just clicks the
   // sandbox button, which calls initTopology()).
   simLoop?.stop();
@@ -486,6 +693,7 @@ function bootTDMode(): void {
   // Seed the entry-point Client on the left side of the grid (visible).
   const client = compRegistry.create("client", { x: 2, y: 5 }, null);
   state.placeComponent(client);
+  tdClientId = client.id;
 
   const economy = new TDEconomy({
     startingBudget: WAVE_1.startingBudget,
@@ -512,17 +720,60 @@ function bootTDMode(): void {
     state,
     controller,
     topologyContainer: $topoVisual,
-    onPlace: () => tdDashboard?.refreshHud(),
-    onConnect: () => tdDashboard?.refreshHud(),
+    onPlace: (id) => {
+      // Record the place action in the log (logical, no concrete id stored).
+      const comp = state.components.get(id);
+      if (comp) {
+        tdActionLog.push({
+          kind: "place",
+          type: comp.type,
+          position: { x: comp.position.x, y: comp.position.y },
+        });
+        tdPlaceActionIds.push(id);
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[td-action] place ${comp.type}@(${comp.position.x},${comp.position.y}); log=${tdActionLog.length}`,
+        );
+      }
+      tdDashboard?.refreshHud();
+    },
+    onConnect: (connectionId) => {
+      // Record the connect action with logical refs (entry-point = -1, else
+      // index into place actions). This makes the log replayable across reboots.
+      const conn = state.connections.get(connectionId);
+      if (conn) {
+        const sourceRef = refForId(conn.source.componentId);
+        const targetRef = refForId(conn.target.componentId);
+        tdActionLog.push({ kind: "connect", sourceRef, targetRef });
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[td-action] connect ${sourceRef}→${targetRef}; log=${tdActionLog.length}`,
+        );
+      }
+      tdDashboard?.refreshHud();
+    },
     onPhaseChange: () => {
       tdDashboard?.refreshHud();
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[td-phase] now ${controller.getPhase()} (wave ${controller.getCurrentWaveIndex() + 1} of ${controller.getWaveCount()})`,
+      );
       if (controller.getPhase() === "simulate") {
+        // Snapshot the wave-start tick so the per-tick HUD can show
+        // wave-relative tick numbers (rather than the engine's global tick).
+        waveStartTick = state.currentTick;
         // Rebuild engine so visitOrder picks up freshly-placed components,
         // then swap it into the SimLoop via reset() (which also stops it).
         engine = new Engine(state);
         tdEngine = engine;
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[td-engine] reconstructed; visitOrder=[${state.visitOrder.join(",")}] components=${state.components.size} connections=${state.connections.size}`,
+        );
         tdLoop?.reset(engine, state, controller);
         tdLoop?.play();
+        // eslint-disable-next-line no-console
+        console.warn(`[td-loop] started; tickInterval=${tdLoop?.tickInterval}ms`);
       }
     },
   });
@@ -587,6 +838,12 @@ $modeSandbox.addEventListener("click", () => {
 $speedSlider.addEventListener("input", () => {
   if (tdLoop) tdLoop.tickInterval = getCurrentTickIntervalMs();
 });
+
+// Loss modal buttons (one-time wiring; modal HTML is static).
+const $tdRetryBtn = document.getElementById("td-retry-btn") as HTMLButtonElement | null;
+const $tdResetBtn = document.getElementById("td-reset-btn") as HTMLButtonElement | null;
+$tdRetryBtn?.addEventListener("click", () => retryTDWave());
+$tdResetBtn?.addEventListener("click", () => resetTDCampaign());
 
 // ─── Boot ─────────────────────────────────────────────────────────────
 populateSelects();

@@ -1,6 +1,6 @@
 import type { TDModeController } from "@modes/td/td-mode-controller";
 import type { SimulationState } from "@core/state/simulation-state";
-import type { ComponentId } from "@core/types/ids";
+import type { ComponentId, ConnectionId } from "@core/types/ids";
 
 interface TDDashboardState {
   cursor: "idle" | "placing" | "connecting";
@@ -11,6 +11,8 @@ interface TDDashboardState {
 export interface TDDashboard {
   refreshHud(): void;
   rerenderTopology(): void;
+  /** Update the in-topology status banner with running-wave info (cheap, no rerender). */
+  updateRunningStatus(tickInWave: number, totalTicks: number, resolved: number): void;
   destroy(): void;
 }
 
@@ -23,7 +25,7 @@ export function createTDDashboard(args: {
   controller: TDModeController;
   topologyContainer: HTMLElement;
   onPlace?: (id: ComponentId) => void;
-  onConnect?: () => void;
+  onConnect?: (connectionId: ConnectionId) => void;
   onPhaseChange?: () => void;
 }): TDDashboard {
   const { state, controller, topologyContainer } = args;
@@ -97,7 +99,7 @@ export function createTDDashboard(args: {
         if (result.ok) {
           // eslint-disable-next-line no-console
           console.log("[td] tryConnect ok", result.connectionId);
-          args.onConnect?.();
+          args.onConnect?.(result.connectionId);
         } else {
           // eslint-disable-next-line no-console
           console.warn("[td] tryConnect failed:", result.reason, result);
@@ -162,13 +164,24 @@ export function createTDDashboard(args: {
    * to draw SVG <line> elements.
    */
   function rerenderTopology(): void {
+    // Toggle the .simulating class for CSS pulse animation on connection lines
+    if (controller.getPhase() === "simulate") {
+      topologyContainer.classList.add("simulating");
+    } else {
+      topologyContainer.classList.remove("simulating");
+    }
+
     while (topologyContainer.firstChild) {
       topologyContainer.removeChild(topologyContainer.firstChild);
     }
     // Status banner: show the player what action is in progress
     const status = document.createElement("div");
     status.className = "td-status";
-    if (dash.cursor === "placing" && dash.placingType !== null) {
+    if (controller.getPhase() === "simulate") {
+      status.textContent = "Wave running…";
+    } else if (controller.getPhase() === "assess") {
+      status.textContent = "Assessing wave…";
+    } else if (dash.cursor === "placing" && dash.placingType !== null) {
       status.textContent = `Placing ${dash.placingType} — click an empty cell`;
     } else if (dash.cursor === "connecting") {
       const fromName = dash.connectingFromId
@@ -256,6 +269,27 @@ export function createTDDashboard(args: {
 
   readyBtn.addEventListener("click", onReady);
 
+  /**
+   * Lightweight per-tick status update — finds the existing .td-status
+   * element and overwrites its text. Avoids a full rerenderTopology on
+   * every tick.
+   */
+  function updateRunningStatus(
+    tickInWave: number,
+    totalTicks: number,
+    resolved: number,
+  ): void {
+    const statusEl = topologyContainer.querySelector<HTMLDivElement>(".td-status");
+    if (!statusEl) return;
+    if (tickInWave <= totalTicks) {
+      statusEl.textContent = `Wave running — tick ${tickInWave}/${totalTicks} — ${resolved} resolved`;
+    } else {
+      // Past the traffic-generation window; engine is draining the queue.
+      const drainTicks = tickInWave - totalTicks;
+      statusEl.textContent = `Draining queue (+${drainTicks} ticks past wave duration) — ${resolved} resolved`;
+    }
+  }
+
   // Initial render
   rerenderTopology();
   refreshHud();
@@ -263,6 +297,7 @@ export function createTDDashboard(args: {
   return {
     refreshHud,
     rerenderTopology,
+    updateRunningStatus,
     destroy: () => {
       hudEl.hidden = true;
       topologyContainer.classList.remove("td-mode");

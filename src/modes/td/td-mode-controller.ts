@@ -130,6 +130,23 @@ export class TDModeController implements ModeController {
     return this.waves.length;
   }
 
+  /**
+   * Reset the controller from any phase back to "build" for the SAME wave
+   * (no waveIndex advancement). Used by the dashboard's Retry flow after a
+   * wave loss. Reconstructs the traffic source so the wave can be re-run.
+   */
+  restartCurrentWave(): void {
+    if (this.isCampaignComplete()) {
+      throw new Error("TDModeController: campaign complete; cannot restart");
+    }
+    this.trafficSource = new TDTrafficSource({
+      wave: this.waves[this.currentWaveIndex]!,
+      targetEntryPointId: this.entryPointId,
+      rng: this.rng,
+    });
+    this.phase = "build";
+  }
+
   // === Existing methods, updated to read this.getCurrentWave() ===
 
   getActiveCapabilities(

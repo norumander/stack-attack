@@ -56,6 +56,22 @@
     <button id="td-ready-btn" class="td-ready-btn">READY</button>
   </aside>
 
+  <!-- TD loss modal — shown when a wave is lost -->
+  <div id="td-loss-modal" class="td-loss-modal" hidden>
+    <div class="td-loss-modal__content">
+      <h3 class="td-loss-modal__title" id="td-loss-modal-title">Wave LOST</h3>
+      <p class="td-loss-modal__detail" id="td-loss-modal-detail"></p>
+      <div class="td-loss-modal__buttons">
+        <button id="td-retry-btn" class="td-loss-modal__btn td-loss-modal__btn--primary">
+          Retry Wave
+        </button>
+        <button id="td-reset-btn" class="td-loss-modal__btn">
+          Reset Campaign
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div class="grid">
     <!-- Charts -->
     <div class="panel">
