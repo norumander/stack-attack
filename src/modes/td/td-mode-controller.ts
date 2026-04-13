@@ -4,7 +4,6 @@ import type {
   CapabilityId,
   ComponentId,
   ConnectionId,
-  PortId,
 } from "@core/types/ids.js";
 import type {
   BuildConstraints,
@@ -24,10 +23,6 @@ import { isEngineBufferable } from "@core/capability/engine-interfaces.js";
 import type { TDEconomy } from "./td-economy.js";
 import type { TDWaveDefinition } from "./td-waves.js";
 import { TDTrafficSource } from "./td-traffic-source.js";
-
-// Task 8 will use these; keep referenced here so the imports don't get
-// dropped by tools that prune unused imports.
-type _ReservedForTask8 = PortId | ConnectionId | Connection;
 
 // Stub registry used by the single-wave back-compat shim. tryPlace throws
 // if the back-compat-constructed controller is asked to place — Stage 3a
@@ -311,10 +306,54 @@ export class TDModeController implements ModeController {
     sourceComponentId: ComponentId,
     targetComponentId: ComponentId,
   ): ConnectResult {
-    void state;
-    void sourceComponentId;
-    void targetComponentId;
-    throw new Error("tryConnect not yet implemented (Task 8)");
+    // 1. Phase check
+    if (this.phase !== "build") {
+      return { ok: false, reason: "wrong_phase" };
+    }
+    // 2. Endpoint existence
+    const source = state.components.get(sourceComponentId);
+    if (!source) return { ok: false, reason: "unknown_source" };
+    const target = state.components.get(targetComponentId);
+    if (!target) return { ok: false, reason: "unknown_target" };
+    // 3. Port discovery — first matching egress on source, first ingress on target
+    const sourcePort = source.ports.find((p) => p.direction === "egress");
+    if (!sourcePort) return { ok: false, reason: "no_egress_port" };
+    const targetPort = target.ports.find((p) => p.direction === "ingress");
+    if (!targetPort) return { ok: false, reason: "no_ingress_port" };
+    // 4. Duplicate check
+    for (const conn of state.connections.values()) {
+      if (
+        conn.source.componentId === sourceComponentId &&
+        conn.target.componentId === targetComponentId
+      ) {
+        return { ok: false, reason: "duplicate_connection" };
+      }
+    }
+    // 5. Port capacity check
+    if (sourcePort.connections.length >= sourcePort.capacity) {
+      return { ok: false, reason: "port_capacity_exceeded", detail: "source" };
+    }
+    if (targetPort.connections.length >= targetPort.capacity) {
+      return { ok: false, reason: "port_capacity_exceeded", detail: "target" };
+    }
+    // 6. Mint connection
+    this.placementSerial += 1;
+    const connectionId = `td-conn-${this.placementSerial}` as ConnectionId;
+    const conn: Connection = {
+      id: connectionId,
+      source: { componentId: sourceComponentId, portId: sourcePort.id },
+      target: { componentId: targetComponentId, portId: targetPort.id },
+      bandwidth: 100,
+      latency: 1,
+      currentLoad: 0,
+    };
+    // 7. Add to state
+    state.addConnection(conn);
+    // 8. Update port state
+    sourcePort.connections.push(connectionId);
+    targetPort.connections.push(connectionId);
+    // 9. Return
+    return { ok: true, connectionId };
   }
 
   tryUpgrade(
