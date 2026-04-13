@@ -1,468 +1,597 @@
 # Stage 3b — TD Mode Playable Loop (Design)
 
-**Status:** Draft
+**Status:** Draft v2 (post cold audit, scope reduced)
 **Author:** Normid + Claude
 **Date:** 2026-04-12
 **Predecessor:** [Stage 3a — Wave 1–3 Playable Slice](./2026-04-12-stage-3a-wave-1-3-playable-slice-design.md)
 
+## Revision history
+
+- **v1 (initial draft):** introduced Wave 4 (Auth) as a new mechanic alongside the playable loop. Cold-audit found Wave 4 is unbuildable with the current capability library (`AuthCapability` is a no-op pass-through; silent PASS-at-PROCESS drops are invisible to `evaluateOutcome`). Spec also misremembered several existing APIs (`tryPlace` signature, `state.placeComponent`, port direction literals, `TDWaveDefinition` field names, `TDEconomy` surface).
+- **v2 (this draft):** Wave 4 cut — new-wave / new-mechanic work deferred to Stage 3c. Spec rewritten against the real APIs in the codebase. Stage 3b ships *only* the interactive playable loop for the existing Wave 1–3 learning arc.
+
 ## 1. Purpose
 
-Make TD mode actually playable end-to-end. Today, the four Wave 1–3 integration tests prove the engine can resolve a 3-wave learning arc, but the ModeController's `tryPlace` is a stub and the only way to "play" is to write a TypeScript test. Stage 3b closes the gap from headless test fixture to interactive build → watch → assess → repeat loop running in the existing dashboard.
+Make TD mode actually playable end-to-end. Today, the four Wave 1–3 integration tests prove the engine can resolve the learning arc, but the ModeController's `tryPlace` is a stub and the only way to "play" is to write a TypeScript test that calls `tests/integration/td/helpers.ts` to construct components directly. Stage 3b closes the gap from headless test fixture to interactive build → watch → assess → repeat loop running in the existing dashboard, for the existing three-wave arc.
 
-The minimum-viable interactive experience: a human opens `pnpm dev`, toggles to TD mode, sees an empty topology with a $200 starting budget and a Wave 1 indicator, clicks a Server from a palette, clicks the entry point to draw a connection, clicks READY, watches Wave 1 resolve in the existing throughput/latency charts, sees the wave-pass toast, and is returned to the build phase with the next wave's `buildBudget` credited. They do this four times and either win or lose the campaign.
+The minimum-viable interactive experience: a human runs `pnpm dev`, toggles to TD mode, sees an empty topology with the Wave 1 starting budget ($500) and a Wave 1 indicator, clicks **Server** from the palette, drops it on the grid, clicks the entry-point Client to draw a connection, clicks **READY**, watches Wave 1 resolve in the existing throughput/latency charts, sees the wave-pass toast, and is returned to the build phase with Wave 2's traffic ahead. They do this three times and either complete the campaign or fail a wave.
 
-This is the first stage where a non-engineer can hold the controller, and the first stage that exercises the "game-first" principle outside of test code.
+This is the first stage where a non-engineer can hold the controller, and the first stage that exercises the "game-first" principle outside of test code. It does **not** introduce any new wave, capability, or component. New mechanics arrive in Stage 3c.
 
 ## 2. Goals
 
-- **G1.** `TDModeController.tryPlace` mutates state for real — adds component, creates declared connections, debits economy, validates ports and budget.
-- **G2.** `TDModeController` has an explicit Build/Run phase machine. The dashboard sim loop drives transitions; the engine never runs during the build phase.
-- **G3.** A four-wave campaign is playable end-to-end via the dashboard, and the same campaign is reproducible headlessly in a test that scripts placements and asserts wins.
-- **G4.** A new Wave 4 introduces `auth_required` traffic and forces the player to place an API Gateway with `AuthCapability` at the edge. The lone-server topology that won Wave 3 fails Wave 4.
-- **G5.** No regressions in sandbox mode, existing TD tests, or the merged capability library.
+- **G1.** `TDModeController.tryPlace` mutates state for real — uses `ComponentRegistry.create` to mint a component, validates against build phase + budget, debits `TDEconomy`, and calls `state.placeComponent`. Returns the existing `PlacementResult` discriminated union.
+- **G2.** `TDModeController.tryConnect` (new TD-only method) validates ports, creates a `Connection` with a fresh branded id, and calls `state.addConnection`. Returns a `ConnectResult` with explicit failure reasons.
+- **G3.** `TDModeController` accepts a list of waves and progresses through them via the existing `advancePhase()` machinery, exposing `getCurrentWaveIndex` / `getCurrentWave` / `isCampaignComplete`. The existing single-wave constructor path (used by `tests/integration/td/helpers.ts`) remains supported.
+- **G4.** A three-wave campaign is playable end-to-end via the dashboard, and the same campaign is reproducible headlessly in a test that scripts placements with `tryPlace` / `tryConnect` and asserts wins through the registry path (not via the harness `buildServer` / `buildDatabase` shortcuts).
+- **G5.** No regressions in sandbox mode, the four existing TD wave tests, or any other test in the suite.
 
 ## 3. Non-goals
 
-- **Pixi.js / canvas rendering.** The existing DOM-based topology view in `src/dashboard/main.ts` is the rendering surface. Pixi waits.
+- **New waves.** No Wave 4 in Stage 3b. The Wave 4 candidate from the v1 draft is deferred to Stage 3c so it can be designed against a capability primitive that actually supports the lesson.
+- **New capabilities.** No new capability classes or new options on existing ones.
+- **New component types.** No new entries in the TD registry. Server, Database, Cache, LoadBalancer only — same as Stage 3a.
+- **Pixi.js / canvas rendering.** The existing DOM-based topology view in `src/dashboard/main.ts` is the rendering surface.
 - **Drag-to-place / drag-to-connect.** Click-to-place and click-to-connect-by-selecting-endpoints is the entire interaction model.
 - **Mid-wave intervention.** Placement is gated behind the build phase. The player cannot pause a running wave to add components.
-- **Intra-wave satisfaction bar / lives.** Wave-end `evaluateOutcome` remains the only loss condition, same as Stage 3a. Stage 3c will revisit.
-- **Component upgrades.** Tier-1 placement only. Upgrades are a separate stage.
-- **Save / load campaign state.** A reload starts a fresh campaign at Wave 1 with the starting budget. No persistence.
-- **TD-mode chaos panel.** Sandbox keeps its chaos panel; TD doesn't expose chaos in Stage 3b. Chaos integration with TD waves is a later stage.
-- **Two new waves.** RateLimit and CircuitBreaker waves are deferred to Stage 3c. Stage 3b adds **one** new wave.
+- **Intra-wave satisfaction bar / lives.** Wave-end `evaluateOutcome` remains the only loss condition. Stage 3c will revisit.
+- **Component upgrades.** Tier-1 placement only.
+- **Save / load campaign state.** A reload starts a fresh campaign at Wave 1.
+- **TD-mode chaos panel.** Sandbox keeps its chaos panel; TD doesn't expose chaos in Stage 3b.
+- **Multi-port disambiguation in `tryConnect`.** Stage 3b uses first-matching-egress-on-source + first-matching-ingress-on-target. Components with multiple in-ports of different roles need explicit port selection — Stage 3c.
+- **Position semantics in the engine.** `position` is a UI-layout hint only. The engine ignores it.
 
 ## 4. Scope summary
 
 | Area | In | Out |
 |---|---|---|
-| `tryPlace` | Real impl, validation, budget debit | Engine-meaningful position semantics, drag-to-place |
-| Phase machine | Build / Run states, transitions, exposed via getters | Pause / fast-forward, branching states |
-| Economy | `tryDebit` atomic check | Refunds, sales, partial credits |
-| New wave | Wave 4 (Auth) | Wave 5+ |
-| New component | `buildApiGateway` registry entry | New capabilities (Auth already exists) |
-| Dashboard | TD mode toggle, palette, READY button, wave HUD | New visual style, separate TD app, animations |
-| Tests | Headless campaign, `tryPlace` paths, Wave 4 outcome | Manual playtest automation |
+| `tryPlace` | Real impl, registry-minted component, `PlacementResult` failure reasons | New failure reasons; new return type |
+| `tryConnect` | New TD-only method, port-direction validated, single connection per call | Multi-port selection, drag-to-connect, batch connect |
+| `TDModeController` | Multi-wave support (waves array, `currentWaveIndex`, `getCurrentWave`, `isCampaignComplete`), `isWaveDrained` helper, registry held in options, `componentMintCounter` for id generation | Save/load, branching campaign paths |
+| `TDTrafficSource` | Internal `ticksGenerated` counter, `isExhausted()` getter, decoupled from `state.currentTick` | Per-wave intensity ramps mid-wave |
+| `TDEconomy` | No interface change — uses existing `canAfford` / `debitPlacement` / `creditRevenue` / `debitUpkeep` | New methods, `tryDebit`, debit log |
+| Wave definitions | No change — `WAVE_1`/`WAVE_2`/`WAVE_3` from `td-waves.ts` are reused as-is. `id` literal type widened from `1 \| 2 \| 3` to `number` to allow future waves without churning Stage 3a tests | New waves |
+| Dashboard | TD mode toggle, palette, READY button, wave HUD, build/connect interaction | Pixi rendering, animations, drag UX |
+| Tests | Headless multi-wave campaign via `tryPlace`/`tryConnect`, unit tests for placement/connect/phase | Wave 4 calibration, manual playtest automation |
 
 ## 5. Architecture
 
 ### 5.1 `TDModeController` changes
 
-**Current state:** `tryPlace` is a stub that increments a counter and returns a fake id without touching `state.components`. There is no phase concept; a wave is "running" iff `TDTrafficSource` has not yet exhausted its definition.
+**Current state** (`src/modes/td/td-mode-controller.ts`):
+- Constructor takes one `wave: TDWaveDefinition`, eagerly constructs `trafficSource` from it.
+- `tryPlace(state, type, position, zone): PlacementResult` is a stub: increments a counter, returns `{ok: true, componentId: "td-placed-N" as ComponentId}` without touching state.
+- `phase: "build" | "simulate" | "assess"` with `advancePhase()` cycling `build → simulate → assess → build`.
+- `evaluateOutcome(metrics)` reads from passed-in metrics, not from internal state.
 
-**New state:**
+**Stage 3b changes:**
 
 ```ts
-type TDPhase = "build" | "run";
-
-class TDModeController implements ModeController {
-  private phase: TDPhase = "build";
-  private currentWaveIndex = 0;
-  private trafficSource: TDTrafficSource | null = null;
-
-  // Existing fields: economy, registry, waves, dropThreshold, ...
-
-  getPhase(): TDPhase;
-  getCurrentWaveIndex(): number;
-  getCurrentWave(): WaveDefinition;       // throws if past last wave
-  isCampaignComplete(): boolean;          // currentWaveIndex >= waves.length
-
-  startWave(): void;                      // build → run, instantiates TDTrafficSource
-  endWave(): WaveResult;                  // run → build, evaluates, advances index, credits revenue
-
-  tryPlace(
-    type: ComponentTypeId,
-    position: Position,
-    connectsTo: ReadonlyArray<ComponentId>,
-  ): TryPlaceResult;
+export interface TDModeControllerOptions {
+  // CHANGED: array of waves, not one
+  readonly waves: readonly TDWaveDefinition[];
+  readonly economy: TDEconomy;
+  readonly entryPointId: ComponentId;
+  readonly rng: () => number;
+  // NEW: needed for tryPlace to mint components from registry entries
+  readonly componentRegistry: ComponentRegistry;
 }
 
-type TryPlaceResult =
-  | { ok: true; componentId: ComponentId; connectionIds: ConnectionId[] }
-  | { ok: false; reason: TryPlaceFailureReason };
+export class TDModeController implements ModeController {
+  private readonly waves: readonly TDWaveDefinition[];
+  private currentWaveIndex = 0;
+  private trafficSource: TDTrafficSource;
+  private phase: "build" | "simulate" | "assess" = "build";
+  private waveStartMetricsIndex = 0;     // for slicing metricsHistory per wave
+  private placementSerial = 0;           // for minting unique ComponentIds
 
-type TryPlaceFailureReason =
-  | "wrong_phase"           // can only place during build
-  | "unknown_type"          // type not in registry
-  | "insufficient_funds"    // economy.tryDebit failed
-  | "incompatible_ports"    // source has no out-port or target has no in-port
-  | "unknown_target";       // a connectsTo id doesn't exist in state.components
+  constructor(options: TDModeControllerOptions) {
+    this.waves = options.waves;
+    this.economy = options.economy;
+    this.componentRegistry = options.componentRegistry;
+    this.entryPointId = options.entryPointId;
+    this.rng = options.rng;
+    this.trafficSource = new TDTrafficSource({
+      wave: this.waves[0]!,
+      targetEntryPointId: options.entryPointId,
+      rng: options.rng,
+    });
+  }
+
+  // Existing methods stay (with this.wave → this.getCurrentWave())
+  getActiveCapabilities(component): ReadonlySet<CapabilityId>;
+  getTierCap(component, capabilityId): number;
+  getBuildConstraints(): BuildConstraints;
+  getTrafficSource(): TrafficSource;
+  evaluateOutcome(metrics: readonly TickMetrics[]): OutcomeReport;
+  getInitialZoneTopology(): ZoneTopology;
+  tryUpgrade(state, componentId, capabilityId): UpgradeResult;
+  getScheduledChaos(currentTick): readonly ChaosEvent[];
+
+  // Existing phase machinery — keep
+  getPhase(): "build" | "simulate" | "assess";
+  advancePhase(): void;  // Now also handles assess→build wave advancement (see §5.2)
+
+  // NEW
+  getCurrentWaveIndex(): number;
+  getCurrentWave(): TDWaveDefinition;        // throws if isCampaignComplete
+  isCampaignComplete(): boolean;             // currentWaveIndex >= waves.length
+  isWaveDrained(state: SimulationState): boolean;
+  getCurrentWaveMetrics(state: SimulationState): readonly TickMetrics[];
+
+  // CHANGED: real impl
+  tryPlace(state, type, position, zone): PlacementResult;
+
+  // NEW: TD-only public method (not on ModeController interface)
+  tryConnect(
+    state: SimulationState,
+    sourceComponentId: ComponentId,
+    targetComponentId: ComponentId,
+  ): ConnectResult;
+}
+
+export type ConnectResult =
+  | { ok: true; connectionId: ConnectionId }
+  | {
+      ok: false;
+      reason:
+        | "wrong_phase"
+        | "unknown_source"
+        | "unknown_target"
+        | "no_egress_port"
+        | "no_ingress_port"
+        | "duplicate_connection"
+        | "port_capacity_exceeded";
+      detail?: string;
+    };
 ```
-
-**`Position` is a UI hint, not engine-meaningful in 3b.** The engine ignores `position` (no spatial routing, no proximity rules). The dashboard uses it to render the component on the topology grid; tests can pass `{x: 0, y: 0}` for every placement without consequence. Future stages may make position meaningful (e.g. for visual layout persistence or zone affinity), but Stage 3b treats it as opaque metadata.
 
 **`tryPlace` flow:**
 
-1. Reject if `phase !== "build"`.
-2. Look up registry entry by `type`. Reject `unknown_type` if missing.
-3. Compute placement cost: `entry.placementCost` (a new field on registry entries, see §5.4). Default formula if absent: `entry.getUpkeepCost(1) * 10`.
-4. `economy.tryDebit(cost)`. Reject `insufficient_funds` if false.
-5. Validate every `connectsTo` id exists in `state.components`. Reject `unknown_target` otherwise.
-6. Validate port compatibility: the new component must declare at least one `direction: "in"` port, and each target must declare at least one `direction: "out"` port. Reject `incompatible_ports` otherwise. (Stage 3b uses default port routing — first matching port wins. Multi-port disambiguation is later.)
-7. Call `state.placeComponent(type, position)` which returns the new `ComponentId`. This already exists and is what Stage 3a tests use.
-8. For each target id, call `state.createConnection(targetOutPortId, newInPortId)`. (Same path used in tests today.)
-9. Return `{ok: true, componentId, connectionIds}`.
+1. **Phase check.** Reject `{ok: false, reason: "disallowed_by_mode", detail: "wrong phase"}` if `phase !== "build"`. (We reuse the existing `PlacementResult` reason set rather than inventing new variants — this is the closest existing fit.)
+2. **Mode allowlist.** Reject `disallowed_by_mode` if `type` is not in `getCurrentWave().availableComponents`. (Stage 3a uses `getBuildConstraints` for this; same check applies here.)
+3. **Registry lookup + component creation.** `const result = this.componentRegistry.tryCreate(type, position, zone)`. If the registry rejects (unknown type), translate to `{ok: false, reason: "registry_unknown_type"}`. If the registry accepts, it returns a fully-constructed `Component` with capabilities instantiated by their factory (this is the existing path; see `ComponentRegistry.create`).
+4. **Budget check.** If `!economy.canAfford(component.placementCost)`, return `{ok: false, reason: "insufficient_budget"}`. The component is not retained — it's discarded since the registry's `create` does not commit anywhere yet.
+5. **Debit + place.** `economy.debitPlacement(component); state.placeComponent(component);`. Both succeed unconditionally given the prior checks.
+6. **Return.** `{ok: true, componentId: component.id}`.
 
-**Phase transitions:**
+**`Position` is a UI hint, not engine-meaningful.** The engine ignores `position` (no spatial routing). The dashboard uses it to render the component on the topology grid; tests can pass `{x: 0, y: 0}` for every placement without consequence.
 
-- `startWave()`: assert `phase === "build"`, assert `!isCampaignComplete()`, instantiate `new TDTrafficSource(getCurrentWave(), entryPointId)`, set `phase = "run"`. The dashboard sim loop must read `getPhase()` after each tick and call `endWave()` when the traffic source is exhausted **and** all in-flight requests have resolved or timed out.
-- `endWave()`: assert `phase === "run"`, run the existing `evaluateOutcome` logic, credit revenue on a pass via `economy.creditRevenue(wave.passReward)`, debit a fixed wave-end debt of 0 (no penalty in 3b), advance `currentWaveIndex`, drop the traffic source, set `phase = "build"`. Returns the `WaveResult`.
+**`tryConnect` flow:**
 
-**Wave-end detection:** The sim loop is the authority. It calls `tdController.isWaveExhausted()` after each tick, where:
+1. **Phase check.** Reject `wrong_phase` if `phase !== "build"`.
+2. **Endpoint existence.** Reject `unknown_source` / `unknown_target` if either id is not in `state.components`.
+3. **Port discovery.** Find first port on source with `direction === "egress"`. Reject `no_egress_port` if absent. Find first port on target with `direction === "ingress"`. Reject `no_ingress_port` if absent.
+4. **Duplicate check.** If any existing connection has the same `(sourceComponentId → targetComponentId)` pair through these ports, reject `duplicate_connection`.
+5. **Port capacity check.** If `sourcePort.connections.length >= sourcePort.capacity` or `targetPort.connections.length >= targetPort.capacity`, reject `port_capacity_exceeded`.
+6. **Mint connection.** Generate a new `ConnectionId` (`` `td-conn-${++this.placementSerial}` `` cast as `ConnectionId`). Construct a `Connection` literal with the source/target endpoint pairs. Call `state.addConnection(conn)`.
+7. **Update port state.** Push the new connection id into both `sourcePort.connections` and `targetPort.connections`. (Mirrors `tests/integration/td/helpers.ts:wire`.)
+8. **Return.** `{ok: true, connectionId: conn.id}`.
+
+**`isWaveDrained` flow:**
 
 ```ts
-isWaveExhausted(): boolean {
-  if (this.phase !== "run" || !this.trafficSource) return false;
-  return this.trafficSource.isExhausted()
-    && this.state.pendingRequests.length === 0
-    && this.allBufferablesEmpty();
+isWaveDrained(state: SimulationState): boolean {
+  if (!this.trafficSource.isExhausted()) return false;
+  for (const arr of state.pending.values()) {
+    if (arr.length > 0) return false;
+  }
+  if (state.blockedParents.size > 0) return false;
+  if (state.activeStreams.size > 0) return false;
+  return true;
 }
 ```
 
-`allBufferablesEmpty()` walks `state.components` and asks each `EngineBufferable` capability for `peekBuffered().length === 0`.
+This walks every place a request can live between ticks: per-component pending queues (`state.pending` is `Map<ComponentId, Request[]>`), the SPAWN-blocked parent pool (`state.blockedParents`), and active long-lived streams (`state.activeStreams`). `state.stagedOutcomes` is asserted-empty between ticks by the engine itself, so we don't check it.
 
-### 5.2 `TDEconomy` changes
+**`getCurrentWaveMetrics` flow:**
 
 ```ts
-class TDEconomy {
-  // Existing: balance, creditRevenue, debitUpkeep, isInsolvent, ...
+getCurrentWaveMetrics(state: SimulationState): readonly TickMetrics[] {
+  return state.metricsHistory.slice(this.waveStartMetricsIndex);
+}
+```
 
-  tryDebit(amount: number): { ok: true } | { ok: false; reason: "insufficient_funds" } {
-    if (this.balance < amount) return { ok: false, reason: "insufficient_funds" };
-    this.balance -= amount;
-    this.debitLog.push({ tick: -1, amount, source: "placement" });  // tick=-1 = build phase
-    return { ok: true };
+The slice index is captured on `build → simulate` transition (see §5.2).
+
+### 5.2 `advancePhase` semantics for multi-wave campaigns
+
+The existing 3-state machine cycles `build → simulate → assess → build`. Stage 3b adds wave-index advancement on the `assess → build` edge:
+
+```ts
+advancePhase(): void {
+  switch (this.phase) {
+    case "build":
+      // Player clicked READY. Snapshot metrics index for this wave.
+      this.waveStartMetricsIndex = this.state.metricsHistory.length;
+      // (this.state is now held on the controller — see Open Question O1)
+      this.phase = "simulate";
+      break;
+    case "simulate":
+      // Sim loop has detected isWaveDrained. Move to assess.
+      this.phase = "assess";
+      break;
+    case "assess":
+      // Player acknowledged the wave result. Advance to next wave.
+      this.currentWaveIndex += 1;
+      if (this.currentWaveIndex < this.waves.length) {
+        this.trafficSource = new TDTrafficSource({
+          wave: this.waves[this.currentWaveIndex]!,
+          targetEntryPointId: this.entryPointId,
+          rng: this.rng,
+        });
+      }
+      this.phase = "build";
+      break;
   }
 }
 ```
 
-`tryDebit` is atomic — no partial debits. `tick: -1` distinguishes build-phase debits from in-wave upkeep debits in the existing log.
+**Open Question O1:** The current `evaluateOutcome` takes `metrics: readonly TickMetrics[]` as a param — it does not hold a reference to `SimulationState`. To slice metricsHistory at wave boundaries, the controller needs *some* way to know the snapshot point at `build → simulate` time. Two options:
 
-### 5.3 `WaveDefinition` and Wave 4
+- **(a) Pass `state` into `advancePhase(state)`.** Cleanest from a no-hidden-state perspective, but changes a method signature that exists today.
+- **(b) Hold `state` in `TDModeControllerOptions`.** Constructor-bound. Simpler call sites but more coupling.
 
-**New optional field on `WaveDefinition`:**
+**Recommendation: (a).** Add `state` as an optional parameter on `advancePhase` for new call sites; old call sites (Stage 3a `runWave`) continue to call `advancePhase()` without it, which is fine because Stage 3a uses single-wave controllers and never crosses a wave boundary. The implementation snapshots the index only when `state` is provided.
+
+This is the only signature change to an existing method. It's additive — no Stage 3a test breaks.
+
+### 5.3 `TDTrafficSource` changes
+
+**Current state** (`src/modes/td/td-traffic-source.ts`):
+- `generate(tick: number): Request[]` checks `tick >= this.wave.duration` and short-circuits.
+- The `tick` argument is the engine's global `state.currentTick`. For a single-wave session this is fine — `state.currentTick` starts at 0 and increments with each tick. For a multi-wave campaign with a single persistent state, `state.currentTick` is already ≥ 30 by the time Wave 2 starts, so the second source short-circuits immediately.
+
+**Stage 3b changes:**
 
 ```ts
-interface WaveDefinition {
-  // Existing: name, durationTicks, requestMix, dropThreshold, ...
-  buildBudget?: number;      // credited on wave PASS, before phase returns to build; default 0
+export class TDTrafficSource implements TrafficSource {
+  // existing fields...
+  private ticksGenerated = 0;
+
+  generate(_tick: number): Request[] {
+    if (this.ticksGenerated >= this.wave.duration) return [];
+    this.ticksGenerated += 1;
+    // ... existing per-tick generation logic ...
+  }
+
+  isExhausted(): boolean {
+    return this.ticksGenerated >= this.wave.duration;
+  }
 }
 ```
 
-`TDEconomy` already credits per-request revenue during a wave (existing behavior). `buildBudget` is a separate, deterministic lump sum credited only when the wave passes — it gives the spec direct control over how much budget the player has for the next build phase, independent of how good their per-request economy was. Wave 1 uses an initial campaign budget set on `TDModeController` construction (`initialBudget: 200`).
+The source becomes self-counting. The `tick` parameter is now ignored (kept for `TrafficSource` interface compatibility). Each new source instance starts at zero. This means a fresh `TDTrafficSource` for Wave 2 generates traffic correctly regardless of `state.currentTick`.
 
-**Wave 4 — "Authenticated reads":**
+**Backwards compatibility with Stage 3a tests:** the existing `runWave` helper in `tests/integration/td/helpers.ts` runs `engine.tick(mode)` for `wave.duration` iterations. With the new self-counting source, `generate(0..29)` runs and produces traffic exactly as before — no behavioral change.
 
-- `name: "Wave 4 — Authenticated reads"`
-- `durationTicks: 30`
-- `requestMix: { api_read: 0.6, auth_required: 0.4 }`
-- `dropThreshold: 0.10`
-- `buildBudget: 240` (credited on Wave 3 PASS, before phase returns to build for Wave 4 placements)
-- TTL on `auth_required`: 8 (same as `api_read`)
-- Per-request revenue continues to accrue during the wave via existing `TDEconomy` logic.
+### 5.4 `TDWaveDefinition.id` widening
 
-**Outcome calibration:**
+Current: `readonly id: 1 | 2 | 3`. This is a literal union — adding waves later requires editing the type. Stage 3b widens to `readonly id: number`, which costs nothing today (existing literal values 1/2/3 still satisfy it) and unblocks Stage 3c without a type-system churn.
 
-- A topology that wins Wave 3 (Server + Cache + LB, no Gateway) **must lose Wave 4** because `auth_required` requests have no PROCESS handler (Server's `ProcessingCapability` is constructed with `handledTypes: ["api_read"]`). Those requests fall through PASS at PROCESS phase → silent drop. ~40% of traffic vanishes → drop ratio exceeds threshold → fail.
-- A topology with a single `ApiGateway` placed at the entry point, with all entry-bound traffic routed through it, **must win Wave 4**. The Gateway's `AuthCapability` (INTERCEPT) lets `auth_required` PASS through. The Gateway's `ForwardingCapability` (PROCESS, `handledTypes: ["api_read", "auth_required"]`) routes both types to the downstream Server.
-- **Calibration mechanism:** an integration test `wave-4-auth.test.ts` runs both topologies headlessly and asserts the lone-server (or Wave-3-winner) topology fails and the with-Gateway topology passes. Tune Gateway throughput and Wave 4 intensity until both hold.
+This is the only `td-waves.ts` change.
 
-### 5.4 `ApiGateway` registry entry
+### 5.5 `TDEconomy` — no changes
 
-`src/modes/td/td-component-entries.ts` gains:
+`TDEconomy` already has the methods Stage 3b needs:
+- `canAfford(cost: number): boolean`
+- `debitPlacement(component: ComponentReader): void`
+- `creditRevenue(request: Request): number`
+- `debitUpkeep(totalUpkeep: number): void`
 
-```ts
-export function buildApiGateway(): ComponentRegistryEntry {
-  return {
-    type: "api_gateway" as ComponentTypeId,
-    displayName: "API Gateway",
-    ports: [
-      { id: "in" as PortId, direction: "in" },
-      { id: "out" as PortId, direction: "out" },
-    ],
-    placementCost: 80,
-    capabilityFactories: [
-      (id) => new AuthCapability(id),
-      (id) => new ForwardingCapability(id, {
-        handledTypes: ["api_read", "auth_required"],
-        throughputPerTier: 30,
-        emitForwardedEvent: true,
-      }),
-    ],
-    getUpkeepCost: (tier) => tier * 4,
-  };
-}
-```
+The `tryDebit` and `debitLog` from the v1 draft are deleted. `tryPlace` uses `canAfford` then `debitPlacement` — two synchronous calls inside the controller, atomic at the controller's discretion (no concurrency).
 
-Registered via `registerTDDefaults()` alongside Server, Database, Cache, LoadBalancer.
+### 5.6 `ComponentRegistry.tryCreate` — minor extension
 
-**Why these numbers (subject to calibration):**
+`ComponentRegistry.create(type, position, zone)` currently throws on unknown type. `tryPlace` needs a non-throwing variant to translate to `{ok: false, reason: "registry_unknown_type"}` cleanly.
 
-- `throughputPerTier: 30` — slightly above Server's 20 so the Gateway is not the bottleneck. Wave 4 intensity will be tuned so the Server is the chokepoint, not the Gateway, to keep the lesson focused on "you needed an auth-handling component at the edge," not "your gateway was undersized."
-- `placementCost: 80` — affordable on the 240 buildBudget for Wave 4 with room to also place a second Server or an upgrade.
-- `getUpkeepCost(1) = 4` — meaningful but not punishing on Wave 4's expected revenue.
-
-All numbers are starting points; the calibration test in §7 is the source of truth.
-
-### 5.5 `placementCost` field on registry entries
-
-New optional field on `ComponentRegistryEntry`:
+**Add:**
 
 ```ts
-interface ComponentRegistryEntry {
-  // Existing: type, displayName, ports, capabilityFactories, getUpkeepCost, ...
-  placementCost?: number;
-}
+tryCreate(type: string, position: Position, zone: string | null): Component | null
 ```
 
-Used by `tryPlace` to compute up-front cost. If absent, falls back to `getUpkeepCost(1) * 10`. Sandbox registry entries (which `tryPlace` will not exercise in 3b) can leave the field undefined. TD entries set explicit values for calibration.
+Returns `null` on unknown type, returns a `Component` on success. The existing `create` can stay as a thin wrapper that throws if `tryCreate` returns null (preserves the throwing API for callers that want it).
 
-Existing TD entries get explicit `placementCost`:
+This is the only change to `src/core/registry/component-registry.ts`.
 
-| Component | placementCost | Rationale |
-|---|---|---|
-| Server | 60 | Workhorse; should fit comfortably in early budgets |
-| Database | 80 | Once-per-game purchase, slightly heavier |
-| Cache | 50 | Cheap rescue for Wave 3 |
-| LoadBalancer | 70 | Mid-tier rescue for Wave 3 |
-| ApiGateway | 80 | New for Wave 4, on par with Database |
-
-These numbers will be revisited when the campaign is calibrated end-to-end.
-
-### 5.6 Dashboard changes
+### 5.7 Dashboard changes
 
 **File-level scope:**
 
 - `src/dashboard/main.ts` — gains a mode toggle and TD HUD wiring
-- `src/dashboard/td-mode.ts` — new file, owns TD-mode-specific rendering and click handlers
-- `src/dashboard/sim-loop.ts` — gains TD phase awareness
-- `src/dashboard/index.html` — adds palette, READY button, HUD container
+- `src/dashboard/td-mode.ts` — **new file**, owns TD-mode-specific rendering, click handlers, palette
+- `src/dashboard/sim-loop.ts` — gains TD branch, parameterized over `ModeController`
+- `src/dashboard/index.html` — adds TD HUD container, palette, READY button (hidden by default)
 - `src/dashboard/styles.css` — minimal CSS for new elements
 
 **Mode toggle:**
 
 - Top-bar toggle: `[Sandbox] [TD]`. Persisted in `location.hash` (`#mode=td`). On reload, the hash determines which mode boots.
-- Sandbox mode keeps its current behavior unchanged. TD mode hides the topology preset selector, hides the chaos panel, and shows the TD HUD.
+- Sandbox mode keeps its current behavior unchanged. TD mode hides the topology preset selector and the chaos panel; shows the TD HUD.
 
 **TD HUD layout (right-side panel):**
 
 ```
 ┌──────────────────────────┐
-│ Wave 2 of 4              │
+│ Wave 2 of 3              │
 │ Phase: BUILD             │
 │ Budget: $340             │
 │                          │
 │ Palette                  │
 │ ─────────────            │
-│ [+ Server      $60]      │
-│ [+ Database    $80]      │
-│ [+ Cache       $50]      │
-│ [+ Load Bal    $70]      │
-│ [+ Api Gateway $80]      │
+│ [+ Server      $100]     │
+│ [+ Database    $200]     │
+│ [+ Cache       $150]     │
+│ [+ Load Bal    $175]     │
 │                          │
 │ [ READY ]                │
 └──────────────────────────┘
 ```
 
-During the run phase: palette and READY are disabled. HUD shows `Phase: RUNNING` and a tick counter scoped to the wave. The existing throughput/latency/health-bar charts continue to update from the same `MetricsSnapshot` source.
+Costs match the existing TD entries — no rebalancing in 3b. During `simulate` and `assess` phases the palette and READY button are disabled. The HUD shows `Phase: RUNNING` (during simulate) or `Phase: ASSESS` (during assess). Existing throughput/latency/health-bar charts continue to update from the `MetricsSnapshot` source.
+
+Wave 1 starts with `WAVE_1.startingBudget = 500`; Wave 2 and Wave 3 start with their own `startingBudget` values (500 and 600 respectively per `td-waves.ts`). Stage 3b uses those values as-is. For the campaign experience the starting budget at Wave 2/3 *replaces* leftover budget from the prior wave (matching the way `TDEconomy` is currently constructed with a fresh `startingBudget` per-wave in `runWave`). This is a deliberate Stage 3b simplification — carrying over budget across waves is a Stage 3c question.
+
+Implementation: on `assess → build` transition, the dashboard tears down `TDEconomy` and reconstructs it with the next wave's `startingBudget`. The controller does not own the economy lifecycle — the dashboard sim loop does, mirroring the per-wave economy construction in `tests/integration/td/helpers.ts:runWave`.
 
 **Click-to-place flow:**
 
-1. Player clicks a palette button → `td-mode.ts` enters `placing` state, highlights cursor.
-2. Player clicks an empty cell in the topology grid → component is placed at that grid position via `tdController.tryPlace(type, position, connectsTo: [])` with **zero connections initially**. State enters `connecting` mode targeting the new component.
-3. Player clicks an existing component → a connection is added from the existing component to the new one via a follow-up `state.createConnection` call (or, if we want atomicity, a `tryConnect(sourceId, targetId)` method on the controller that validates ports and either adds the connection or returns a failure).
-4. ESC or click-outside cancels the connecting state without removing the component (the component is already placed; it's just unconnected).
-
-**Why zero connections in the initial `tryPlace` call:** keeping `tryPlace` and `tryConnect` as separate operations avoids encoding click-flow ordering into the controller. The sim treats unconnected components as inert (Server with no in-port traffic produces no work). The HUD can show a small warning icon on unconnected components.
-
-**`tryConnect` is part of the controller's public API:**
-
-```ts
-tryConnect(
-  sourceId: ComponentId,
-  targetId: ComponentId,
-): { ok: true; connectionId: ConnectionId } | { ok: false; reason: TryConnectFailureReason };
-
-type TryConnectFailureReason =
-  | "wrong_phase"
-  | "unknown_source" | "unknown_target"
-  | "incompatible_ports"
-  | "duplicate_connection";
-```
-
-`tryConnect` validates phase, both endpoints, port compatibility, and uniqueness of the (source, target) pair. Returns the new connection id on success.
+1. Player clicks a palette button → `td-mode.ts` enters `placing` state, highlights the cursor.
+2. Player clicks an empty cell on the topology grid → `td-mode.ts` calls `tdController.tryPlace(state, type, {x, y}, null)`.
+3. On `{ok: true}`, the new component renders on the grid; the cursor enters `connecting` state with the new component as the connect target.
+4. Player clicks an existing component (the *source*) → `td-mode.ts` calls `tdController.tryConnect(state, sourceId, newId)`. On success, the connection renders.
+5. ESC or click-outside cancels the connecting state. The component remains placed but unconnected. Unconnected components show a small warning icon (CSS only — no logic change in the engine).
 
 **Sim loop phase awareness:**
 
 ```ts
 // sim-loop.ts (TD branch)
 function tickTD() {
-  if (tdController.getPhase() === "build") return;     // do nothing
+  const phase = tdController.getPhase();
+  if (phase === "build" || phase === "assess") return;   // no engine work
+  // phase === "simulate"
   engine.tick(tdController);
-  if (tdController.isWaveExhausted()) {
-    const result = tdController.endWave();
-    showWaveResultToast(result);
-    if (tdController.isCampaignComplete()) {
-      showCampaignEndModal(result.passed);
+  if (tdController.isWaveDrained(state)) {
+    tdController.advancePhase(state);                    // simulate → assess
+    const outcome = tdController.evaluateOutcome(
+      tdController.getCurrentWaveMetrics(state),
+    );
+    showWaveResultToast(outcome);
+    if (outcome.verdict === "win" && tdController.getCurrentWaveIndex() === tdController.getWaveCount() - 1) {
+      showCampaignEndModal(true);
+    } else if (outcome.verdict === "lose") {
+      showCampaignEndModal(false);
     }
+    // Player must click "Continue" to advance assess → build (next wave or restart)
   }
 }
 ```
 
-The play/step/reset buttons retain their semantics: play loops `tickTD` at the speed slider, step calls it once, reset destroys the controller and restarts at Wave 1 with a fresh budget.
+The play/step/reset buttons retain their semantics: play loops `tickTD` at the speed slider, step calls it once, reset destroys the controller and the state and restarts at Wave 1 with a fresh budget.
 
-### 5.7 What stays the same
+**SimLoop refactor:** `src/dashboard/sim-loop.ts` currently imports `SandboxModeController` directly and calls a sandbox-specific `getMetricsSnapshot`. Stage 3b parameterizes `SimLoop` over `ModeController` and moves the sandbox-specific snapshot getter into a callback the constructor accepts. The TD branch passes its own snapshot getter that pulls metrics directly from `state.metricsHistory`.
+
+### 5.8 What stays the same
 
 - `Engine`, `processPending`, `deliverStaged`, `checkTTL`, all 10 tick steps — untouched.
-- `TDTrafficSource` — untouched. It already supports being instantiated per-wave.
-- `evaluateOutcome` — untouched. Wave 4 uses the existing drop-threshold gate.
-- All existing capabilities — untouched. `AuthCapability`, `ForwardingCapability`, `ProcessingCapability`, `StorageCapability`, `CachingCapability` are used as-is.
-- The 564 existing tests — must continue to pass without modification.
+- `WAVE_1`, `WAVE_2`, `WAVE_3` — untouched (only `id` literal type widened).
+- `evaluateOutcome` — untouched.
+- All existing capabilities — untouched.
+- `tests/integration/td/wave-1-launch-day.test.ts`, `wave-2-signups.test.ts`, `wave-3-traffic-spike.test.ts`, `wave-3-learning-arc.test.ts` — untouched. They use single-wave `TDModeController` construction and the harness `buildServer` / `buildDatabase` / `wire` shortcuts. Both paths must continue to work after Stage 3b's controller refactor (waves array + registry option).
+
+**Backwards compatibility shim:** the existing `TDModeControllerOptions` shape (`{wave, economy, entryPointId, rng}`) is preserved as an alternative call signature on the constructor. Internally, single-`wave` construction is normalized to `waves: [wave]` and `componentRegistry` defaults to a no-op stub registry that throws if `tryPlace` is called. Stage 3a tests never call `tryPlace`, so the stub is never reached.
+
+```ts
+export type TDModeControllerOptions = TDMultiWaveOptions | TDSingleWaveOptions;
+
+interface TDMultiWaveOptions {
+  readonly waves: readonly TDWaveDefinition[];
+  readonly economy: TDEconomy;
+  readonly entryPointId: ComponentId;
+  readonly rng: () => number;
+  readonly componentRegistry: ComponentRegistry;
+}
+
+interface TDSingleWaveOptions {
+  readonly wave: TDWaveDefinition;
+  readonly economy: TDEconomy;
+  readonly entryPointId: ComponentId;
+  readonly rng: () => number;
+  // componentRegistry omitted — controller uses an internal stub that throws on tryPlace
+}
+```
+
+The constructor narrows on `"waves" in options ? ... : ...`. The stub registry exists as a private constant inside the controller module.
+
+### 5.9 `registerTDDefaults` extension
+
+`registerTDDefaults` (`src/modes/td/register-td-defaults.ts`) currently registers capabilities and component entries into a `CapabilityRegistry` + `ComponentRegistry`. It already wires `processing/forwarding/monitoring/storage/caching/routing` capability factories and the four TD entries (`SERVER_ENTRY`, etc.).
+
+**Stage 3b change:** none. `registerTDDefaults` works as-is. The capability factories it registers (which are general-purpose `ProcessingCapability` / `ForwardingCapability` instances) are what the dashboard's `tryPlace`-minted components will use. **This means dashboard-placed components do NOT carry the `handledTypes`/`throughputPerTier` tuning that `tests/integration/td/helpers.ts:buildServer` applies.**
+
+**Implication for dashboard play:** a dashboard-placed Server uses the registry-default `ProcessingCapability` (default `canHandle: true`, default `tier*25` throughput, no PROCESSED events) and the registry-default `ForwardingCapability` (default `handledTypes: ["api_read", "api_write"]`, no throughput cap, no FORWARDED events). The TD-helper-built Server uses the tuned variants.
+
+This is a **deliberate Stage 3b choice with a consequence we accept:** dashboard play will *not* exactly reproduce the headless wave-3-learning-arc test outcomes. The lone-server dashboard topology may *win* Wave 3 instead of losing it, because the registry-default Server is not capacity-throttled the same way. The "lone-server loses Wave 3" lesson is preserved in the headless test (which still uses the harness builders), but the dashboard player will see a more forgiving experience.
+
+**Rationale:** unifying the harness-built and registry-built component construction is a Stage 3c project. It requires either (a) moving the tuned `handledTypes`/`throughputPerTier` configuration into the registry capability factories — which forces a decision about whether sandbox/dashboard wants the same tuning, or (b) introducing a TD-specific capability registry that overrides the defaults. Both deserve explicit design. Stage 3b ships the playable loop with the registry-default tuning and documents the gap.
+
+The headless `campaign-headless.test.ts` introduced in Stage 3b (§7.2) **exercises the registry path**, so it will reflect the more-forgiving registry-default tuning. The wave-pass thresholds in the new test are tuned to that path.
 
 ## 6. Data flow — a campaign session
 
 ```
 Page load
   → main.ts reads #mode=td from URL
-  → constructs TDModeController(initialBudget=200, waves=[W1,W2,W3,W4])
-  → mode = "build", waveIndex = 0
-  → renders empty topology + palette + HUD ($200, Wave 1, BUILD)
+  → main.ts constructs:
+      - SimulationState (empty)
+      - registry = new ComponentRegistry; capRegistry = new CapabilityRegistry
+      - registerTDDefaults(capRegistry, registry)
+      - economy = new TDEconomy({startingBudget: WAVE_1.startingBudget, revenuePerRequestType: WAVE_1.revenuePerRequestType})
+      - Place a "client" entry-point component manually (or read it from a TD baseline topology helper)
+      - tdController = new TDModeController({waves: [WAVE_1, WAVE_2, WAVE_3], economy, entryPointId: clientId, rng, componentRegistry: registry})
+      - phase = "build", waveIndex = 0
+  → renders empty topology + palette + HUD ($500, Wave 1, BUILD)
 
-Player clicks [+ Server]
-  → cursor enters placing state
-Player clicks empty cell (5,3)
-  → tdController.tryPlace("server", {x:5, y:3}, [])
-  → economy debited $60, balance now $140
-  → component placed, HUD updates
-  → cursor enters connecting state on new component
-Player clicks the entry-point component
-  → tdController.tryConnect(entry, server)
-  → connection created, cursor returns to idle
+Player clicks [+ Server] then clicks empty cell (5,3)
+  → tdController.tryPlace(state, "server", {x:5, y:3}, null)
+  → tryPlace path:
+      - phase check OK
+      - allowlist check OK (server in WAVE_1.availableComponents)
+      - registry.tryCreate("server", {x:5,y:3}, null) → Component instance with placementCost=100
+      - economy.canAfford(100) OK
+      - economy.debitPlacement(component) → balance = $400
+      - state.placeComponent(component)
+      - returns {ok: true, componentId: "server-1"}
+Player clicks the entry-point Client
+  → tdController.tryConnect(state, clientId, "server-1")
+  → tryConnect path:
+      - phase check OK
+      - source/target exist OK
+      - source has egress port, target has ingress port OK
+      - no duplicate, capacity OK
+      - mints Connection, calls state.addConnection
+      - pushes connection id into both port.connections arrays
+      - returns {ok: true, connectionId: "td-conn-1"}
 
 Player clicks [READY]
-  → tdController.startWave()
-  → phase = "run", trafficSource constructed
-  → sim loop drives engine.tick(tdController) at speed
+  → tdController.advancePhase(state)
+  → advancePhase: build → simulate, snapshots waveStartMetricsIndex = 0
+  → SimLoop drives engine.tick(tdController) at speed
   → existing charts populate from MetricsSnapshot
-  → ticks 1..30: traffic, processing, metrics
-  → ticks 31..N: drain — no new traffic, in-flight requests resolve
-  → tdController.isWaveExhausted() returns true
-  → tdController.endWave() → WaveResult{passed: true, dropRatio: 0.02, revenueEarned: $R, ...}
-  → economy already accrued $R per-request revenue during the wave (existing TDEconomy behavior)
-  → endWave() credits Wave 2's buildBudget (e.g. $180) on top
-  → toast: "Wave 1 PASSED. Earned $R, build budget +$180."
-  → phase = "build", waveIndex = 1
-  → HUD updates to Wave 2, BUILD, balance = (140 + R + 180)
+  → ticks 1..30: traffic generated, processed, metrics recorded
+  → ticks 31..N: trafficSource exhausted (ticksGenerated=30), pending drains
+  → tdController.isWaveDrained(state) === true
+  → tdController.advancePhase(state) → simulate → assess
+  → outcome = tdController.evaluateOutcome(tdController.getCurrentWaveMetrics(state))
+  → toast: "Wave 1 PASSED — drop rate 1.2%, budget $400."
+  → modal "Continue?" → player clicks → tdController.advancePhase(state) → assess → build, currentWaveIndex=1
+  → dashboard tears down economy and reconstructs with WAVE_2.startingBudget=500
+  → trafficSource swapped to WAVE_2's source
+  → HUD updates to Wave 2 of 3, BUILD, $500
 
-[repeat for waves 2–4]
+[repeat for waves 2 and 3]
 
-After Wave 4 endWave():
+After Wave 3 advancePhase from assess to build:
   → tdController.isCampaignComplete() === true
-  → campaign-end modal: "Campaign complete — 4/4 waves passed"
+  → campaign-end modal: "Campaign complete — 3/3 waves passed"
 ```
 
 ## 7. Testing strategy
 
 ### 7.1 Unit tests
 
-**`tests/unit/td-mode-controller-place.test.ts`** — `tryPlace` and `tryConnect` paths:
+**`tests/unit/td-mode-controller-place.test.ts`** — `tryPlace` paths:
 
-- success: places component, debits economy, returns id
-- `wrong_phase`: phase=run rejects placement
-- `unknown_type`: rejects gracefully
-- `insufficient_funds`: economy untouched, no component placed
-- `unknown_target` in `connectsTo`: no component placed, no debit
-- `incompatible_ports`: e.g. trying to connect Database (no out-port) as a source
-- `tryConnect` after `tryPlace`: full two-step click flow
-- `duplicate_connection`: rejects second connect of same (source, target)
+- **success** — placing a Server with sufficient budget mutates `state.components`, debits economy, returns `{ok: true, componentId}`
+- **`disallowed_by_mode` for wrong phase** — `tryPlace` during `simulate` rejects without mutating state or economy
+- **`disallowed_by_mode` for type not in availableComponents** — Wave 1 only allows server/database; cache/load_balancer rejected
+- **`registry_unknown_type`** — unknown type string rejected, no mutation
+- **`insufficient_budget`** — placing when balance < placementCost rejects, balance unchanged, no component placed
+- the `ok:true` shape narrows `componentId` correctly for downstream test code
 
-**`tests/unit/td-mode-controller-phase.test.ts`** — phase machine:
+**`tests/unit/td-mode-controller-connect.test.ts`** — `tryConnect` paths:
 
-- starts in build phase, waveIndex 0
-- `startWave()` from build → run, instantiates trafficSource
-- `startWave()` from run throws / rejects
-- `endWave()` from run → build, increments waveIndex, credits revenue + buildBudget
-- `endWave()` from build throws / rejects
-- `isCampaignComplete()` true after final endWave
-- `isWaveExhausted()` semantics: false during traffic, false while pending non-empty, true when both drained
+- **success** — first egress on source, first ingress on target, fresh connection added to `state.connections` with both endpoints' `port.connections` arrays updated
+- **`wrong_phase`** — rejects during `simulate` / `assess`
+- **`unknown_source` / `unknown_target`** — bogus ids rejected
+- **`no_egress_port`** — Database has no egress in the TD entry shape (verify against `td-component-entries.ts:DATABASE_ENTRY`); attempting to connect FROM a Database rejects
+- **`no_ingress_port`** — Client has no ingress; attempting to connect TO a Client rejects
+- **`duplicate_connection`** — second connect of same `(source, target)` rejects
+- **`port_capacity_exceeded`** — when `port.connections.length >= port.capacity`
 
-**`tests/unit/td-economy-try-debit.test.ts`** — atomicity:
+**`tests/unit/td-mode-controller-phase.test.ts`** — multi-wave phase machine:
 
-- success debits and logs
-- failure leaves balance unchanged
-- back-to-back debits up to balance succeed; the next one fails atomically
+- starts in `build` phase, `currentWaveIndex` 0
+- `advancePhase(state)` snapshots `waveStartMetricsIndex` on `build → simulate`
+- `simulate → assess` does not advance `currentWaveIndex`
+- `assess → build` advances `currentWaveIndex` and reconstructs `trafficSource` with the next wave
+- `isCampaignComplete()` true after final `assess → build`
+- single-wave construction (Stage 3a back-compat shim) works without `componentRegistry` in options
+- `getCurrentWaveMetrics(state)` returns only metrics from `waveStartMetricsIndex` onward
 
-### 7.2 Integration tests
+**`tests/unit/td-traffic-source-self-counting.test.ts`** — internal counter:
 
-**`tests/integration/td/wave-4-auth.test.ts`** — calibration test for Wave 4:
+- `generate(0)` returns full intensity batch, `ticksGenerated === 1`
+- `generate(99999)` for the same source instance returns intensity batch as long as `ticksGenerated < wave.duration` (the `tick` argument is now ignored)
+- after `wave.duration` calls, `generate()` returns `[]` and `isExhausted()` true
+- a fresh source instance for a new wave starts at `ticksGenerated === 0` regardless of any prior source
 
-```ts
-// Topology A: Wave-3-winner (Server + Cache + LB, no Gateway) — must FAIL Wave 4
-const a = setupWave3WinnerTopology();
-const resultA = runWave(a, WAVE_4);
-expect(resultA.passed).toBe(false);
-expect(resultA.dropRatio).toBeGreaterThan(WAVE_4.dropThreshold);
+### 7.2 Integration test
 
-// Topology B: Wave-3-winner + ApiGateway at entry — must PASS Wave 4
-const b = setupWave3WinnerTopology();
-addApiGatewayAtEntry(b);
-const resultB = runWave(b, WAVE_4);
-expect(resultB.passed).toBe(true);
-```
-
-This test is the source of truth for Wave 4 numerics. If it fails, tune Wave 4 mix / threshold / Gateway throughput / Server capacity until both assertions hold.
-
-**`tests/integration/td/campaign-headless.test.ts`** — full four-wave scripted campaign:
+**`tests/integration/td/campaign-headless.test.ts`** — full three-wave scripted campaign via the registry path:
 
 ```ts
-const tdc = new TDModeController({
-  initialBudget: 200,
-  waves: [WAVE_1, WAVE_2, WAVE_3, WAVE_4],
-  registry: registerTDDefaults(),
-  // ...
+import { Engine } from "@core/engine/engine";
+import { SimulationState } from "@core/state/simulation-state";
+import { ComponentRegistry } from "@core/registry/component-registry";
+import { CapabilityRegistry } from "@core/registry/capability-registry";
+import { registerTDDefaults } from "@modes/td/register-td-defaults";
+import { TDModeController } from "@modes/td/td-mode-controller";
+import { TDEconomy } from "@modes/td/td-economy";
+import { WAVE_1, WAVE_2, WAVE_3 } from "@modes/td/td-waves";
+import { makeRng } from "../helpers"; // path tbd
+
+it("plays a 3-wave campaign through the registry path", () => {
+  const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
+  const capRegistry = new CapabilityRegistry();
+  const compRegistry = new ComponentRegistry();
+  registerTDDefaults(capRegistry, compRegistry);
+
+  // Seed entry-point Client manually
+  const client = compRegistry.create("client", { x: 0, y: 0 }, null);
+  state.placeComponent(client);
+
+  const economy = new TDEconomy({
+    startingBudget: WAVE_1.startingBudget,
+    revenuePerRequestType: WAVE_1.revenuePerRequestType,
+  });
+  const tdc = new TDModeController({
+    waves: [WAVE_1, WAVE_2, WAVE_3],
+    economy,
+    entryPointId: client.id,
+    rng: makeRng(1),
+    componentRegistry: compRegistry,
+  });
+
+  // === Wave 1 build ===
+  const placeServer = tdc.tryPlace(state, "server", { x: 1, y: 0 }, null);
+  expect(placeServer.ok).toBe(true);
+  if (!placeServer.ok) throw new Error();   // narrowing
+  const connect1 = tdc.tryConnect(state, client.id, placeServer.componentId);
+  expect(connect1.ok).toBe(true);
+
+  tdc.advancePhase(state);  // build → simulate
+  runUntilDrained(state, tdc);
+  tdc.advancePhase(state);  // simulate → assess
+  const w1 = tdc.evaluateOutcome(tdc.getCurrentWaveMetrics(state));
+  expect(w1.verdict).toBe("win");
+
+  // Reconstruct economy for wave 2 (mirrors dashboard behavior)
+  // ... etc for waves 2 and 3 ...
 });
 
-// Wave 1 build
-expect(tdc.tryPlace("server", pos1, [entryId]).ok).toBe(true);
-tdc.startWave();
-runUntilWaveExhausted(tdc);
-expect(tdc.endWave().passed).toBe(true);
-
-// Wave 2 build
-expect(tdc.tryPlace("database", pos2, [serverId]).ok).toBe(true);
-tdc.startWave();
-runUntilWaveExhausted(tdc);
-expect(tdc.endWave().passed).toBe(true);
-
-// Wave 3 build
-expect(tdc.tryPlace("cache", pos3, [serverId]).ok).toBe(true);
-expect(tdc.tryPlace("load_balancer", pos4, [entryId]).ok).toBe(true);
-tdc.tryConnect(lbId, serverId);
-tdc.startWave();
-runUntilWaveExhausted(tdc);
-expect(tdc.endWave().passed).toBe(true);
-
-// Wave 4 build
-expect(tdc.tryPlace("api_gateway", pos5, [entryId]).ok).toBe(true);
-tdc.tryConnect(gwId, lbId);
-tdc.startWave();
-runUntilWaveExhausted(tdc);
-expect(tdc.endWave().passed).toBe(true);
-
-expect(tdc.isCampaignComplete()).toBe(true);
+function runUntilDrained(state: SimulationState, tdc: TDModeController) {
+  const engine = new Engine(state);
+  let safety = 200;
+  while (!tdc.isWaveDrained(state) && safety-- > 0) {
+    engine.tick(tdc);
+  }
+  if (safety <= 0) throw new Error("wave did not drain within 200 ticks");
+}
 ```
 
-This test doubles as the executable spec for the campaign and the smoke test for the dashboard's headless behavior.
+**Calibration expectation:** because the dashboard/registry path uses the *registry-default* capability tuning (not the harness-tuned `handledTypes`/`throughputPerTier`), wave-pass thresholds will be **more forgiving** than the existing `wave-3-learning-arc` test. The headless test asserts pass on each wave with the registry path. The lone-server lossy behavior is still pinned by the existing `wave-3-learning-arc` test which uses the harness builders. We do **not** try to make both paths agree in Stage 3b — see §5.9 rationale.
 
 ### 7.3 Dashboard verification
 
 Stage 3b's UI changes are DOM-based and not unit-tested directly. Manual verification per CLAUDE.md's UI-changes rule:
 
 1. `pnpm dev` opens the dashboard
-2. Toggle to TD mode, verify HUD renders Wave 1 / BUILD / $200
-3. Place a Server, click entry-point to connect, click READY
+2. Toggle to TD mode, verify HUD renders Wave 1 / BUILD / $500
+3. Place a Server, click entry-point Client to connect, click READY
 4. Verify Wave 1 runs, charts update, toast appears, HUD advances to Wave 2
-5. Repeat through Wave 4
+5. Repeat through Wave 3
 6. Reset, verify campaign restarts cleanly
 7. Toggle back to Sandbox, verify chaos panel + topology preset selector reappear and behave normally
 
@@ -470,65 +599,73 @@ The dashboard verification is documented in the implementation plan as a manual 
 
 ## 8. Risks and mitigations
 
-**R1. Click-to-connect UX is fiddly.** Mitigation: keep it dumb — click source, click target, done. No drag, no pathfinding, no connection routing. If playtest reveals it feels bad, we ship a select-source-from-dropdown fallback in the same stage.
+**R1. Click-to-connect UX is fiddly.** Mitigation: keep it dumb — click source, click target, done. No drag, no pathfinding. If playtest reveals it feels bad, swap for a select-source-from-dropdown fallback in the same stage.
 
-**R2. Wave 4 economic balance.** Mitigation: the calibration integration test in §7.1 is the source of truth. Tune numbers iteratively against the test, not the live dashboard. The test must hold both assertions before the stage merges.
+**R2. Registry-default vs harness-tuned tuning divergence (§5.9).** Mitigation: documented as an accepted Stage 3b limitation. The headless `campaign-headless` test pins the registry path; the existing `wave-3-learning-arc` test pins the harness path. Both stay green on different code paths. Stage 3c unifies them.
 
-**R3. Dashboard mode toggle leaks state between sandbox and TD.** Mitigation: separate top-level state objects (`tdState`, `sandboxState`) in `main.ts`. The toggle swaps which one drives the renderer. No shared mutable references. A unit test on the toggle's state-isolation is overkill; the manual verification checklist catches regressions.
+**R3. `advancePhase` signature change is contagious.** Mitigation: the new `state` parameter is **optional**. Stage 3a `runWave` calls `mode.advancePhase()` with no arguments — that path keeps working. Only the new dashboard sim loop and the new `campaign-headless` test pass `state`. Type-check: optional parameters with `exactOptionalPropertyTypes` need explicit handling — the implementation captures `state` only when defined and snapshots the index only on `build → simulate`.
 
-**R4. `tryPlace` validation surface grows.** Mitigation: every failure reason is an enum variant (`TryPlaceFailureReason`). Adding a new reason is a type-system change that forces every call site to handle it. No "string failure messages."
+**R4. Multi-wave `TDModeController` with single-wave back-compat shim is two code paths.** Mitigation: the constructor narrows once via `"waves" in options`, and from that point internal state is uniform (`waves: readonly TDWaveDefinition[]` even for single-wave callers). Only `componentRegistry` is conditionally a stub. The shim is ~10 lines.
 
-**R5. Connections need port-direction validation.** Mitigation: §5.1 step 6 uses the `direction: "in" | "out"` field already on `Port`. The Stage 1 type system enforces this at the registry level; Stage 3b just enforces it at the controller boundary. No new typing work.
+**R5. `isWaveDrained` undercounts where requests can live.** Mitigation: the implementation walks `state.pending`, `state.blockedParents`, and `state.activeStreams`. A unit test (`isWaveDrained` cases in the phase test file) seeds a blocked-parent scenario and asserts `isWaveDrained` stays false.
 
-**R6. `isWaveExhausted` undercounts buffered requests.** Mitigation: `allBufferablesEmpty()` walks all components and queries every `EngineBufferable` capability. The Stage 2c interface guarantees `peekBuffered` exists on all buffer-holders. Sandbox's `TestQueueCapability` proves the pattern; production capabilities (e.g. `QueueCapability` from the merge) follow it.
+**R6. Dashboard mode toggle leaks state between sandbox and TD.** Mitigation: separate top-level state objects (`tdState`, `sandboxState`) in `main.ts`. The toggle swaps which one drives the renderer. No shared mutable references.
 
-**R7. Wave 4 calibration leaks into Stage 3a's wave numerics.** Mitigation: Stage 3a's three integration tests pin the existing wave numerics. Any change to `WAVE_1`, `WAVE_2`, `WAVE_3`, or to the existing `Server` / `Database` / `Cache` / `LoadBalancer` registry entries must keep those tests green. If Wave 4 calibration would force a regression, tune Gateway and Wave 4 instead.
+**R7. Per-wave economy reconstruction is awkward (§5.7).** Mitigation: documented as deliberate. The dashboard sim loop owns the economy lifecycle, mirroring `tests/integration/td/helpers.ts:runWave`. Stage 3c can move ownership into the controller and add cross-wave budget carry-over.
+
+**R8. Stage 3a tests must continue to pass without modification.** Mitigation: §5.8's back-compat shim plus §5.4's `id` widening are the only touches to existing files. The four wave tests construct controllers via the single-wave shape, never call `tryPlace`/`tryConnect`, and never observe the new `currentWaveIndex` field. They should pass byte-identically.
 
 ## 9. Exit criteria
 
-- All Stage 3a tests still pass (564 existing tests untouched)
-- New unit tests for `tryPlace`, `tryConnect`, phase machine, `tryDebit` all pass
-- New `wave-4-auth.test.ts` passes both assertions
-- New `campaign-headless.test.ts` passes the full four-wave scripted run
+- All Stage 3a tests still pass (564 existing tests untouched, both wave-3-learning-arc topologies still produce their documented win/lose outcomes)
+- New unit tests for `tryPlace`, `tryConnect`, multi-wave phase machine, self-counting traffic source all pass
+- New `campaign-headless.test.ts` passes the full three-wave scripted run via the registry path
 - `pnpm test` green, `pnpm typecheck` clean
 - Manual dashboard verification checklist (§7.3) completed and reported
 - No new files in `src/core/engine/` (Stage 3b is mode-layer + dashboard work, not engine work)
-- CLAUDE.md updated under "Implementation status" to reflect Stage 3b completion and the new "Next" section pointing at Stage 3c candidates
+- CLAUDE.md updated under "Implementation status" to reflect Stage 3b completion + the new "Next" section pointing at Stage 3c candidates
 
 ## 10. Open questions deferred to Stage 3c
 
-These are deliberately not addressed here:
-
-- **RateLimit wave** — Wave 5 candidate. Burst traffic that exceeds Server capacity, forcing a RateLimit at the edge to drop early and protect downstream condition. Needs `RateLimitCapability` to be exercised.
-- **CircuitBreaker wave** — Wave 6 candidate. Requires chaos integration with TD waves so the player can experience flaky downstream and learn fail-fast.
+- **New waves and matching capability primitives.** Stage 3c is the right place to design Wave 4+ once we know which capability primitive will support each lesson:
+  - **Auth wave** — needs a primitive that *rejects* unauthenticated requests instead of `AuthCapability`'s current pass-through. Probably a new INTERCEPT capability `AuthGate(requiredType: "auth_required") → DROP` or an opt-in `AuthCapability(rejectUnauthenticated: true)`.
+  - **Rate-limit wave** — `RateLimitCapability` already DROPs on token exhaustion. Wave needs a burst pattern that exceeds Server capacity so the player learns "drop early to protect downstream." Most buildable of the three.
+  - **Circuit-breaker wave** — needs chaos integration with TD waves so the player can experience flaky downstream and learn fail-fast.
+- **Registry-default vs harness-tuned tuning divergence.** Unify the two construction paths so dashboard play and headless tests see identical component behavior. Requires deciding whether sandbox wants the TD tuning (probably not).
+- **Cross-wave budget carry-over.** Should leftover budget from Wave N persist into Wave N+1, or does each wave reset to its `startingBudget`? Stage 3b uses reset-per-wave to mirror existing helpers. Stage 3c can add carry-over once the design intent is decided.
 - **Intra-wave satisfaction bar.** Mid-wave loss condition / lives. Best designed once the dashboard shows live wave feedback (which Stage 3b enables).
-- **Campaign persistence.** Save / load campaign state across reloads. Trivial once we agree on a serialization format; not blocking gameplay.
-- **Tier upgrades.** Spending budget to upgrade an existing component instead of placing a new one. Needs a UI surface and an economy decision.
-- **Multi-port disambiguation in `tryConnect`.** Stage 3b uses first-matching-port. A component with multiple in-ports of different roles needs explicit port selection in the click flow.
+- **Campaign persistence.** Save / load campaign state across reloads.
+- **Tier upgrades.** Spending budget to upgrade an existing component instead of placing a new one.
+- **Multi-port disambiguation in `tryConnect`.** Components with multiple in-ports of different roles need explicit port selection in the click flow.
+- **`TDModeController.tryPlace` reusing `disallowed_by_mode` for phase + allowlist failures.** The reason enum is conflating two failure modes (wrong phase vs. type not in current wave's allowlist). Acceptable for 3b — both produce a generic "you can't place that here" UI message — but Stage 3c may extend `PlacementResult.reason` with explicit variants if the failure messaging needs to differ.
 
 ## 11. Files touched
 
 **New:**
 - `src/dashboard/td-mode.ts`
 - `tests/unit/td-mode-controller-place.test.ts`
-- `tests/unit/td-mode-controller-phase.test.ts`
-- `tests/unit/td-economy-try-debit.test.ts`
-- `tests/integration/td/wave-4-auth.test.ts`
+- `tests/unit/td-mode-controller-connect.test.ts`
+- `tests/unit/td-mode-controller-phase.test.ts` (covers `isWaveDrained` cases too)
+- `tests/unit/td-traffic-source-self-counting.test.ts`
 - `tests/integration/td/campaign-headless.test.ts`
 
 **Modified:**
-- `src/modes/td/td-mode-controller.ts` — `tryPlace`, `tryConnect`, phase machine
-- `src/modes/td/td-economy.ts` — `tryDebit`
-- `src/modes/td/waves.ts` — Wave 4 definition, `passReward`/`buildBudget` fields
-- `src/modes/td/td-component-entries.ts` — `buildApiGateway`, `placementCost` on existing entries, `registerTDDefaults` registers the gateway
-- `src/core/registry/component-entries.ts` — `placementCost?: number` field on `ComponentRegistryEntry`
+- `src/modes/td/td-mode-controller.ts` — multi-wave option shape, `tryPlace`/`tryConnect` real impl, multi-wave phase machine, back-compat shim, `isWaveDrained`, `getCurrentWaveMetrics`, `getCurrentWave`, `getCurrentWaveIndex`, `isCampaignComplete`, optional `state` param on `advancePhase`
+- `src/modes/td/td-traffic-source.ts` — `ticksGenerated` counter, `isExhausted`
+- `src/modes/td/td-waves.ts` — widen `id: 1 | 2 | 3` to `id: number`
+- `src/core/registry/component-registry.ts` — add `tryCreate(type, position, zone): Component | null`
 - `src/dashboard/main.ts` — mode toggle, TD wiring
-- `src/dashboard/sim-loop.ts` — TD phase awareness
-- `src/dashboard/index.html` — palette, READY, HUD container
+- `src/dashboard/sim-loop.ts` — parameterize over `ModeController`, factor metrics-snapshot getter into a callback
+- `src/dashboard/index.html` — TD HUD container, palette, READY button (hidden by default)
 - `src/dashboard/styles.css` — minimal new element styles
-- `CLAUDE.md` — implementation status update
+- `CLAUDE.md` — implementation status update, new "Next" section pointing at Stage 3c
 
 **Untouched (explicitly):**
 - `src/core/engine/**` — no engine changes
 - `src/capabilities/**` — no capability changes
-- `tests/integration/td/wave-1.test.ts`, `wave-2.test.ts`, `wave-3-*.test.ts` — Stage 3a tests pinned
+- `src/modes/td/td-economy.ts` — no API changes
+- `src/modes/td/register-td-defaults.ts` — no changes
+- `src/modes/td/td-component-entries.ts` — no changes
+- `src/modes/sandbox/**` — sandbox mode untouched
+- `tests/integration/td/wave-1-launch-day.test.ts`, `wave-2-signups.test.ts`, `wave-3-traffic-spike.test.ts`, `wave-3-learning-arc.test.ts` — Stage 3a tests pinned; all four must pass byte-identically
+- `tests/integration/td/helpers.ts` — single-wave `runWave` path preserved via the back-compat shim
