@@ -10,6 +10,7 @@
 - **v1 (initial draft):** introduced Wave 4 (Auth) as a new mechanic alongside the playable loop. Cold-audit found Wave 4 is unbuildable with the current capability library (`AuthCapability` is a no-op pass-through; silent PASS-at-PROCESS drops are invisible to `evaluateOutcome`). Spec also misremembered several existing APIs (`tryPlace` signature, `state.placeComponent`, port direction literals, `TDWaveDefinition` field names, `TDEconomy` surface).
 - **v2 (cold-audit rewrite):** Wave 4 cut — new-wave / new-mechanic work deferred to Stage 3c. Spec rewritten against the real APIs in the codebase. Stage 3b ships *only* the interactive playable loop for the existing Wave 1–3 learning arc.
 - **v3 (round-2 cold-audit fixes):** Tuned `registerTDDefaults` to register TD-specific capability factory options (`handledTypes`, `throughputPerTier`, `emitProcessedEvent`/`emitForwardedEvent`) so the dashboard/registry path produces the **same** runtime behavior as the harness path — collapsing the "divergence story" from v2 §5.9. Added a `CLIENT_ENTRY` to `td-component-entries.ts` for entry-point seeding. `isWaveDrained` now walks `EngineBufferable.peekBuffered()` partitions. `tryConnect` flow specifies Connection field defaults. Dashboard `condition` reset on wave boundary explicitly addressed. `economy` field becomes mutable via `setEconomy`. Sample code in §6/§7.2 fixed to pass `capRegistry` to `ComponentRegistry` constructor.
+- **v4 (round-3 cold-audit fixes):** `Connection` field renames `from`/`to` → `source`/`target` (matches actual `connection.ts`). `TickMetrics` field renames `revenueEarnedThisTick`/`upkeepPaidThisTick` → `revenueEarned`/`upkeepPaid`. `isWaveDrained` uses `component.capabilities.values()` instead of nonexistent `getCapabilities()`. Server `forwarding` factory `handledTypes` corrected to `["api_write"]` only (matches `helpers.ts:buildServer`). `CLIENT_ENTRY` notes `DEFAULT_CONDITION_PROFILE` is in-file private.
 
 ## 1. Purpose
 
@@ -186,12 +187,12 @@ export type ConnectResult =
 1. **Phase check.** Reject `wrong_phase` if `phase !== "build"`.
 2. **Endpoint existence.** Reject `unknown_source` / `unknown_target` if either id is not in `state.components`.
 3. **Port discovery.** Find first port on source with `direction === "egress"`. Reject `no_egress_port` if absent. Find first port on target with `direction === "ingress"`. Reject `no_ingress_port` if absent.
-4. **Duplicate check.** If any existing connection in `state.connections` has matching `from.componentId === sourceId && to.componentId === targetId`, reject `duplicate_connection`.
+4. **Duplicate check.** If any existing connection in `state.connections` has matching `source.componentId === sourceId && target.componentId === targetId`, reject `duplicate_connection`.
 5. **Port capacity check.** If `sourcePort.connections.length >= sourcePort.capacity` or `targetPort.connections.length >= targetPort.capacity`, reject `port_capacity_exceeded`.
-6. **Mint connection.** Generate a new `ConnectionId` (`` `td-conn-${++this.placementSerial}` `` cast as `ConnectionId`). Construct a `Connection` literal with the required fields:
+6. **Mint connection.** Generate a new `ConnectionId` (`` `td-conn-${++this.placementSerial}` `` cast as `ConnectionId`). Construct a `Connection` literal with the required fields (verified against `src/core/types/connection.ts`):
    - `id`: minted `ConnectionId`
-   - `from: { componentId: sourceComponentId, portId: sourcePort.id }`
-   - `to: { componentId: targetComponentId, portId: targetPort.id }`
+   - `source: { componentId: sourceComponentId, portId: sourcePort.id }`
+   - `target: { componentId: targetComponentId, portId: targetPort.id }`
    - `bandwidth: 100` (TD-mode default; matches `tests/harness/fixtures.ts:makeConnection`)
    - `latency: 1` (TD-mode default; same source)
    - `currentLoad: 0` (engine resets each tick anyway)
@@ -216,7 +217,7 @@ isWaveDrained(state: SimulationState): boolean {
   for (const componentId of state.visitOrder) {
     const component = state.components.get(componentId);
     if (!component) continue;
-    for (const cap of component.getCapabilities()) {
+    for (const cap of component.capabilities.values()) {
       if (isEngineBufferable(cap) && cap.peekBuffered().length > 0) return false;
     }
   }
@@ -398,7 +399,7 @@ Wave 1 starts with `WAVE_1.startingBudget = 500`; Wave 2 and Wave 3 start with t
 
 **TD HUD data sources (separate from sandbox HUD):**
 
-The existing `src/dashboard/main.ts` reads `economy.totalRevenue` and `economy.totalUpkeep` for the sandbox HUD — those are `SandboxEconomy`-only getters. `TDEconomy` exposes only `getBudget()`. The TD HUD's budget display reads `tdController.economy.getBudget()`. Cumulative wave revenue/upkeep numbers, if shown, must come from `state.metricsHistory` aggregation (`m.revenueEarnedThisTick` / `m.upkeepPaidThisTick` summed over `getCurrentWaveMetrics(state)`). The TD branch of `main.ts` keeps its data wiring entirely separate from the sandbox branch — no shared call path that would force a polymorphic economy interface.
+The existing `src/dashboard/main.ts` reads `economy.totalRevenue` and `economy.totalUpkeep` for the sandbox HUD — those are `SandboxEconomy`-only getters. `TDEconomy` exposes only `getBudget()`. The TD HUD's budget display reads `tdController.economy.getBudget()`. Cumulative wave revenue/upkeep numbers, if shown, must come from `state.metricsHistory` aggregation — the per-tick metric fields are `m.revenueEarned` and `m.upkeepPaid` on `TickMetrics` (verified in `src/core/types/metrics.ts`; the `*ThisTick` suffix lives only on the `SimulationState` accumulators that feed the metrics builder). Sum across `getCurrentWaveMetrics(state)`. The TD branch of `main.ts` keeps its data wiring entirely separate from the sandbox branch — no shared call path that would force a polymorphic economy interface.
 
 **Click-to-place flow:**
 
@@ -495,7 +496,7 @@ export function registerTDDefaults(
     id: "forwarding" as CapabilityId,
     factory: () =>
       new ForwardingCapability("forwarding" as CapabilityId, {
-        handledTypes: ["api_read", "api_write"],
+        handledTypes: ["api_write"],          // TD-tuned: writes only (matches helpers.ts:buildServer)
         throughputPerTier: 12,                // TD-tuned: matches harness Server-style cap
         emitForwardedEvent: true,
       }),
@@ -569,7 +570,7 @@ export const CLIENT_ENTRY: ComponentRegistryEntry = {
 };
 ```
 
-The Client uses `forwarding-pipe` (uncapped) so it is never the bottleneck. `placementCost: 0` makes it free; the dashboard auto-places one Client at the start of every campaign.
+The Client uses `forwarding-pipe` (uncapped) so it is never the bottleneck. `placementCost: 0` makes it free; the dashboard auto-places one Client at the start of every campaign. `DEFAULT_CONDITION_PROFILE` is the file-private constant already declared at the top of `td-component-entries.ts:5` — it is reused in-place rather than imported.
 
 **Implication for Stage 3a tests:** the four wave tests in `tests/integration/td/` build their components via `helpers.ts:buildServer`/`buildDatabase`/`buildCache`/`buildLoadBalancer` — direct `new Component(...)` construction that bypasses the registry entirely. They are **unaffected** by the `register-td-defaults.ts` factory tuning. Their registry-side calls (`compRegistry.validate()`) still pass because the entries still reference valid capability ids.
 
