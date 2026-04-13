@@ -38,11 +38,11 @@ This sentence is the scope fence. Every design decision below serves it. Anythin
 9. Post-wave diagnosis — symptom-oriented readout in the loss modal (and a condensed version in the win toast).
 
 **UX unblockers**
-10. Multi-port disambiguation in `tryConnect` — inline port picker when the target component has multiple compatible ingress ports.
-11. Auto-refresh `state.visitOrder` inside `state.placeComponent` (so the dashboard's manual `recomputeVisitOrder` call on build→simulate becomes redundant but stays as a safety belt).
+10. **Raise `SERVER_ENTRY.p-in.capacity` from 1 to 2** so Wave 3 cache-rescue (Client→Cache→Server plus direct Client→Server for writes) works without the 2-Server workaround. One-line fix to `src/modes/td/td-component-entries.ts`.
+11. Auto-refresh `state.visitOrder` inside `state.placeComponent`; delete the dashboard's now-redundant explicit call on build→simulate.
 
 **Content**
-12. Component description metadata — a single source of truth for display name, short description, and capability summary per component type.
+12. Extend `ComponentRegistryEntry` with `longDescription: string` and `capabilitiesHuman: string[]` fields. Populate for all 5 TD component entries (Client, Server, Database, Cache, Load Balancer). Single source of truth — no parallel description map.
 
 ### Out (not this stage)
 
@@ -144,49 +144,60 @@ Scene structure (Pixi containers, z-ordered low → high):
 
 Component visuals: simple `Graphics` primitives (rounded rect + label text) for MVP. No sprites / textures. Color comes from a per-type palette table. Utilization shifts the fill color via HSL interpolation. The "flash" methods push a one-frame alpha pulse via Pixi's ticker.
 
-Request dots: pooled `Graphics` objects (pre-allocate ~200). On `spawnRequestDot`, grab one from the pool, set its start/end, push onto an active list with a start-time. Each ticker frame: lerp position along the connection based on `elapsed / durationMs`, free back to the pool at 1.0. Dot shape = small circle for reads, small square for writes, small triangle for stream_init — covers basic colorblind-friendly differentiation without a full shape library.
+Request dots: pooled `Graphics` objects (pre-allocate 1000). On `spawnRequestDot`, grab one from the pool, set its start/end, push onto an active list with a start-time. Each ticker frame: lerp position along the connection based on `elapsed / durationMs`, free back to the pool at 1.0. Dot shape = small circle for reads, small square for writes, small triangle for stream_init — covers basic colorblind-friendly differentiation without a full shape library.
 
-Pooling matters: Wave 3 peaks at 50 req/tick across multiple connections. 60fps dashboard + ~200ms dot travel time → ~1000 live dots steady-state. Pre-pool sized for 5x headroom.
+Pooling matters: Wave 3 peaks at 50 req/tick across multiple connections. 60fps dashboard + ~200ms dot travel time → ~1000 live dots steady-state worst case. Pool grows dynamically past 1000 with a console.warn.
 
 ### Feeding the renderer
 
 Dashboard layer (`src/dashboard/main.ts` + `td-mode.ts`) no longer owns rendering. New thin adapter: `src/dashboard/render/state-to-renderer.ts`.
 
-Per tick, after the engine resolves:
-1. For each component in `state.components`, read `metrics.perComponent.get(id)` and call `renderer.updateComponent(id, { utilization, condition, pendingCount })`.
-2. Derive per-connection load from the same `perComponent` stats (we already have `bandwidthLoadThisTick` on connections) → `renderer.updateConnection(id, { loadUtilization })`.
-3. Walk the per-tick `RequestEvent[]` (new — see next section) and for each `FORWARDED` event, call `renderer.spawnRequestDot({ connectionId, requestType, durationMs })` where `durationMs` scales with the connection's effective latency and the current sim-loop tick interval.
-4. For each `OVERLOADED` event → `flashOverload`. For each `DROP` event → `flashDrop`.
+The adapter is called from `SimLoop.onTick`, *after* `engine.tick()` returns. At that point:
+- `state.metricsHistory[last]` holds this tick's `TickMetrics` (recorded in step 8).
+- `state.lastTickEvents` holds every `RequestEvent` emitted during this tick (see "Engine changes" below).
+- Per-tick counters like `state.connectionLoadThisTick` have already been zeroed by step 9, so the adapter MUST read connection load out of `TickMetrics.perConnection` (also added — see below), not off the live state.
 
-**Engine change needed:** expose `state.lastTickEvents: readonly RequestEvent[]` populated by the tick loop. Currently events are held in local arrays during `deliverStaged` / `checkTTL` and discarded after metrics snapshot. We add a single write-through at the end of each tick step that accumulates events into `state.lastTickEvents` and clears at the start of the next tick.
+Adapter steps, per tick:
+1. For each component `comp` in `state.components`, read `m = metrics.perComponent.get(id)` and compute `utilization = m.processed / Math.max(1, componentThroughputPerTick(comp))`, then call `renderer.updateComponent(id, { utilization, condition: m.condition, pendingCount: m.pendingAtEndOfTick })`. The dashboard imports `componentThroughputPerTick` from `@core/engine/throughput.js`. (No new field on `TickMetrics.perComponent` — utilization is derived.)
+2. For each connection `conn` in `state.connections`, read `load = metrics.perConnection.get(connId)?.loadThisTick ?? 0`, derive `loadUtilization = load / getEffectiveBandwidth(state, connId)`, call `renderer.updateConnection(id, { loadUtilization })`. `TickMetrics.perConnection` is new — populated by `recordMetrics` from `state.connectionLoadThisTick` BEFORE step 9 clears it.
+3. Walk `state.lastTickEvents`. For each event with `type === "FORWARDED" && connectionId !== null`, call `renderer.spawnRequestDot({ connectionId, requestType: /* derived from ev.metadata or request-type lookup */, durationMs })`. `durationMs` = `getEffectiveLatency(state, connectionId) * tickIntervalMs`. (Request type is in the `Request` object, not the `RequestEvent`; the adapter keeps a per-tick `Map<RequestId, string>` built from `ENTERED` events, which DO carry the request via the per-request context. Alternative: add `metadata.requestType` on FORWARDED events — simpler. Pick the `metadata.requestType` approach; single-line change in the two FORWARDED emit sites.)
+4. For each `DROPPED` event with `componentId` set → `flashDrop(componentId)`. For each `OVERLOADED` event → `flashOverload(componentId)`. Both event types exist in `src/core/types/request.ts` and are actually emitted today (verified).
 
-This is a cheap addition — one array, one clear per tick. All engine code already emits events; only the retention changes. A unit test pins the new contract.
+**Engine changes needed (three surgical additions):**
+
+1. **`state.lastTickEvents: RequestEvent[]`** — new field on `SimulationState`. `state.appendEvent()` pushes to both `requestLog` (existing, unbounded) AND `lastTickEvents` (per-tick view). `Engine.tick()` sets `state.lastTickEvents.length = 0` at the *start* of the tick (before step 1). This guarantees the adapter (running after `tick()` returns) sees exactly this-tick's events. ~4 lines of code across `simulation-state.ts` and `engine.ts`.
+
+2. **`TickMetrics.perConnection`** — new field: `ReadonlyMap<ConnectionId, { loadThisTick: number }>`. Populated inside `recordMetrics` by copying `state.connectionLoadThisTick` before step 9 clears it. ~6 lines in `src/core/engine/record-metrics.ts` and `src/core/types/metrics.ts`.
+
+3. **`FORWARDED` event metadata** — both FORWARDED emit sites (in `deliverStaged.ts` and `ForwardingCapability.emitForwardedEvent`) add `metadata: { requestType: req.type }` to their events. ~2 lines.
+
+Total engine surface change: ~12 lines across 4-5 files. Every change is additive; no existing test should need updating beyond a new unit test pinning the new contracts.
 
 ### Request dot mapping
 
 Connection latency (in ticks) × dashboard tick interval (ms per tick) → dot travel time (ms). A 3-tick connection at 200ms/tick = 600ms traverse. This keeps the visuals honest with the simulation: faster connections have faster dots. Visual rhythm matches sim rhythm. When the player cranks the speed slider, dots fly proportionally faster.
 
-### Component descriptions — single source of truth
+### Component descriptions — extend the registry
 
-New file: `src/core/registry/component-descriptions.ts`. A plain map:
+`ComponentRegistryEntry` already has `name` and `description` (one-liner). Stage 3c extends it:
 
 ```ts
-export interface ComponentDescription {
-  type: string;                 // 'server'
-  displayName: string;          // 'Server'
-  shortDescription: string;     // one sentence
-  longDescription: string;      // 1-2 paragraph role explanation
-  capabilities: string[];       // ['Processes API reads', 'Forwards writes to storage', ...]
-  costHint: string;             // 'Base: $120 · Scales with tier'
+export interface ComponentRegistryEntry {
+  readonly type: string;
+  readonly name: string;             // existing: display name ("Server")
+  readonly description: string;      // existing: one-sentence tagline
+  readonly longDescription: string;  // NEW: 1-2 paragraph role explanation
+  readonly capabilitiesHuman: string[]; // NEW: human-readable capability bullets
+  // ... all other existing fields unchanged
 }
-
-export const COMPONENT_DESCRIPTIONS: ReadonlyMap<string, ComponentDescription>;
 ```
 
+Every TD component entry in `td-component-entries.ts` (Client, Server, Database, Cache, Load Balancer) gets both new fields populated. A unit test asserts every `bootstrapRegistries()` entry has non-empty `longDescription` and `capabilitiesHuman`.
+
 Consumed by:
-- Component palette (tooltip on hover — small DOM tooltip)
-- Component info panel (full content)
-- Pre-wave briefing (list of `availableComponents` rendered as mini-cards)
+- Component palette (tooltip on hover — reads `description` from existing field)
+- Component info panel (full content — reads `name`, `longDescription`, `capabilitiesHuman`)
+- Pre-wave briefing (list of `availableComponents` rendered with `name` + `description`)
 
 Real terminology per the CLAUDE.md principle: "cache" not "memory cache," descriptions that match what the player would encounter in real-world docs.
 
@@ -228,9 +239,16 @@ Stats panel updates on every tick. No rerender of the description section — on
 
 The loss modal currently shows `outcome.notes.join(" · ")`. Stage 3c adds a diagnosis section above it: a symptom-oriented readout derived from wave metrics.
 
-New pure function: `diagnoseWave(wave, metricsHistory, components) → Diagnosis`.
+New pure function signature:
 
 ```ts
+diagnoseWave(args: {
+  wave: TDWaveDefinition;
+  metrics: readonly TickMetrics[]; // the wave's slice of metricsHistory
+  components: ReadonlyMap<ComponentId, Component>;
+  connections: ReadonlyMap<ConnectionId, Connection>;
+}): Diagnosis;
+
 export interface Diagnosis {
   headline: string;      // "Your Server was overwhelmed."
   symptom: string;       // "847 requests dropped at Server. Processing throughput was the bottleneck."
@@ -238,42 +256,28 @@ export interface Diagnosis {
 }
 ```
 
-Diagnosis logic for Stage 3c covers four cases (ordered by specificity):
+`connections` is required because the "write routing gap" branch needs to check whether the bottleneck component has any downstream path that can accept `api_write` — a graph reachability question.
 
-1. **Write routing gap:** `api_write` drops > 10% and no `api_write` target exists downstream of the bottleneck component → "Your server is trying to process writes but has nowhere to persist them."
-2. **Process throughput bottleneck:** any component has sustained utilization ≥ 0.95 for ≥ 5 consecutive ticks and drops > 5% → "Your Server was overwhelmed — it processed every tick at max throughput but traffic exceeded what it could handle."
-3. **TTL timeouts:** `TIMED_OUT` events > 10% of total → "Requests piled up faster than they could drain. Your pipeline is under-provisioned."
+Diagnosis logic for Stage 3c covers four cases (ordered by specificity — tests must assert branch selection with realistic multi-branch inputs, not just branches in isolation):
+
+1. **Write routing gap:** `api_write` drops > 10% of wave total AND the bottleneck component has no `api_write`-accepting component reachable via egress walk → "Your server is trying to process writes but has nowhere to persist them."
+2. **Process throughput bottleneck:** any component has `processed >= componentThroughputPerTick(comp) * 0.95` for ≥ 5 consecutive ticks AND `dropped / total > 0.05` → "Your Server was overwhelmed — it processed every tick at max throughput but traffic exceeded what it could handle."
+3. **TTL timeouts:** sum of `requestsTimedOut` across the wave > 10% of total requests generated → "Requests piled up faster than they could drain. Your pipeline is under-provisioned."
 4. **Default:** "Too many requests dropped. Check the per-component stats."
 
 Hints are **symptom-adjacent, never solution-adjacent**. Never say "add a cache." Do say "look at the component descriptions — what handles repeated reads?" The player connects the dots.
 
 Win path shows a condensed version in the existing toast: "Wave 3 cleared — 98% served, $420 revenue, $60 upkeep."
 
-### Feature 4: Multi-port disambiguation
+### Feature 4: Wave 3 cache-rescue unblocker (`SERVER_ENTRY.p-in.capacity: 1 → 2`)
 
-Current contract: `tryConnect(state, sourceId, targetId)` picks the first matching ingress port on the target. Server's `p-in` has `capacity: 1`, so Wave 3 cache-rescue forces a second Server.
+Current blocker: Wave 3 cache-rescue topology is Client → Cache → Server, with writes going Client → Server direct. That requires TWO edges landing on Server's `p-in`, but `p-in.capacity` is 1, so the second `addConnection` rejects with `port_capacity_exceeded`. The Stage 3b workaround was "place a second Server." That makes the intended architectural lesson ("add a cache in front of your existing server") impossible to actually build.
 
-Stage 3c change:
+Stage 3c fix: raise `SERVER_ENTRY.p-in.capacity` from `1` to `2` in `src/modes/td/td-component-entries.ts`. One line. No type changes, no new controller logic, no new UX surface.
 
-```ts
-tryConnect(
-  state: SimulationState,
-  sourceId: ComponentId,
-  targetId: ComponentId,
-  options?: { targetPortId?: PortId; sourcePortId?: PortId }
-): ConnectResult;
-```
+Why not multi-port disambiguation? I audited the TD component registry: **no component has multiple ingress ports of different roles.** Every TD component has exactly one `p-in`. Multi-port disambiguation is a UX solution for a problem that doesn't exist in Stage 3c's component set. Adding it would be speculative complexity. When a future stage introduces a component with role-differentiated ingress ports (e.g. a Service Registry with `register` vs `query` ports), multi-port disambiguation becomes necessary and gets designed then.
 
-When `targetPortId` is omitted, behavior is unchanged (first-matching). When provided, use that port explicitly and validate it.
-
-Dashboard UX:
-1. Player clicks source, then clicks target.
-2. Dashboard calls a new `listCompatibleTargetPorts(state, sourceId, targetId)` helper which returns `{ portId, portName, capacityRemaining }[]`.
-3. If length === 1, connect immediately (unchanged from Stage 3b).
-4. If length > 1, show a small DOM popup anchored to the target component with a button per port. Player clicks a button → `tryConnect` with that `targetPortId`.
-5. If length === 0, show the existing rejection toast.
-
-This single change turns the cache-rescue topology from "requires the 2-server hack" into "click cache, click server, pick the p-cache port" — the intended topology works.
+Verification: after the capacity bump, the Wave 3 `tryConnect(Cache→Server)` followed by `tryConnect(Client→Server)` both succeed against the same `p-in`. The second edge uses port slot 2 instead of overflowing. An integration test (`tests/integration/td/wave-3-cache-rescue-single-server.test.ts`) builds the intended topology without the 2-server hack and asserts win.
 
 ### Feature 5: `state.placeComponent` auto-refreshes visit order
 
@@ -281,7 +285,9 @@ Current contract: `state.placeComponent` does NOT call `recomputeVisitOrder`. Th
 
 Stage 3c change: `state.placeComponent` calls `state.recomputeVisitOrder()` at the end. The dashboard's explicit `recomputeVisitOrder` call on build→simulate is now redundant and gets deleted. Tests for `state.placeComponent` assert the new contract.
 
-One-line fix. One new test. One deletion.
+Ripple check: test files currently populate `state.visitOrder` manually after `placeComponent` (per CLAUDE.md harness note). After this change the manual push is redundant but harmless — `recomputeVisitOrder` replaces the array, so the manual call either overwrites with the same content or gets overwritten by the next auto-call. Full-suite run in Slice 7 catches any test that asserts a specific `visitOrder` content post-place without recomputing.
+
+One-line fix. One new test. One deletion. Full suite verifies.
 
 ### Feature 6: Visual details (low design depth)
 
@@ -295,19 +301,20 @@ One-line fix. One new test. One deletion.
 
 ### Unit tests (Vitest, added to existing suite)
 
-- `pure` diagnosis function: `tests/unit/diagnose-wave.test.ts` — 4 cases, one per diagnosis branch, plus a "default" case.
+- `diagnose-wave`: `tests/unit/diagnose-wave.test.ts` — 5 cases: each of the 4 branches fires on its happy-path input, AND a "specificity test" that feeds inputs matching multiple branches simultaneously and asserts the most-specific branch wins.
 - `state.placeComponent auto-refresh`: `tests/unit/state-place-component-visit-order.test.ts` — assert `visitOrder` contains the new component after `placeComponent`.
-- `tryConnect with targetPortId`: `tests/unit/td-mode-controller-connect-port.test.ts` — 3 cases: explicit port succeeds, invalid port rejected, omitted port preserves old behavior.
-- `listCompatibleTargetPorts`: `tests/unit/list-compatible-target-ports.test.ts` — 3 cases: single port, multi-port, no compatible.
-- `lastTickEvents retention`: `tests/unit/engine-last-tick-events.test.ts` — assert `state.lastTickEvents` is populated after each tick and cleared at the start of the next.
-- `utilization color lerp`: `tests/unit/utilization-color.test.ts` — 3 points on the gradient.
-- `component descriptions`: `tests/unit/component-descriptions.test.ts` — every registered component type has a description entry.
-- `engine-pixi isolation`: `tests/unit/engine-pixi-isolation.test.ts` — `src/core/**` and `src/capabilities/**` do not import `pixi.js`.
+- `lastTickEvents retention`: `tests/unit/engine-last-tick-events.test.ts` — assert `state.lastTickEvents` is populated after each tick, clears at the start of the next, and contains the event types actually emitted in a representative minimal simulation.
+- `TickMetrics.perConnection snapshot`: `tests/unit/metrics-per-connection.test.ts` — after one tick with traffic, `TickMetrics.perConnection.get(id).loadThisTick` matches the value `state.connectionLoadThisTick.get(id)` held DURING the tick.
+- `FORWARDED metadata.requestType`: `tests/unit/forwarded-event-metadata.test.ts` — FORWARDED events carry `metadata.requestType` matching the originating request's type.
+- `SERVER p-in capacity 2`: `tests/unit/server-port-capacity.test.ts` — assert `SERVER_ENTRY.ports.find(p => p.id === "p-in").capacity === 2`.
+- `utilization color lerp`: `tests/unit/utilization-color.test.ts` — 3 points on the gradient (0, 0.7, 1.0) map to the expected HSL values.
+- `component descriptions`: `tests/unit/component-descriptions.test.ts` — every entry in `bootstrapRegistries()` has non-empty `longDescription` and `capabilitiesHuman`.
+- `engine-pixi isolation`: `tests/unit/engine-pixi-isolation.test.ts` — read `src/core/**` and `src/capabilities/**` source files from disk, assert none contains `"pixi"` as an import specifier.
 
 ### Integration tests
 
-- `campaign-headless.test.ts` already exists. Add assertions that `state.lastTickEvents` contains expected event kinds on representative ticks. No new integration file.
-- New integration: `tests/integration/td/multi-port-cache-rescue.test.ts` — wires the Wave 3 cache-rescue topology using the new `targetPortId` path without the 2-server workaround. Asserts win.
+- `campaign-headless.test.ts` already exists. Add assertions that `state.lastTickEvents` contains expected event kinds on representative ticks (FORWARDED, PROCESSED). No new integration file for that.
+- New: `tests/integration/td/wave-3-cache-rescue-single-server.test.ts` — builds the intended Wave 3 cache-rescue (Client→Cache→Server for reads, Client→Server direct for writes), using a single Server (no 2-Server workaround). Both `tryConnect` calls land on `p-in`. Asserts win verdict.
 
 ### Manual testing
 
@@ -333,16 +340,21 @@ Invariant test (`tests/unit/engine-pixi-isolation.test.ts`): a grep over `src/co
 
 Stage 3c does *not* keep the DOM topology renderer side-by-side. We replace it. Reasons: no value in maintaining two renderers, testing the renderer boundary requires using it, and the existing DOM renderer is ~100 lines we'd rather delete than port.
 
-Execution order (enforced by the implementation plan):
+Execution order (engine plumbing FIRST so renderer slices have the data they need):
 
-1. **Slice 0 — Infrastructure.** Install Pixi. Create `TopologyRenderer` interface. Create a trivial in-memory mock implementation used by dashboard tests (if we add any).
-2. **Slice 1 — Pixi renderer + adapter.** Implement `PixiTopologyRenderer` against the interface. Implement `state-to-renderer.ts` adapter. Add `state.lastTickEvents`.
-3. **Slice 2 — Dashboard cutover.** Replace the DOM topology renderer in `td-mode.ts` with the new renderer + adapter. All click handlers now route through `renderer.onPointerDown`. Delete the old SVG/DOM code. Manual smoke test: can place and connect components, can see request dots on click-READY.
-4. **Slice 3 — Teaching surfaces.** Pre-wave briefing card, component info panel, post-wave diagnosis. All DOM.
-5. **Slice 4 — Engine + controller changes.** `state.placeComponent` auto-refresh, `tryConnect` port option, diagnosis pure function.
-6. **Slice 5 — Multi-port picker UX.** DOM popup anchored via `renderer.worldToScreen` (add this helper if missing).
-7. **Slice 6 — Polish details.** Utilization color lerp, drop/overload flashes, connection load opacity, health ring.
-8. **Slice 7 — Self-playtest and tuning.** Run the manual test procedure. If waves are too easy/too hard, tune `td-waves.ts` constants (intensity, threshold, budget) — not the design.
+1. **Slice 1 — Engine plumbing (no Pixi yet).** All the pure engine/state changes: `state.lastTickEvents` field + write-through in `appendEvent` + clear at start of `Engine.tick`; `TickMetrics.perConnection` + snapshot in `recordMetrics`; FORWARDED metadata requestType; `state.placeComponent` auto-refresh visit order; `SERVER_ENTRY.p-in.capacity: 1 → 2`; extend `ComponentRegistryEntry` with `longDescription`+`capabilitiesHuman` and populate the 5 TD entries. All new tests for each land in this slice. After Slice 1, the engine is ready to feed a renderer — but the dashboard is unchanged.
+
+2. **Slice 2 — Infrastructure.** `pnpm add pixi.js`. Create `TopologyRenderer` interface (includes `worldToScreen`, `screenToGrid`, `hitTest`, all pointer APIs) in `src/dashboard/render/topology-renderer.ts`. Add the `engine-pixi-isolation` invariant test. No implementation yet.
+
+3. **Slice 3 — Pixi renderer + adapter.** Implement `PixiTopologyRenderer` against the interface. Implement `state-to-renderer.ts` adapter. Both still unwired from the live dashboard — a throwaway standalone entrypoint (`src/dashboard/render/dev-preview.ts`) mounts it against a fake state to smoke-test in isolation. Delete `dev-preview.ts` at the end of the slice or leave it gitignored.
+
+4. **Slice 4 — Dashboard cutover.** Replace the DOM/SVG topology renderer in `td-mode.ts` with the new renderer + adapter. All click handlers route through `renderer.onPointerDown`/`screenToGrid`/`hitTest`. Delete the old SVG line code and the `.td-comp` DIV layout. Delete the dashboard's explicit `state.recomputeVisitOrder` call (now auto-fired). Manual smoke test against the done-criteria sentence.
+
+5. **Slice 5 — Teaching surfaces.** Pre-wave briefing card, component info panel, post-wave diagnosis. All DOM. Diagnosis pure function + its unit test live here. HTML/CSS additions for the panels.
+
+6. **Slice 6 — Polish details.** Utilization color lerp, drop/overload flashes, connection load opacity, health ring. All inside the Pixi renderer. Unit test for color lerp.
+
+7. **Slice 7 — Self-playtest and tuning.** Run the manual test procedure. If waves are too easy/too hard, tune `td-waves.ts` constants (intensity, threshold, budget) — not the design. Ship the stage.
 
 Each slice ends with `pnpm test && pnpm typecheck` green.
 
@@ -375,36 +387,45 @@ These are not in Stage 3c and should not creep in:
 - `src/dashboard/td/briefing-card.ts`
 - `src/dashboard/td/component-info-panel.ts`
 - `src/dashboard/td/diagnose-wave.ts`
-- `src/dashboard/td/multi-port-picker.ts`
-- `src/core/registry/component-descriptions.ts`
 - `tests/unit/diagnose-wave.test.ts`
 - `tests/unit/state-place-component-visit-order.test.ts`
-- `tests/unit/td-mode-controller-connect-port.test.ts`
-- `tests/unit/list-compatible-target-ports.test.ts`
 - `tests/unit/engine-last-tick-events.test.ts`
+- `tests/unit/metrics-per-connection.test.ts`
+- `tests/unit/forwarded-event-metadata.test.ts`
+- `tests/unit/server-port-capacity.test.ts`
 - `tests/unit/utilization-color.test.ts`
 - `tests/unit/component-descriptions.test.ts`
-- `tests/integration/td/multi-port-cache-rescue.test.ts`
+- `tests/unit/engine-pixi-isolation.test.ts`
+- `tests/integration/td/wave-3-cache-rescue-single-server.test.ts`
 
 **Modified:**
 - `src/dashboard/main.ts` — wires renderer, briefing card, info panel; deletes DOM topology code.
-- `src/dashboard/td-mode.ts` — replaces rerenderTopology with renderer-driven updates, adds multi-port picker flow.
+- `src/dashboard/td-mode.ts` — replaces rerenderTopology with renderer-driven updates; deletes the explicit `state.recomputeVisitOrder` call on build→simulate.
 - `src/dashboard/index.html` — adds info panel, briefing card, extended loss modal containers.
 - `src/dashboard/styles.css` — styles for new DOM surfaces.
-- `src/core/state/simulation-state.ts` — adds `lastTickEvents`, auto-calls `recomputeVisitOrder` in `placeComponent`.
-- `src/core/engine/*.ts` — write events through to `state.lastTickEvents` at the end of each tick (one-line additions in `deliverStaged`, `checkTTL`, and maybe others).
-- `src/modes/td/td-mode-controller.ts` — extends `tryConnect` with `options.targetPortId`, adds `listCompatibleTargetPorts` helper.
+- `src/core/state/simulation-state.ts` — adds `lastTickEvents` field, writes through from `appendEvent`, auto-calls `recomputeVisitOrder` inside `placeComponent`.
+- `src/core/engine/engine.ts` — clears `state.lastTickEvents` at start of `tick()`.
+- `src/core/engine/record-metrics.ts` — snapshots `state.connectionLoadThisTick` into `TickMetrics.perConnection`.
+- `src/core/engine/deliver-staged.ts` — adds `metadata: { requestType: req.type }` to its FORWARDED emit.
+- `src/capabilities/forwarding/forwarding-capability.ts` — adds `metadata.requestType` to its FORWARDED emit.
+- `src/core/types/metrics.ts` — adds `perConnection` field to `TickMetrics`.
+- `src/core/registry/component-registry.ts` — adds `longDescription` + `capabilitiesHuman` fields to `ComponentRegistryEntry`.
+- `src/modes/td/td-component-entries.ts` — `SERVER_ENTRY.p-in.capacity: 1 → 2`; populates `longDescription`/`capabilitiesHuman` on all 5 TD entries.
 - `package.json` — adds `pixi.js` dependency.
 
 **Deleted:**
 - The inline DOM topology rendering inside `src/dashboard/td-mode.ts:rerenderTopology` (SVG line drawing + `.td-comp` div layout).
+- The dashboard's explicit `state.recomputeVisitOrder()` call in `bootTDMode`'s `onPhaseChange` handler (now redundant — `placeComponent` does it).
 
 ## Open questions — resolved
 
 - **Pixi v7 vs v8?** v8. Current, WebGPU-capable, not changing soon.
 - **Canvas or WebGL?** Pixi picks automatically; we don't override.
-- **Pool size for dots?** 1000 pre-allocated, grows dynamically if exceeded.
+- **Pool size for dots?** 1000 pre-allocated, grows dynamically if exceeded (console warns).
 - **Dot fidelity — one per request or one per connection-tick?** One per forwarded request, driven by `state.lastTickEvents`.
 - **Where does diagnosis live — engine or dashboard?** Dashboard (`src/dashboard/td/diagnose-wave.ts`). It's a presentation layer that consumes metrics, not an engine concern.
 - **Do we migrate `buildLoadBalancer` to `compRegistry.create` in this stage?** No. Deferred.
 - **Does the renderer need its own test suite?** No. Manual testing is sufficient for the rendering layer; unit tests cover the pure functions feeding it.
+- **Why cut multi-port disambiguation?** No TD component currently has multiple ingress ports of different roles. The blocker multi-port was supposed to solve (Wave 3 cache-rescue) is actually fixed by a one-line capacity bump on `SERVER_ENTRY.p-in`. Speculative UX complexity cut.
+- **Why `TickMetrics.perConnection` and not a live read?** `state.connectionLoadThisTick` is cleared in step 9 (end of tick), before `onTick` runs. Snapshotting preserves the value for the adapter.
+- **Where does the adapter map `RequestId → requestType`?** FORWARDED events carry `metadata.requestType`. No per-tick map needed.
