@@ -81,8 +81,13 @@ export function applyTickToRenderer(
   const groupRep = new Map<string, RequestId>();
   const idToRep = new Map<RequestId, RequestId>();
   const pendingDots = new Map<string, { args: SpawnRequestDotArgs; count: number }>();
-  const HOP_STAGGER_MS = 40;
-  const MAX_STAGGER_MS = Math.max(40, tickIntervalMs * 0.8);
+  // Stagger scales with tick interval so the pipeline flow is always visible
+  // regardless of playback speed. At the default 720ms tick (slider=300), each
+  // hop is delayed ~95ms from the previous one, giving a 6-hop pipeline
+  // roughly 570ms of visual spread (79% of the tick). Hard-floored at 60ms so
+  // ultra-fast ticks still produce a perceptible gap.
+  const HOP_STAGGER_MS = Math.max(60, tickIntervalMs * 0.13);
+  const MAX_STAGGER_MS = tickIntervalMs * 0.9;
   let groupOrdinal = 0;
 
   for (const ev of state.lastTickEvents) {

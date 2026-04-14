@@ -22,10 +22,12 @@ const COMPONENT_HALF = 18;
  * cyan reads were too similar in motion at high density.
  */
 const REQUEST_TYPE_COLORS: Record<string, number> = {
-  api_read: 0x22d3ee,    // bright cyan
-  api_write: 0xf97316,   // bright orange
-  stream_init: 0xfde047, // yellow
-  default: 0x94a3b8,     // slate
+  api_read: 0x22d3ee,       // bright cyan
+  api_write: 0xf97316,      // bright orange
+  static_asset: 0xa78bfa,   // lavender — Wave 4 introduces static_asset
+  auth_required: 0xfacc15,  // gold — Wave 5 introduces auth_required
+  stream_init: 0xfde047,    // yellow
+  default: 0x94a3b8,        // slate
 };
 
 interface ComponentRenderState {
