@@ -16,6 +16,7 @@ import { SimulationState } from "@core/state/simulation-state";
 import { Engine } from "@core/engine/engine";
 import { createTDDashboard, type TDDashboard } from "./td-mode";
 import type { OutcomeReport } from "@core/types/outcome";
+import { diagnoseWave } from "./td/diagnose-wave";
 
 declare const Chart: any;
 
@@ -448,7 +449,18 @@ function showWaveResultToast(outcome: OutcomeReport): void {
   toast.style.zIndex = "1000";
   toast.style.boxShadow = "0 8px 24px rgba(0,0,0,0.5)";
   const noteText = outcome.notes.join(" · ");
-  toast.textContent = `Wave ${outcome.verdict.toUpperCase()} — ${noteText}`;
+  if (outcome.verdict === "win" && tdController && tdState) {
+    const metrics = tdController.getCurrentWaveMetrics(tdState);
+    const totalResolved = metrics.reduce((s, m) => s + m.requestsResolved, 0);
+    const totalDropped = metrics.reduce((s, m) => s + m.requestsDropped, 0);
+    const totalRev = metrics.reduce((s, m) => s + m.revenueEarned, 0);
+    const totalUpkeep = metrics.reduce((s, m) => s + m.upkeepPaid, 0);
+    const denom = totalResolved + totalDropped;
+    const servedPct = denom > 0 ? Math.round((totalResolved / denom) * 100) : 0;
+    toast.textContent = `Wave WIN — ${servedPct}% served · $${totalRev} revenue · $${totalUpkeep} upkeep`;
+  } else {
+    toast.textContent = `Wave ${outcome.verdict.toUpperCase()} — ${noteText}`;
+  }
   document.body.appendChild(toast);
   // 10-second timeout so the player has time to read it
   setTimeout(() => toast.remove(), 10000);
@@ -539,11 +551,47 @@ function showLossModal(outcome: OutcomeReport): void {
   const modal = document.getElementById("td-loss-modal");
   const title = document.getElementById("td-loss-modal-title");
   const detail = document.getElementById("td-loss-modal-detail");
-  if (!modal || !title || !detail || !tdController) return;
+  if (!modal || !title || !detail || !tdController || !tdState) return;
   const waveNum = tdController.getCurrentWaveIndex() + 1;
   title.textContent = `Wave ${waveNum} LOST`;
-  detail.textContent = outcome.notes.join(" · ");
-  // Update Retry button label so the player knows which wave they'll retry.
+
+  const metrics = tdController.getCurrentWaveMetrics(tdState);
+  const diagnosis = diagnoseWave({
+    wave: tdController.getCurrentWave(),
+    metrics,
+    components: tdState.components,
+    connections: tdState.connections,
+  });
+
+  while (detail.firstChild) detail.removeChild(detail.firstChild);
+
+  const headlineEl = document.createElement("div");
+  headlineEl.textContent = diagnosis.headline;
+  headlineEl.style.fontWeight = "600";
+  headlineEl.style.color = "#ef4444";
+  headlineEl.style.marginBottom = "8px";
+  detail.appendChild(headlineEl);
+
+  const symptomEl = document.createElement("div");
+  symptomEl.textContent = diagnosis.symptom;
+  symptomEl.style.marginBottom = "8px";
+  detail.appendChild(symptomEl);
+
+  if (diagnosis.hint) {
+    const hintEl = document.createElement("div");
+    hintEl.textContent = diagnosis.hint;
+    hintEl.style.color = "#8b8fa3";
+    hintEl.style.fontStyle = "italic";
+    detail.appendChild(hintEl);
+  }
+
+  const notesEl = document.createElement("div");
+  notesEl.textContent = outcome.notes.join(" · ");
+  notesEl.style.marginTop = "12px";
+  notesEl.style.color = "#8b8fa3";
+  notesEl.style.fontSize = "11px";
+  detail.appendChild(notesEl);
+
   const retryBtn = document.getElementById("td-retry-btn");
   if (retryBtn) retryBtn.textContent = `Retry Wave ${waveNum}`;
   modal.hidden = false;
