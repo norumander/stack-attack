@@ -1,6 +1,7 @@
 import type { TopologyRenderer } from "./topology-renderer.js";
 import type { SimulationState } from "@core/state/simulation-state.js";
 import type { TickMetrics } from "@core/types/metrics.js";
+import type { RequestId } from "@core/types/ids.js";
 import { componentThroughputPerTick } from "@core/engine/throughput.js";
 import {
   getEffectiveBandwidth,
@@ -48,51 +49,64 @@ export function applyTickToRenderer(
     }
   }
 
-  // Stagger dots spawning on the same connection in the same tick so they
-  // form a visible train instead of stacking into one composite sprite.
-  // Without this, a Wave-2 tick with 17 reads + 8 writes spawns 25 dots at
-  // the exact same (x,y) at t=0 on Client→Server, and the larger orange
-  // write squares render directly around the smaller cyan read circles —
-  // looking like "orange-edged cyan dots." Per-connection counter resets
-  // every call (every tick), so stagger is bounded to this tick's events.
-  const STAGGER_MS_PER_SLOT = 10;
-  const staggerCounter = new Map<string, number>();
+  // Aggregate dots per (connection, requestType) per tick so each visible
+  // dot represents a FLOW of that tick's traffic on that edge, not one
+  // literal engine request. Wave 1 (10 reads/tick on Client→Server) shows
+  // 1 cyan dot; Wave 2 (17 reads + 8 writes/tick) shows 1 cyan + 1 orange
+  // on Client→Server plus 1 orange on Server→Database. Without this,
+  // every literal request spawned its own dot and 25/tick on a single
+  // edge looked like a stampede.
+  //
+  // The first FORWARDED event in each group picks the representative
+  // requestId that actually spawns the dot. `idToRep` maps every other
+  // requestId in that group to the representative so the SERVED/DROPPED/
+  // OVERLOADED flashes below can re-key onto the representative and fire
+  // when its single dot retires at the target.
+  const groupRep = new Map<string, RequestId>();
+  const idToRep = new Map<RequestId, RequestId>();
   for (const ev of state.lastTickEvents) {
     if (ev.type !== "FORWARDED") continue;
     if (ev.connectionId === null) continue;
     const requestType =
       (ev.metadata && (ev.metadata as { requestType?: string }).requestType) ??
       "default";
+    const groupKey = `${ev.connectionId}|${requestType}`;
+    const existingRep = groupRep.get(groupKey);
+    if (existingRep !== undefined) {
+      idToRep.set(ev.requestId, existingRep);
+      continue;
+    }
+    groupRep.set(groupKey, ev.requestId);
+    idToRep.set(ev.requestId, ev.requestId);
     const latencyTicks = getEffectiveLatency(state, ev.connectionId);
     const durationMs = Math.max(50, latencyTicks * tickIntervalMs);
-    const slot = staggerCounter.get(ev.connectionId) ?? 0;
-    staggerCounter.set(ev.connectionId, slot + 1);
     renderer.spawnRequestDot({
       connectionId: ev.connectionId,
       requestId: ev.requestId,
       requestType,
       durationMs,
-      spawnOffsetMs: slot * STAGGER_MS_PER_SLOT,
     });
   }
 
   // Queue per-request feedback flashes so they fire when the dot carrying
-  // that request arrives visually — not at tick-start while the dot is
-  // still mid-flight. The renderer matches each pending flash against
-  // retiring dots by (requestId, componentId); any unmatched flash fires
-  // via timeout (see PENDING_FLASH_TIMEOUT_MS).
+  // that request arrives visually. Because we aggregate one dot per
+  // (connection, requestType) per tick, every flash must be re-keyed to
+  // the group's representative requestId — otherwise only the rep's own
+  // flash would match its retirement and the other N-1 flashes would
+  // fall through to timeout, firing at a delayed (and wrong-location)
+  // moment. Events whose requestId isn't in `idToRep` (e.g. a request
+  // that didn't forward this tick, or one already resident at its
+  // terminal component) fall back to their own requestId, which the
+  // timeout fallback covers.
   //
   // SERVED: "work was done here" — fires at the component that produced
   //   the RESPOND outcome, not at the origin (see deliver-staged.ts).
   // DROPPED: fires at the component where the drop happened.
   // OVERLOADED: fires at the component that shed work this tick.
   for (const ev of state.lastTickEvents) {
-    if (ev.type === "DROPPED") {
-      renderer.queueFlashOnRequestArrival(ev.requestId, ev.componentId, "drop");
-    } else if (ev.type === "OVERLOADED") {
-      renderer.queueFlashOnRequestArrival(ev.requestId, ev.componentId, "overload");
-    } else if (ev.type === "SERVED") {
-      renderer.queueFlashOnRequestArrival(ev.requestId, ev.componentId, "served");
-    }
+    if (ev.type !== "DROPPED" && ev.type !== "OVERLOADED" && ev.type !== "SERVED") continue;
+    const flashKey = idToRep.get(ev.requestId) ?? ev.requestId;
+    const kind = ev.type === "DROPPED" ? "drop" : ev.type === "OVERLOADED" ? "overload" : "served";
+    renderer.queueFlashOnRequestArrival(flashKey, ev.componentId, kind);
   }
 }
