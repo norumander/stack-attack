@@ -73,8 +73,14 @@ export class TDTrafficSource implements TrafficSource {
         createdAt: tick,
         ttl: this.wave.ttl,
         originZone: null,
-        streamDuration: null,
-        streamBandwidth: null,
+        streamDuration:
+          tickType === "stream" && this.wave.streamConfig
+            ? this.wave.streamConfig.duration
+            : null,
+        streamBandwidth:
+          tickType === "stream" && this.wave.streamConfig
+            ? this.wave.streamConfig.bandwidth
+            : null,
       });
     }
     return out;
