@@ -155,9 +155,7 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     const container = new Container();
     const sprite = new Graphics();
     sprite.roundRect(-COMPONENT_HALF, -COMPONENT_HALF, COMPONENT_HALF * 2, COMPONENT_HALF * 2, 6);
-    // Start gray (matches utilizationColor(0)). First per-tick update
-    // will lerp toward green as utilization climbs.
-    sprite.fill(0x94a3b8);
+    sprite.fill(0x22c55e);
     container.addChild(sprite);
 
     const label = new Text({
@@ -325,53 +323,48 @@ export class PixiTopologyRenderer implements TopologyRenderer {
   }
 
   flashDrop(id: ComponentId): void {
-    this.flashComponent(id, 0xef4444, { peakAlpha: 0.7, durationMs: 180, padding: 2 });
+    this.ringPulse(id, 0xef4444);
   }
 
   flashOverload(id: ComponentId): void {
-    this.flashComponent(id, 0xfbbf24, { peakAlpha: 0.7, durationMs: 180, padding: 2 });
+    this.ringPulse(id, 0xfbbf24);
+  }
+
+  flashResponded(id: ComponentId): void {
+    this.ringPulse(id, 0x22c55e);
   }
 
   /**
-   * Soft green pulse when a component successfully responds. Runs shorter
-   * and dimmer than drop/overload because it fires on every served request —
-   * a Server handling 20 req/tick would be strobing at the flash/overload
-   * intensity. This hint is meant to reinforce "working pipeline", not
-   * dominate the frame.
+   * Shockwave-style feedback: a stroked circle centered on the component
+   * that expands outward while fading to zero alpha. Legible regardless of
+   * the component's current utilization-color fill, because it lives OUTSIDE
+   * the sprite's bounding box. Each event emits its own ring.
    */
-  flashResponded(id: ComponentId): void {
-    this.flashComponent(id, 0x22c55e, { peakAlpha: 0.35, durationMs: 120, padding: 0 });
-  }
-
-  private flashComponent(
-    id: ComponentId,
-    color: number,
-    opts: { peakAlpha: number; durationMs: number; padding: number },
-  ): void {
+  private ringPulse(id: ComponentId, color: number): void {
     const state = this.components.get(id);
     if (!state) return;
-    const flash = new Graphics();
-    const pad = opts.padding;
-    flash.roundRect(
-      -COMPONENT_HALF - pad,
-      -COMPONENT_HALF - pad,
-      (COMPONENT_HALF + pad) * 2,
-      (COMPONENT_HALF + pad) * 2,
-      8,
-    );
-    flash.fill({ color, alpha: opts.peakAlpha });
-    state.container.addChild(flash);
+    const ring = new Graphics();
+    state.container.addChild(ring);
+
     const startMs = performance.now();
-    const duration = opts.durationMs;
-    const peak = opts.peakAlpha;
+    const DURATION_MS = 350;
+    const START_RADIUS = COMPONENT_HALF + 2;
+    const END_RADIUS = COMPONENT_HALF + 22;
+    const PEAK_ALPHA = 0.9;
+
     const step = () => {
       const elapsed = performance.now() - startMs;
-      if (elapsed >= duration) {
-        flash.destroy();
+      if (elapsed >= DURATION_MS) {
+        ring.destroy();
         this.app?.ticker.remove(step);
         return;
       }
-      flash.alpha = peak * (1 - elapsed / duration);
+      const t = elapsed / DURATION_MS;
+      const radius = START_RADIUS + (END_RADIUS - START_RADIUS) * t;
+      const alpha = PEAK_ALPHA * (1 - t);
+      ring.clear();
+      ring.circle(0, 0, radius);
+      ring.stroke({ color, width: 2, alpha });
     };
     this.app?.ticker.add(step);
   }
