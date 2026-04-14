@@ -24,6 +24,13 @@ export interface ProcessingCapabilityOptions {
    * Default: false.
    */
   emitProcessedEvent?: boolean;
+  /**
+   * Per-type latency penalty in ticks, added on top of the base latency 1
+   * when emitting PROCESSED events. Used by TD mode's Server to make
+   * `auth_required` expensive — the player feels "Server can serve auth,
+   * but it's so slow my SLA fails." Default: empty (no penalties).
+   */
+  typeLatencyPenalty?: Readonly<Record<string, number>>;
 }
 
 /**
@@ -42,6 +49,7 @@ export class ProcessingCapability implements Capability {
   private readonly handledTypes: ReadonlySet<string> | null;
   private readonly throughputPerTier: number;
   private readonly emitProcessedEvent: boolean;
+  private readonly typeLatencyPenalty: Readonly<Record<string, number>>;
 
   constructor(
     readonly id: CapabilityId,
@@ -52,6 +60,7 @@ export class ProcessingCapability implements Capability {
       : null;
     this.throughputPerTier = options.throughputPerTier ?? 25;
     this.emitProcessedEvent = options.emitProcessedEvent ?? false;
+    this.typeLatencyPenalty = options.typeLatencyPenalty ?? {};
   }
 
   canHandle(requestType: string): boolean {
@@ -59,9 +68,10 @@ export class ProcessingCapability implements Capability {
     return this.handledTypes.has(requestType);
   }
 
-  process(_request: Request, context: ProcessContext): ProcessResult {
+  process(request: Request, context: ProcessContext): ProcessResult {
     this.processedThisTick += 1;
 
+    const penalty = this.typeLatencyPenalty[request.type] ?? 0;
     const events = this.emitProcessedEvent
       ? [
           {
@@ -70,7 +80,7 @@ export class ProcessingCapability implements Capability {
             capabilityId: this.id,
             connectionId: null,
             type: "PROCESSED" as const,
-            latencyAdded: 1,
+            latencyAdded: 1 + penalty,
           },
         ]
       : [];
