@@ -199,6 +199,6 @@ export const CDN_ENTRY: ComponentRegistryEntry = {
   ],
   placementCost: 200,
   upgradeCostCurve: [200, 400],
-  visual: { icon: "cdn", color: "#10b981", shape: "hexagon" },
+  visual: { icon: "cdn", color: "#10b981", shape: "pentagon" },
   conditionProfile: RESILIENT_CONDITION_PROFILE,
 };

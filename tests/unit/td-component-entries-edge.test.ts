@@ -27,4 +27,8 @@ describe("TD_CDN_ENTRY", () => {
   it("uses a resilient condition profile (lower decay than default)", () => {
     expect(CDN_ENTRY.conditionProfile.decayRate).toBeLessThan(0.05);
   });
+
+  it("has type cdn", () => {
+    expect(CDN_ENTRY.type).toBe("cdn");
+  });
 });
