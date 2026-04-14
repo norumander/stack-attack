@@ -155,7 +155,9 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     const container = new Container();
     const sprite = new Graphics();
     sprite.roundRect(-COMPONENT_HALF, -COMPONENT_HALF, COMPONENT_HALF * 2, COMPONENT_HALF * 2, 6);
-    sprite.fill(0x22c55e);
+    // Start gray (matches utilizationColor(0)). First per-tick update
+    // will lerp toward green as utilization climbs.
+    sprite.fill(0x94a3b8);
     container.addChild(sprite);
 
     const label = new Text({
