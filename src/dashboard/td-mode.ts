@@ -185,7 +185,20 @@ export async function createTDDashboard(args: {
     }
     budgetEl.textContent = `$${controller.economy.getBudget()}`;
     const actionable = !complete && controller.getPhase() === "build";
-    paletteButtons.forEach((b) => (b.disabled = !actionable));
+    // Filter palette by wave.availableComponents. Buttons for locked types
+    // are hidden entirely so the player doesn't see future waves' components
+    // before they're unlocked. `tryPlace` would reject placement with
+    // `disallowed_by_mode` anyway, but that only surfaces as a console
+    // warning — the button would appear enabled and click-to-no-op.
+    const availableTypes = complete
+      ? new Set<string>()
+      : new Set(controller.getCurrentWave().availableComponents);
+    paletteButtons.forEach((b) => {
+      const type = b.dataset["type"] ?? "";
+      const allowed = availableTypes.has(type);
+      b.hidden = !allowed;
+      b.disabled = !actionable || !allowed;
+    });
     readyBtn.disabled = !actionable;
     setStatusText();
   }
