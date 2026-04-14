@@ -1,4 +1,4 @@
-import type { ComponentId, ConnectionId } from "@core/types/ids.js";
+import type { ComponentId, ConnectionId, RequestId } from "@core/types/ids.js";
 
 /**
  * Stage 3c renderer interface. The dashboard depends on this — NOT on pixi.js
@@ -30,6 +30,21 @@ export interface TopologyRenderer {
   flashOverload(id: ComponentId): void;
   flashDrop(id: ComponentId): void;
   flashResponded(id: ComponentId): void;
+
+  /**
+   * Queue a ring pulse that fires when the dot carrying `requestId` retires
+   * at `componentId` (dot animation finishes and returns to pool). If no
+   * in-flight dot matches within a timeout window (~2× tick interval), the
+   * flash fires anyway at the target component. This lets per-tick engine
+   * events (SERVED/DROPPED/OVERLOADED) synchronize with the renderer's
+   * per-frame dot animation instead of firing at tick-start while dots are
+   * still mid-flight.
+   */
+  queueFlashOnRequestArrival(
+    requestId: RequestId,
+    componentId: ComponentId,
+    kind: "served" | "drop" | "overload",
+  ): void;
 
   // ─ Selection + placement preview ──────────────────────────────────────
   setSelected(id: ComponentId | null): void;
@@ -64,6 +79,7 @@ export interface ConnectionUpdate {
 
 export interface SpawnRequestDotArgs {
   connectionId: ConnectionId;
+  requestId: RequestId;    // used to correlate with queued flashes
   requestType: string;     // 'api_read' | 'api_write' | 'stream_init' | ...
   durationMs: number;      // travel time from source to target
 }

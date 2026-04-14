@@ -8,7 +8,7 @@ import type {
   RendererPointerEvent,
 } from "./topology-renderer.js";
 import { utilizationColor } from "./utilization-color.js";
-import type { ComponentId, ConnectionId } from "@core/types/ids.js";
+import type { ComponentId, ConnectionId, RequestId } from "@core/types/ids.js";
 
 /** Pixels per grid cell. Matches the old DOM renderer's 40px scale. */
 const GRID_CELL_PX = 40;
@@ -47,6 +47,8 @@ interface ConnectionRenderState {
 interface ActiveDot {
   graphic: Graphics;
   connectionId: ConnectionId;
+  requestId: RequestId;
+  targetComponentId: ComponentId;
   startMs: number;
   durationMs: number;
   startX: number;
@@ -54,6 +56,29 @@ interface ActiveDot {
   endX: number;
   endY: number;
 }
+
+interface PendingFlash {
+  requestId: RequestId;
+  componentId: ComponentId;
+  color: number;
+  queuedAtMs: number;
+}
+
+const FLASH_COLORS = {
+  served: 0x22c55e,
+  drop: 0xef4444,
+  overload: 0xfbbf24,
+} as const;
+
+/**
+ * A pending flash that never gets matched to a retiring dot fires anyway
+ * after this many milliseconds. Covers edge cases where the flash's
+ * originating event has no corresponding FORWARDED dot (e.g. a request
+ * dropped by condition drop-probability inside processPending, or an
+ * OVERLOADED sweep hitting requests that were already in pending from a
+ * previous tick with no new forward leg).
+ */
+const PENDING_FLASH_TIMEOUT_MS = 1000;
 
 export class PixiTopologyRenderer implements TopologyRenderer {
   private app: Application | null = null;
@@ -69,6 +94,7 @@ export class PixiTopologyRenderer implements TopologyRenderer {
 
   private readonly dotPool: Graphics[] = [];
   private readonly activeDots: ActiveDot[] = [];
+  private readonly pendingFlashes: PendingFlash[] = [];
   private readonly DOT_POOL_INITIAL = 1000;
 
   private selectedId: ComponentId | null = null;
@@ -143,6 +169,7 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     this.components.clear();
     this.connections.clear();
     this.activeDots.length = 0;
+    this.pendingFlashes.length = 0;
     this.dotPool.length = 0;
   }
 
@@ -298,6 +325,8 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     this.activeDots.push({
       graphic,
       connectionId: args.connectionId,
+      requestId: args.requestId,
+      targetComponentId: conn.targetId,
       startMs: performance.now(),
       durationMs: Math.max(50, args.durationMs),
       startX,
@@ -323,15 +352,28 @@ export class PixiTopologyRenderer implements TopologyRenderer {
   }
 
   flashDrop(id: ComponentId): void {
-    this.ringPulse(id, 0xef4444);
+    this.ringPulse(id, FLASH_COLORS.drop);
   }
 
   flashOverload(id: ComponentId): void {
-    this.ringPulse(id, 0xfbbf24);
+    this.ringPulse(id, FLASH_COLORS.overload);
   }
 
   flashResponded(id: ComponentId): void {
-    this.ringPulse(id, 0x22c55e);
+    this.ringPulse(id, FLASH_COLORS.served);
+  }
+
+  queueFlashOnRequestArrival(
+    requestId: RequestId,
+    componentId: ComponentId,
+    kind: "served" | "drop" | "overload",
+  ): void {
+    this.pendingFlashes.push({
+      requestId,
+      componentId,
+      color: FLASH_COLORS[kind],
+      queuedAtMs: performance.now(),
+    });
   }
 
   /**
@@ -460,10 +502,40 @@ export class PixiTopologyRenderer implements TopologyRenderer {
         this.dotsLayer?.removeChild(dot.graphic);
         this.dotPool.push(dot.graphic);
         this.activeDots.splice(i, 1);
+        // Dot arrived at its target. Fire any pending flashes for this
+        // request+component combo — this is the primary synchronization
+        // point between engine events and visible feedback.
+        this.firePendingFlashesForArrival(dot.requestId, dot.targetComponentId);
         continue;
       }
       dot.graphic.x = dot.startX + (dot.endX - dot.startX) * t;
       dot.graphic.y = dot.startY + (dot.endY - dot.startY) * t;
+    }
+
+    // Timeout sweep: any pending flash that never got matched by a
+    // retiring dot fires anyway once it's been waiting too long. Handles
+    // edge cases like condition-drop-probability (request drops before
+    // forwarding → no dot) or OVERLOADED sweeps on requests that carried
+    // over from a previous tick.
+    for (let i = this.pendingFlashes.length - 1; i >= 0; i--) {
+      const pf = this.pendingFlashes[i]!;
+      if (now - pf.queuedAtMs > PENDING_FLASH_TIMEOUT_MS) {
+        this.ringPulse(pf.componentId, pf.color);
+        this.pendingFlashes.splice(i, 1);
+      }
+    }
+  }
+
+  private firePendingFlashesForArrival(
+    requestId: RequestId,
+    componentId: ComponentId,
+  ): void {
+    for (let i = this.pendingFlashes.length - 1; i >= 0; i--) {
+      const pf = this.pendingFlashes[i]!;
+      if (pf.requestId === requestId && pf.componentId === componentId) {
+        this.ringPulse(pf.componentId, pf.color);
+        this.pendingFlashes.splice(i, 1);
+      }
     }
   }
 }

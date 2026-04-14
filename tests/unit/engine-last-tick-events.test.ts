@@ -63,4 +63,49 @@ describe("state.lastTickEvents", () => {
       expect(ev.tick).toBe(1); // only tick=1 events
     }
   });
+
+  it("stamps each entry with the owning requestId (Stage 3c PerTickEventView)", () => {
+    // The renderer adapter correlates FORWARDED dots with subsequent
+    // SERVED/DROPPED flashes via ev.requestId. The engine's appendEvent
+    // must include the requestId on the lastTickEvents entry even though
+    // requestLog itself keys by requestId without embedding it.
+    const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
+    const respCap = new RespondingCapability("resp" as CapabilityId);
+    const caps = new Map<CapabilityId, Capability>();
+    caps.set(respCap.id, respCap);
+    const server = makeComponent({
+      id: "s1" as ComponentId,
+      type: "server",
+      capabilities: caps,
+    });
+    state.placeComponent(server);
+    state.visitOrder.push(...computeVisitOrder(state.components));
+
+    state.enqueuePending(server.id, {
+      id: "r-stamp" as RequestId,
+      parentId: null,
+      type: "api_read",
+      payload: null,
+      origin: server.id,
+      createdAt: 0,
+      ttl: 10,
+      originZone: "default",
+      streamDuration: null,
+      streamBandwidth: null,
+    });
+
+    const engine = new Engine(state);
+    const mc = new NoOpModeController({
+      targetEntryPointId: server.id,
+      intensity: 0,
+      requestType: "api_read",
+    });
+    engine.tick(mc);
+
+    // Every entry in lastTickEvents must carry the owning requestId.
+    expect(state.lastTickEvents.length).toBeGreaterThan(0);
+    for (const ev of state.lastTickEvents) {
+      expect(ev.requestId).toBe("r-stamp");
+    }
+  });
 });

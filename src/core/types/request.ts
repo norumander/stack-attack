@@ -55,3 +55,15 @@ export interface RequestEvent {
   readonly latencyAdded: number;
   readonly metadata?: Record<string, unknown>;
 }
+
+/**
+ * Per-tick event view stored in `SimulationState.lastTickEvents`. Carries
+ * the owning `RequestId` alongside the event fields so the Stage 3c
+ * renderer adapter can correlate FORWARDED dots with their later
+ * SERVED/DROPPED/OVERLOADED flashes. The per-request `requestLog` does
+ * not carry requestId on each event because the map key already provides
+ * it — this view exists specifically for flat-list consumers.
+ */
+export interface PerTickEventView extends RequestEvent {
+  readonly requestId: RequestId;
+}

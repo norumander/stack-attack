@@ -58,19 +58,29 @@ export function applyTickToRenderer(
     const durationMs = Math.max(50, latencyTicks * tickIntervalMs);
     renderer.spawnRequestDot({
       connectionId: ev.connectionId,
+      requestId: ev.requestId,
       requestType,
       durationMs,
     });
   }
 
+  // Queue per-request feedback flashes so they fire when the dot carrying
+  // that request arrives visually — not at tick-start while the dot is
+  // still mid-flight. The renderer matches each pending flash against
+  // retiring dots by (requestId, componentId); any unmatched flash fires
+  // via timeout (see PENDING_FLASH_TIMEOUT_MS).
+  //
+  // SERVED: "work was done here" — fires at the component that produced
+  //   the RESPOND outcome, not at the origin (see deliver-staged.ts).
+  // DROPPED: fires at the component where the drop happened.
+  // OVERLOADED: fires at the component that shed work this tick.
   for (const ev of state.lastTickEvents) {
-    if (ev.type === "DROPPED") renderer.flashDrop(ev.componentId);
-    else if (ev.type === "OVERLOADED") renderer.flashOverload(ev.componentId);
-    // SERVED fires at the component that produced the RESPOND outcome —
-    // this is the "work was done here" signal. We intentionally do NOT pulse
-    // on RESPONDED because that event fires at the request's origin (the
-    // return path's final destination), which is the Client in typical
-    // topologies — not where the work happened.
-    else if (ev.type === "SERVED") renderer.flashResponded(ev.componentId);
+    if (ev.type === "DROPPED") {
+      renderer.queueFlashOnRequestArrival(ev.requestId, ev.componentId, "drop");
+    } else if (ev.type === "OVERLOADED") {
+      renderer.queueFlashOnRequestArrival(ev.requestId, ev.componentId, "overload");
+    } else if (ev.type === "SERVED") {
+      renderer.queueFlashOnRequestArrival(ev.requestId, ev.componentId, "served");
+    }
   }
 }
