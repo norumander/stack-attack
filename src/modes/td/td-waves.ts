@@ -99,3 +99,40 @@ export const WAVE_4: TDWaveDefinition = {
     penaltyPerTick: 5,
   },
 };
+
+export const WAVE_5: TDWaveDefinition = {
+  id: 5,
+  name: "The Authentication Wall",
+  startingBudget: 800,
+  intensity: 150,
+  composition: new Map([
+    ["api_read", 0.3],
+    ["api_write", 0.2],
+    ["static_asset", 0.3],
+    ["auth_required", 0.2],
+  ]),
+  duration: 30,
+  ttl: 8,
+  availableComponents: [
+    "server",
+    "database",
+    "cache",
+    "load_balancer",
+    "cdn",
+    "api_gateway",
+  ],
+  dropThreshold: 0.05,
+  revenuePerRequestType: new Map([
+    ["api_read", 1],
+    ["api_write", 2],
+    ["static_asset", 0.3],
+    ["auth_required", 1.5],
+  ]),
+  readKeyPoolSize: 15,
+  sla: {
+    availabilityTarget: 0.92,
+    maxAvgLatency: 7,
+    minBudget: 0,
+    penaltyPerTick: 5,
+  },
+};
