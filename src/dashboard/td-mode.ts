@@ -15,6 +15,7 @@ import type {
   RendererPointerEvent,
 } from "./render/topology-renderer.js";
 import { applyTickToRenderer } from "./render/state-to-renderer.js";
+import { renderBriefingCard, hideBriefingCard } from "./td/briefing-card.js";
 
 const ENTRY_BY_TYPE: Record<string, ComponentRegistryEntry> = {
   client: CLIENT_ENTRY,
@@ -157,9 +158,15 @@ export async function createTDDashboard(args: {
     if (complete) {
       waveEl.textContent = "Complete";
       phaseEl.textContent = "—";
+      hideBriefingCard();
     } else {
       waveEl.textContent = `${controller.getCurrentWaveIndex() + 1} of ${controller.getWaveCount()}`;
       phaseEl.textContent = controller.getPhase().toUpperCase();
+      if (controller.getPhase() === "build") {
+        renderBriefingCard(controller.getCurrentWave());
+      } else {
+        hideBriefingCard();
+      }
     }
     budgetEl.textContent = `$${controller.economy.getBudget()}`;
     const actionable = !complete && controller.getPhase() === "build";
@@ -324,6 +331,7 @@ export async function createTDDashboard(args: {
     destroy: () => {
       hudEl.hidden = true;
       topologyContainer.classList.remove("td-mode");
+      hideBriefingCard();
       unsubPointerDown();
       unsubPointerMove();
       renderer.destroy();
