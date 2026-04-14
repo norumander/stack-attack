@@ -1,6 +1,6 @@
 # Implementation status
 
-**Current stage:** Phase 1, Stage 3d complete. TD mode is playable through Wave 5. Wave 4 teaches edge caching via CDN; Wave 5 teaches edge auth termination via API Gateway + horizontal scale-out. 682 tests, typecheck clean.
+**Current stage:** Phase 1, Stage 3e augmented. TD mode is playable through Wave 7. Waves 6+7 teach async workloads (Queue/Worker backpressure) and chaos resolution (CircuitBreaker failure isolation). Event type dropped from Waves 6+7 (REPLICATE fan-out deferred). Win-path integration tests with diagnostic stat assertions verify Queue buffering, Worker processing, and CircuitBreaker tripping. 697 tests, typecheck clean.
 
 ## What ships (merged into `main`)
 
@@ -23,17 +23,18 @@
 
 **Stage 3d: Waves 4 + 5 (edge components)** — Wave 4 ("Marketing Adds Images") introduces `static_asset` request type and the CDN edge cache; Wave 5 ("The Authentication Wall") introduces `auth_required` and the API Gateway. Three capability extensions landed: `CachingCapability.getStats().hitRateByType` (per-type hit rate for the loss modal's diagnostic "CDN — static_asset: 78%" line), `ProcessingCapability.typeLatencyPenalty` (per-type latency add-on; set to `{ auth_required: 4 }` on TD Server), and `AuthCapability.terminateAuthRequired` (opt-in RESPOND-instead-of-PASS at Gateway — mirrors cache-hit short-circuit). `TD_CDN_ENTRY` (caching + forwarding-pipe + monitoring, $200, pentagon shape) and `TD_API_GATEWAY_ENTRY` (auth + forwarding-pipe + monitoring, $250, trapezoid shape) added to TD bundle; both wired through `registerTDDefaults`. Server's processing factory extended to `handledTypes: ["api_read", "static_asset", "auth_required"]`. `forwarding-pipe` tier-1 throughput raised from 55 to 200/tick (engine counts cache-hits against tick budget — the old 55 cap couldn't handle Wave 4's 80/tick). `wire()` helper gained optional `{bandwidth}` param (default 100 was a latent gate). `AuthCapability.getStats()` now exposes `authProcessedTotal` (cumulative, not per-tick). Dashboard: briefing card has a label registry so `static_asset → "static"`, `auth_required → "auth"` display cleanly; loss modal appends a "Cache hit rates:" section when the topology has any caching component. 4 new integration tests cover the two loss/win pairs: Wave 4 server-only loses on availability, Wave 4 CDN+Cache rescue wins with 78% static hit rate; Wave 5 single-Server-topology (Wave 4 rescue) loses on availability, Wave 5 Gateway + LB + 2-Server rescue wins with 99.7% availability. 682 tests total.
 
-## Next: Stage 3e+ candidates (no spec yet)
+**Stage 3e augmentation: Waves 6+7 gap-fill** — `event` request type dropped from WAVE_6 and WAVE_7 compositions (REPLICATE fan-out deferred). `batch` share raised to 20%. Win-path integration tests added: `wave-6-queue-worker-wins.test.ts` verifies Queue participation and Worker batch processing via inline topology (Queue → Worker → LB → Servers); `wave-7-breaker-rescue-wins.test.ts` verifies CircuitBreaker participation and 90%+ availability under chaos. Three test helpers added: `buildQueue`, `buildWorker`, `buildCircuitBreaker`, plus `buildWorkerWithForwarding` (inline Worker with ForwardingCapability) in `tests/integration/td/helpers.ts`. `buildLoadBalancer` handledTypes extended to include `batch`/`event`/`stream` (matching `registerTDDefaults` forwarding-pipe factory), throughput raised from 200 to 500/tick. 697 tests total.
 
-- **Wave 6 — Async Workloads.** `batch` + `event` types, Queue + Worker components, REPLICATE-phase fan-out. Source-dive required on `QueueCapability`, `BatchProcessingCapability`, and REPLICATE fan-out. See `docs/superpowers/roadmaps/2026-04-14-waves-4-10-roadmap.md`.
-- **Connection bandwidth tuning.** `TDModeController.tryConnect` still hard-codes `bandwidth: 100`. Waves with intensity > 100/tick will hit a connection-level transport gate that looks like a component bottleneck. Needs a wave-level `connectionBandwidth` override in `TDWaveDefinition` or a flat bump.
-- **`CapabilityStats` interface cleanup.** The widened index signature `[key: string]: number | Record<string, HitRateByTypeEntry> | undefined` is a structural lie accumulating type debt. Future cleanup: remove the index signature in favor of a closed list of named fields, promoting each capability's ad-hoc stat keys (`authProcessed`, `authProcessedTotal`, etc.) to explicit interface members.
-- **Cross-wave budget carry-over and condition persistence.** Stage 3b resets economy between waves; Stage 3d confirmed topology persists. Carry-over needs a "repair" / "maintenance" mechanic.
-- **Tier upgrades.** Spend budget to upgrade an existing component in place. Needs a new UI surface and a `tryUpgrade` real impl beyond the Stage 3a stub.
-- **Multi-port disambiguation in `tryConnect`.** Components with multiple in-ports of different roles need explicit port selection in the click flow. Server's `p-in` capacity is 1, which forced Wave 3 cache-rescue topologies to use a second Server in Stage 3b.
-- **Helper-vs-registry construction unification.** Stage 3b's tuning made the two paths produce the same runtime, but `tests/integration/td/helpers.ts:buildServer` etc. still construct components directly. Stage 3c could move the helpers to consume the registry.
-- **`Engine` visitOrder refresh on placement.** The `Engine` constructor is currently the only place `visitOrder` is computed. Stage 3b's dashboard reconstructs the engine on every `build → simulate` transition to refresh visitOrder. A cleaner long-term fix is to update visitOrder inside `state.placeComponent` (or expose a `state.recomputeVisitOrder()` helper).
-- **Intra-wave satisfaction pressure.** Mid-wave loss condition / lives. Now designable because the dashboard shows live wave feedback.
+## Next: Stage 3f+ candidates (no spec yet)
+
+- **Wave 8 — Streaming.** `stream` type with multi-tick lifetime, stream lifecycle wiring. Source-dive required on `state.activeStreams`.
+- **REPLICATE fan-out / `event` type.** Dropped from Waves 6+7. Requires new engine step to multi-dispatch to subscribers.
+- **EnginePullable pull semantics.** Workers process via normal PROCESS routing. Pull-from-queue is typed but intentionally stubbed.
+- **Connection bandwidth tuning.** Wave 6 (500) and Wave 7 (600) use overrides. Future waves with intensity > 600 will need another bump.
+- **Topology-validation dry-run.** On READY, trace synthetic requests from entry point; block simulation if any type dead-ends.
+- **Tier upgrades.** Spend budget to upgrade an existing component in place.
+- **Type-aware routing for LB.** Round-robin LB can't route by request type. Waves 6+7 work around this with inline Queue→Worker topology.
+- **Worker registry entry needs ForwardingCapability.** Current WORKER_ENTRY only has BatchProcessing + Monitoring. Integration tests use a custom `buildWorkerWithForwarding` because inline topology requires forwarding non-batch types.
 
 ## History
 
