@@ -29,6 +29,10 @@ export type RequestEventType =
   | "QUEUED"
   | "DEQUEUED"
   | "SPAWNED_SUB"
+  /** Emitted at the component that PRODUCED a RESPOND outcome. Paired with
+   *  RESPONDED, which fires at the request's origin. Used for visual
+   *  "work was done here" feedback. */
+  | "SERVED"
   | "RESPONDED"
   | "DROPPED"
   | "TIMED_OUT"

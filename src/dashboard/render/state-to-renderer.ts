@@ -66,6 +66,11 @@ export function applyTickToRenderer(
   for (const ev of state.lastTickEvents) {
     if (ev.type === "DROPPED") renderer.flashDrop(ev.componentId);
     else if (ev.type === "OVERLOADED") renderer.flashOverload(ev.componentId);
-    else if (ev.type === "RESPONDED") renderer.flashResponded(ev.componentId);
+    // SERVED fires at the component that produced the RESPOND outcome —
+    // this is the "work was done here" signal. We intentionally do NOT pulse
+    // on RESPONDED because that event fires at the request's origin (the
+    // return path's final destination), which is the Client in typical
+    // topologies — not where the work happened.
+    else if (ev.type === "SERVED") renderer.flashResponded(ev.componentId);
   }
 }
