@@ -82,6 +82,13 @@ export function runWave(
   for (let i = 0; i < wave.duration; i++) {
     engine.tick(mode);
   }
+  // Drain active streams past wave duration. Streams persist for
+  // streamConfig.duration ticks after their creation tick. The engine's
+  // isWaveDrained checks state.activeStreams.size > 0.
+  const maxDrainTicks = (wave.streamConfig?.duration ?? 0) + 10; // safety margin
+  for (let i = 0; i < maxDrainTicks && !mode.isWaveDrained(state); i++) {
+    engine.tick(mode);
+  }
 
   const eventCountsByType = new Map<string, number>();
   const forwardedCountByComponent = new Map<ComponentId, number>();
@@ -299,6 +306,34 @@ export function buildWorkerWithForwarding(): {
   });
 
   return { component, ingressPortId, egressPortId };
+}
+
+/**
+ * Build a Streaming Media Server from the TD registry (StreamingCapability +
+ * forwarding-pipe + Monitoring). Handles "stream" requests inline (RESPOND) and
+ * forwards all other traffic types downstream. Inline filter pattern.
+ */
+export function buildStreamingServer(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("streaming_media_server", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
+ * Build a Blob Storage component from the TD registry (BlobStorageCapability + Monitoring).
+ * Handles "static_asset" requests. Decorative in the streaming path — Streaming Server
+ * does the actual stream processing.
+ */
+export function buildBlobStorage(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("blob_storage", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
 }
 
 /**

@@ -1,6 +1,6 @@
 # Implementation status
 
-**Current stage:** Phase 1, Stage 3e augmented. TD mode is playable through Wave 7. Waves 6+7 teach async workloads (Queue/Worker backpressure) and chaos resolution (CircuitBreaker failure isolation). Event type dropped from Waves 6+7 (REPLICATE fan-out deferred). Win-path integration tests with diagnostic stat assertions verify Queue buffering, Worker processing, and CircuitBreaker tripping. 697 tests, typecheck clean.
+**Current stage:** Phase 1, Stage 4a complete. TD mode is playable through Wave 8. Wave 8 teaches streaming traffic isolation via inline Streaming Media Server + Blob Storage. TDTrafficSource populates streamDuration/streamBandwidth from wave.streamConfig. Engine's active-stream lifecycle handles bandwidth reservation. 708 tests, typecheck clean.
 
 ## What ships (merged into `main`)
 
@@ -25,16 +25,17 @@
 
 **Stage 3e augmentation: Waves 6+7 gap-fill** — `event` request type dropped from WAVE_6 and WAVE_7 compositions (REPLICATE fan-out deferred). `batch` share raised to 20%. Win-path integration tests added: `wave-6-queue-worker-wins.test.ts` verifies Queue participation and Worker batch processing via inline topology (Queue → Worker → LB → Servers); `wave-7-breaker-rescue-wins.test.ts` verifies CircuitBreaker participation and 90%+ availability under chaos. Three test helpers added: `buildQueue`, `buildWorker`, `buildCircuitBreaker`, plus `buildWorkerWithForwarding` (inline Worker with ForwardingCapability) in `tests/integration/td/helpers.ts`. `buildLoadBalancer` handledTypes extended to include `batch`/`event`/`stream` (matching `registerTDDefaults` forwarding-pipe factory), throughput raised from 200 to 500/tick. 697 tests total.
 
-## Next: Stage 3f+ candidates (no spec yet)
+**Stage 4a: Wave 8 — Video Launch (streaming isolation)** — `stream` request type with multi-tick bandwidth reservation. `TDTrafficSource` populates `streamDuration`/`streamBandwidth` from `wave.streamConfig` for stream-type requests, activating the engine's existing active-stream lifecycle. TD entries added: `STREAMING_SERVER_ENTRY` (streaming + forwarding-pipe + monitoring, inline filter pattern) and `BLOB_STORAGE_ENTRY` (blob-storage + monitoring, decorative). `runWave` extended with stream drain loop to tick past wave duration until `isWaveDrained` returns true. Win/lose integration test pair validates streaming isolation rescue. 708 tests total.
 
-- **Wave 8 — Streaming.** `stream` type with multi-tick lifetime, stream lifecycle wiring. Source-dive required on `state.activeStreams`.
-- **REPLICATE fan-out / `event` type.** Dropped from Waves 6+7. Requires new engine step to multi-dispatch to subscribers.
-- **EnginePullable pull semantics.** Workers process via normal PROCESS routing. Pull-from-queue is typed but intentionally stubbed.
-- **Connection bandwidth tuning.** Wave 6 (500) and Wave 7 (600) use overrides. Future waves with intensity > 600 will need another bump.
-- **Topology-validation dry-run.** On READY, trace synthetic requests from entry point; block simulation if any type dead-ends.
-- **Tier upgrades.** Spend budget to upgrade an existing component in place.
-- **Type-aware routing for LB.** Round-robin LB can't route by request type. Waves 6+7 work around this with inline Queue→Worker topology.
-- **Worker registry entry needs ForwardingCapability.** Current WORKER_ENTRY only has BatchProcessing + Monitoring. Integration tests use a custom `buildWorkerWithForwarding` because inline topology requires forwarding non-batch types.
+## Next: Stage 4b+ candidates (no spec yet)
+
+- **Wave 9 — Going Global.** Multi-datacenter with zone latency penalties. Requires engine source-dive: does tick loop apply `getZonePairLatency`?
+- **Wave 10 — The Viral Moment.** Stress-test boss wave. AutoScaleCapability needs source-dive.
+- **Dashboard stream visualization.** Persistent connection lines for active streams, bandwidth utilization chart.
+- **Adaptive bitrate in StreamingCapability.** Stream quality degrades under congestion.
+- **Type-aware LB routing.** Round-robin LB can't route by request type.
+- **Worker/StreamingServer registry entry with ForwardingCapability.** Both use custom inline filter pattern; registry entries lack forwarding-pipe.
+- **`pickStreamConnection` reserves on ingress connection.** Stream bandwidth reservation lands on the last-traversed connection (ingress to RESPOND component). High-bandwidth ingress connections needed for streaming paths.
 
 ## History
 
