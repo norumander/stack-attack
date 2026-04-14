@@ -469,6 +469,7 @@ function tdOnTick(controller: TDModeController, state: SimulationState): void {
     .getCurrentWaveMetrics(state)
     .reduce((sum, m) => sum + m.requestsResolved, 0);
   tdDashboard?.updateRunningStatus(tickInWave, wave.duration, resolvedThisWave);
+  tdDashboard?.applyTick(state, tdLoop?.tickInterval ?? 200);
 
   if (!controller.isWaveDrained(state)) return;
 
@@ -660,7 +661,7 @@ function resetTDCampaign(): void {
   bootTDMode();
 }
 
-function bootTDMode(): void {
+async function bootTDMode(): Promise<void> {
   // eslint-disable-next-line no-console
   console.warn("[td-boot] bootTDMode start");
   // Reset action log on a fresh boot. (Retry uses bootTDMode then re-restores
@@ -715,7 +716,7 @@ function bootTDMode(): void {
   tdState = state;
   tdController = controller;
 
-  tdDashboard = createTDDashboard({
+  tdDashboard = await createTDDashboard({
     state,
     controller,
     topologyContainer: $topoVisual,
@@ -819,7 +820,7 @@ $modeTd.addEventListener("click", () => {
   if (tdDashboard) return; // already in TD mode
   if (location.hash !== "#mode=td") location.hash = "#mode=td";
   activateTdButton();
-  bootTDMode();
+  void bootTDMode();
 });
 
 $modeSandbox.addEventListener("click", () => {
@@ -846,7 +847,8 @@ $tdResetBtn?.addEventListener("click", () => resetTDCampaign());
 populateSelects();
 if (location.hash === "#mode=td") {
   activateTdButton();
-  bootTDMode();
+  // Fire-and-forget at module load; Pixi v8 init is async.
+  void bootTDMode();
 } else {
   activateSandboxButton();
   initTopology();
