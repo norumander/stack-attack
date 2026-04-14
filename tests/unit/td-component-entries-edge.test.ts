@@ -3,6 +3,7 @@ import { CDN_ENTRY } from "@modes/td/td-component-entries";
 import { CapabilityRegistry } from "@core/registry/capability-registry";
 import { ComponentRegistry } from "@core/registry/component-registry";
 import { registerTDDefaults } from "@modes/td/register-td-defaults";
+import type { CapabilityId } from "@core/types/ids";
 
 describe("TD_CDN_ENTRY", () => {
   it("has caching, forwarding-pipe, monitoring capabilities", () => {
@@ -56,7 +57,7 @@ describe("registerTDDefaults: CDN registered", () => {
     registerTDDefaults(cap, comp);
     const server = comp.create("server", { x: 0, y: 0 }, null);
     expect(server).not.toBeNull();
-    const processing = server!.capabilities.get("processing" as any);
+    const processing = server!.capabilities.get("processing" as CapabilityId);
     expect(processing).toBeDefined();
     expect(processing!.canHandle("api_read")).toBe(true);
     expect(processing!.canHandle("static_asset")).toBe(true);
