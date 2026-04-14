@@ -295,12 +295,13 @@ My lean is **C** for Wave 5 — it's consistent with the "brute force tax" teach
 
 ## Cross-wave open questions
 
-These are not wave-specific but need to be decided before Wave 4 ships:
+These are not wave-specific but need to be decided as future waves ship:
 
 1. **Revenue-per-type table ownership.** Today `TDWaveDefinition.revenuePerRequestType` is per-wave. Do we duplicate `static_asset: 0.3` across every wave from 4 onward, or hoist to a default table and let waves override?
 2. **Request-type registry.** Today request types are strings (`"api_read"`, `"api_write"`). Static metadata like `processingCost`, `cacheable`, `async`, `fanout` lives scattered in `wave-progression-strategy.md` narrative but nowhere in code. Wave 4 is the first place this hurts — decide at brainstorm whether to add a `RequestTypeDef` map in `src/core/types/request-types.ts` or keep it implicit via capability behavior.
 3. **Palette grouping.** Five entries is fine in a row. Ten+ (Wave 8's state) probably needs categorization. Design decision deferred to the first wave that makes the palette ugly — probably Wave 6.
 4. **Briefing card reuse.** Today the briefing card is a static panel. Waves 5–10 each introduce a new request type; the card needs to show "new for this wave" vs. "carried over from earlier waves" so the player isn't re-reading everything. Low-priority polish; defer until it's obviously needed.
+5. **Architecture rubric / grade system.** Stage 3d playtest surfaced that brute-force topologies (e.g. 4 Servers + 2 Databases on Wave 4) currently pass the SLA gate without any penalty, undermining the "specialized edge component beats brute-force Server" teaching intent. Rather than hard-punish brute-force (progressive pricing, upkeep taxes, `maxPlacements` caps), the better fit for "strategy game first, teaching is the surprise" is a rubric-based grading system: each wave defines a small list of weighted architectural criteria (`edge-cache-placed`, `server-count-leq-2`, `total-cost-leq-500`), `evaluateOutcome` grades the final topology against them, and the loss/win modal shows a letter grade + the first unmet criterion's hint ("For a higher grade, try: …"). Players still pass with ugly solutions; players who care about the grade get targeted, progressive hints on replay. Scope is larger than a tuning knob — new `TDWaveDefinition.architectureRubric` shape, a scoring evaluator, a grade badge UI surface, per-wave rubric authoring. Natural Stage 3e opener, bundled with the Wave 6 brainstorm since both will touch the wave-definition shape. **Don't bolt onto Stage 3d as an afterthought.** See Stage 3d retro for context on why this came up.
 
 ---
 
