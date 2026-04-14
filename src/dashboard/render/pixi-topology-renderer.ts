@@ -95,6 +95,17 @@ export class PixiTopologyRenderer implements TopologyRenderer {
   private readonly dotPool: Graphics[] = [];
   private readonly activeDots: ActiveDot[] = [];
   private readonly pendingFlashes: PendingFlash[] = [];
+  /**
+   * The currently-animating dot for each request. Used to chain multi-hop
+   * dots so a single request animates Client → Server → Database as a
+   * continuous thread instead of spawning both hops' dots in parallel.
+   */
+  private readonly activeDotByRequest = new Map<RequestId, ActiveDot>();
+  /**
+   * Per-request queue of dots waiting for their predecessor to retire.
+   * On retirement, the first queued dot for that request spawns immediately.
+   */
+  private readonly queuedDotsByRequest = new Map<RequestId, SpawnRequestDotArgs[]>();
   private readonly DOT_POOL_INITIAL = 1000;
 
   private selectedId: ComponentId | null = null;
@@ -170,6 +181,8 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     this.connections.clear();
     this.activeDots.length = 0;
     this.pendingFlashes.length = 0;
+    this.activeDotByRequest.clear();
+    this.queuedDotsByRequest.clear();
     this.dotPool.length = 0;
   }
 
@@ -303,6 +316,20 @@ export class PixiTopologyRenderer implements TopologyRenderer {
   }
 
   spawnRequestDot(args: SpawnRequestDotArgs): void {
+    // If a dot for this request is already animating (earlier hop in the
+    // same tick), queue this hop to fire when the predecessor retires.
+    // The chain preserves event-order because the adapter feeds dots in
+    // FORWARDED-event order, which matches the engine's processing order.
+    if (this.activeDotByRequest.has(args.requestId)) {
+      const queue = this.queuedDotsByRequest.get(args.requestId) ?? [];
+      queue.push(args);
+      this.queuedDotsByRequest.set(args.requestId, queue);
+      return;
+    }
+    this.spawnDotImmediate(args);
+  }
+
+  private spawnDotImmediate(args: SpawnRequestDotArgs): void {
     const conn = this.connections.get(args.connectionId);
     if (!conn || !this.dotsLayer) return;
     const source = this.components.get(conn.sourceId);
@@ -322,7 +349,7 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     graphic.x = startX;
     graphic.y = startY;
 
-    this.activeDots.push({
+    const dot: ActiveDot = {
       graphic,
       connectionId: args.connectionId,
       requestId: args.requestId,
@@ -333,7 +360,9 @@ export class PixiTopologyRenderer implements TopologyRenderer {
       startY,
       endX,
       endY,
-    });
+    };
+    this.activeDots.push(dot);
+    this.activeDotByRequest.set(args.requestId, dot);
   }
 
   private growDotPool(): Graphics {
@@ -502,10 +531,20 @@ export class PixiTopologyRenderer implements TopologyRenderer {
         this.dotsLayer?.removeChild(dot.graphic);
         this.dotPool.push(dot.graphic);
         this.activeDots.splice(i, 1);
+        this.activeDotByRequest.delete(dot.requestId);
+
         // Dot arrived at its target. Fire any pending flashes for this
         // request+component combo — this is the primary synchronization
         // point between engine events and visible feedback.
         this.firePendingFlashesForArrival(dot.requestId, dot.targetComponentId);
+
+        // Start the next hop's dot for this request, if any.
+        const queued = this.queuedDotsByRequest.get(dot.requestId);
+        if (queued && queued.length > 0) {
+          const nextArgs = queued.shift()!;
+          if (queued.length === 0) this.queuedDotsByRequest.delete(dot.requestId);
+          this.spawnDotImmediate(nextArgs);
+        }
         continue;
       }
       dot.graphic.x = dot.startX + (dot.endX - dot.startX) * t;
