@@ -262,12 +262,17 @@ export function buildLoadBalancer(
 /**
  * Wires a source component's egress port to a target component's ingress port.
  * Returns the created Connection so the caller can add it to state.
+ *
+ * @param opts.bandwidth  Connection bandwidth (requests/tick). Default: 100.
+ *   Pass a higher value when the topology must carry more than 100 req/tick
+ *   on a single link — e.g. Wave 5 injects 150/tick so client→CDN needs ≥ 150.
  */
 export function wire(
   state: SimulationState,
   source: { component: Component; egressPortId: string },
   target: { component: Component; ingressPortId: string },
   connId: string,
+  opts: { bandwidth?: number } = {},
 ): void {
   const sourcePort = source.component.ports.find((p) => p.id === source.egressPortId);
   const targetPort = target.component.ports.find((p) => p.id === target.ingressPortId);
@@ -278,6 +283,7 @@ export function wire(
     connId,
     { componentId: source.component.id, portId: source.egressPortId },
     { componentId: target.component.id, portId: target.ingressPortId },
+    opts,
   );
   sourcePort.connections.push(conn.id);
   targetPort.connections.push(conn.id);

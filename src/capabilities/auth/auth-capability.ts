@@ -23,7 +23,10 @@ export interface AuthCapabilityOptions {
 export class AuthCapability implements Capability {
   readonly phase = "INTERCEPT" as const;
 
+  /** Count for the current tick — reset by resetPerTickState(). */
   private authProcessed = 0;
+  /** Cumulative count across all ticks — never reset. */
+  private authProcessedTotal = 0;
   private readonly terminateAuthRequired: boolean;
 
   constructor(
@@ -45,6 +48,7 @@ export class AuthCapability implements Capability {
 
     const tier = context.effectiveTiers.get(this.id) ?? 1;
     this.authProcessed += 1;
+    this.authProcessedTotal += 1;
 
     // Auth validated — continue to processing (or terminate at edge if option is set)
     // Tier 2 has zero overhead (local JWT validation vs tier 1 remote API key check)
@@ -74,7 +78,10 @@ export class AuthCapability implements Capability {
   }
 
   getStats(): CapabilityStats {
-    return { authProcessed: this.authProcessed };
+    return {
+      authProcessed: this.authProcessed,
+      authProcessedTotal: this.authProcessedTotal,
+    };
   }
 
   resetPerTickState(): void {
