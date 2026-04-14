@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stack Attack — Blueprint</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Archivo+Narrow:wght@400;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#e8f0f8;--blue:#1a3a6a;--line:#3a6aaa;--light:#c0d4e8;--accent:#d4432a;--dim:#6688aa;--white:#f0f4f8}
+body{background:var(--bg);color:var(--blue);font-family:'Courier Prime',monospace;min-height:100vh;position:relative}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--light) 1px,transparent 1px),linear-gradient(90deg,var(--light) 1px,transparent 1px);background-size:20px 20px;opacity:0.5;pointer-events:none;z-index:0}
+
+.topbar{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:2px solid var(--blue)}
+.topbar h1{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:1.2rem;text-transform:uppercase;letter-spacing:0.3em;color:var(--blue)}
+.topbar-stats{display:flex;gap:24px;font-size:0.7rem}
+.stat{text-transform:uppercase;letter-spacing:0.05em}
+.stat-value{font-weight:700;color:var(--blue)}
+.stat-label{color:var(--dim);font-size:0.6rem}
+
+.main{position:relative;z-index:1;display:grid;grid-template-columns:200px 1fr;grid-template-rows:1fr 170px;height:calc(100vh - 54px)}
+
+.sidebar{border-right:2px solid var(--blue);padding:16px;background:rgba(232,240,248,0.9)}
+.sidebar h2{font-family:'Archivo Narrow',sans-serif;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.2em;color:var(--dim);border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:10px}
+.comp-tile{padding:8px;margin-bottom:6px;border:1px solid var(--line);border-radius:0;cursor:pointer;transition:all 0.15s;background:var(--white)}
+.comp-tile:hover{border-color:var(--blue);background:rgba(26,58,106,0.05)}
+.comp-tile .name{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:0.75rem;color:var(--blue)}
+.comp-tile .cost{font-size:0.65rem;color:var(--accent)}
+.ready-btn{margin-top:auto;padding:12px;background:var(--blue);color:var(--white);border:none;font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:0.85rem;cursor:pointer;text-transform:uppercase;letter-spacing:0.15em;width:100%}
+.ready-btn:hover{background:var(--accent)}
+
+.board{position:relative;background:transparent}
+.board svg.connections{width:100%;height:100%;position:absolute;inset:0}
+.board svg.connections line{stroke:var(--line);stroke-width:1.5}
+.board svg.connections text{fill:var(--dim);font-family:'Courier Prime',monospace;font-size:9px}
+
+/* Icon Nodes */
+.node{position:absolute;transform:translate(-50%,-50%);z-index:2;display:flex;flex-direction:column;align-items:center;width:80px;height:70px;cursor:pointer}
+.node svg.icon{width:40px;height:40px;flex-shrink:0}
+.node .label{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:0.55rem;color:var(--blue);text-transform:uppercase;letter-spacing:0.08em;white-space:nowrap;margin-top:2px}
+.node .detail{font-size:0.45rem;color:var(--dim);margin-top:0}
+.node .health{height:4px;width:60px;background:var(--light);margin-top:3px}
+.node .health-fill{height:100%}
+.node .health-fill.good{background:var(--blue)}
+.node .health-fill.warn{background:var(--accent)}
+
+.charts{grid-column:1/-1;border-top:2px solid var(--blue);display:grid;grid-template-columns:1fr 1fr 180px;padding:12px 20px;gap:16px;background:rgba(232,240,248,0.95)}
+.chart h3{font-family:'Archivo Narrow',sans-serif;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.15em;color:var(--dim);margin-bottom:8px}
+.chart canvas{width:100%;height:110px}
+.gauge{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-outer{width:100px;height:100px;border:2px solid var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative}
+.gauge-outer::before{content:'';position:absolute;inset:6px;border:1px solid var(--line);border-radius:50%}
+.gauge-val{font-family:'Archivo Narrow',sans-serif;font-size:1.6rem;font-weight:700;color:var(--blue)}
+.gauge-label{font-family:'Courier Prime',monospace;font-size:0.55rem;color:var(--dim);margin-top:6px;text-transform:uppercase;letter-spacing:0.1em}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>Stack Attack &#8212; System Architecture</h1>
+  <div class="topbar-stats">
+    <div class="stat"><span class="stat-label">Wave</span> <span class="stat-value">3 / 10</span></div>
+    <div class="stat"><span class="stat-label">Phase</span> <span class="stat-value">BUILD</span></div>
+    <div class="stat"><span class="stat-label">Budget</span> <span class="stat-value" style="color:var(--accent)">$450</span></div>
+    <div class="stat"><span class="stat-label">Availability</span> <span class="stat-value">95.2%</span></div>
+    <div class="stat"><span class="stat-label">Latency</span> <span class="stat-value">3.2</span></div>
+  </div>
+</div>
+<div class="main">
+  <div class="sidebar">
+    <h2>Component Library</h2>
+    <div class="comp-tile"><div class="name">Server</div><div class="cost">$100</div></div>
+    <div class="comp-tile"><div class="name">Database</div><div class="cost">$200</div></div>
+    <div class="comp-tile"><div class="name">Cache</div><div class="cost">$150</div></div>
+    <div class="comp-tile"><div class="name">Load Balancer</div><div class="cost">$175</div></div>
+    <div class="comp-tile"><div class="name">CDN</div><div class="cost">$200</div></div>
+    <div class="comp-tile"><div class="name">API Gateway</div><div class="cost">$250</div></div>
+    <div class="comp-tile"><div class="name">Queue</div><div class="cost">$125</div></div>
+    <button class="ready-btn">&#9654; Execute Wave</button>
+  </div>
+  <div class="board">
+    <!-- Hatching pattern definition -->
+    <svg width="0" height="0" style="position:absolute">
+      <defs>
+        <pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="4" stroke="#1a3a6a" stroke-width="0.5" opacity="0.2"/>
+        </pattern>
+        <pattern id="hatch-dense" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="3" stroke="#1a3a6a" stroke-width="0.5" opacity="0.3"/>
+        </pattern>
+      </defs>
+    </svg>
+
+    <!-- Connection lines -->
+    <svg class="connections">
+      <line x1="13%" y1="50%" x2="34%" y2="50%"/>
+      <line x1="34%" y1="50%" x2="57%" y2="33%"/>
+      <line x1="34%" y1="50%" x2="57%" y2="67%"/>
+      <line x1="57%" y1="33%" x2="82%" y2="50%"/>
+      <line x1="57%" y1="67%" x2="82%" y2="50%"/>
+      <line x1="34%" y1="50%" x2="34%" y2="18%"/>
+      <!-- Dimension annotations -->
+      <text x="23%" y="46%">bw: 100</text>
+      <text x="43%" y="38%">lat: 1</text>
+      <text x="43%" y="62%">lat: 1</text>
+      <text x="68%" y="38%">lat: 3</text>
+    </svg>
+
+    <!-- CLIENT: Monitor (technical drawing style) -->
+    <div class="node" style="left:13%;top:50%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none">
+        <rect x="5" y="4" width="30" height="21" stroke="#1a3a6a" stroke-width="1.5" fill="url(#hatch)"/>
+        <rect x="8" y="7" width="24" height="15" stroke="#1a3a6a" stroke-width="0.5" stroke-dasharray="2 1"/>
+        <line x1="13" y1="29" x2="27" y2="29" stroke="#1a3a6a" stroke-width="1.5"/>
+        <line x1="20" y1="25" x2="20" y2="29" stroke="#1a3a6a" stroke-width="1.5"/>
+        <!-- Dimension lines -->
+        <line x1="5" y1="2" x2="35" y2="2" stroke="#6688aa" stroke-width="0.5" stroke-dasharray="1 1"/>
+        <line x1="5" y1="1" x2="5" y2="3" stroke="#6688aa" stroke-width="0.5"/>
+        <line x1="35" y1="1" x2="35" y2="3" stroke="#6688aa" stroke-width="0.5"/>
+        <text x="20" y="1.5" text-anchor="middle" fill="#6688aa" font-size="3" font-family="Courier Prime,monospace">30u</text>
+        <!-- Center crosshair -->
+        <line x1="18" y1="14.5" x2="22" y2="14.5" stroke="#d4432a" stroke-width="0.5"/>
+        <line x1="20" y1="12.5" x2="20" y2="16.5" stroke="#d4432a" stroke-width="0.5"/>
+      </svg>
+      <div class="label">Client</div>
+      <div class="detail">Entry Point</div>
+      <div class="health"><div class="health-fill good" style="width:100%"></div></div>
+    </div>
+
+    <!-- LOAD BALANCER: Diamond (technical drawing) -->
+    <div class="node" style="left:34%;top:50%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none">
+        <polygon points="20,3 37,20 20,37 3,20" stroke="#1a3a6a" stroke-width="1.5" fill="url(#hatch)"/>
+        <polygon points="20,8 32,20 20,32 8,20" stroke="#1a3a6a" stroke-width="0.5" stroke-dasharray="2 1" fill="none"/>
+        <line x1="20" y1="20" x2="6" y2="14" stroke="#1a3a6a" stroke-width="1"/>
+        <line x1="20" y1="20" x2="6" y2="26" stroke="#1a3a6a" stroke-width="1"/>
+        <line x1="20" y1="20" x2="34" y2="14" stroke="#1a3a6a" stroke-width="1"/>
+        <line x1="20" y1="20" x2="34" y2="26" stroke="#1a3a6a" stroke-width="1"/>
+        <polygon points="4,13 8,14 6,17" fill="#1a3a6a"/>
+        <polygon points="4,27 8,26 6,23" fill="#1a3a6a"/>
+        <polygon points="36,13 32,14 34,17" fill="#1a3a6a"/>
+        <polygon points="36,27 32,26 34,23" fill="#1a3a6a"/>
+        <!-- Center marker -->
+        <circle cx="20" cy="20" r="1.5" fill="#d4432a"/>
+      </svg>
+      <div class="label">Load Balancer</div>
+      <div class="detail">Round-robin T1</div>
+      <div class="health"><div class="health-fill good" style="width:100%"></div></div>
+    </div>
+
+    <!-- SERVER 1: Rack server (technical drawing) -->
+    <div class="node" style="left:57%;top:33%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none">
+        <rect x="6" y="3" width="28" height="34" stroke="#1a3a6a" stroke-width="1.5" fill="url(#hatch)"/>
+        <line x1="6" y1="14" x2="34" y2="14" stroke="#1a3a6a" stroke-width="0.8"/>
+        <line x1="6" y1="25" x2="34" y2="25" stroke="#1a3a6a" stroke-width="0.8"/>
+        <rect x="10" y="6" width="16" height="4" stroke="#1a3a6a" stroke-width="0.8" fill="url(#hatch-dense)"/>
+        <rect x="10" y="17" width="16" height="4" stroke="#1a3a6a" stroke-width="0.8" fill="url(#hatch-dense)"/>
+        <rect x="10" y="28" width="16" height="4" stroke="#1a3a6a" stroke-width="0.8" fill="url(#hatch-dense)"/>
+        <circle cx="30" cy="8" r="1.5" stroke="#1a3a6a" stroke-width="0.5" fill="none"/>
+        <circle cx="30" cy="19" r="1.5" stroke="#1a3a6a" stroke-width="0.5" fill="none"/>
+        <circle cx="30" cy="30" r="1.5" stroke="#1a3a6a" stroke-width="0.5" fill="none"/>
+        <!-- Dimension -->
+        <line x1="38" y1="3" x2="38" y2="37" stroke="#6688aa" stroke-width="0.5" stroke-dasharray="1 1"/>
+        <line x1="37" y1="3" x2="39" y2="3" stroke="#6688aa" stroke-width="0.5"/>
+        <line x1="37" y1="37" x2="39" y2="37" stroke="#6688aa" stroke-width="0.5"/>
+      </svg>
+      <div class="label">Server 1</div>
+      <div class="detail">ProcessingCap T1</div>
+      <div class="health"><div class="health-fill good" style="width:92%"></div></div>
+    </div>
+
+    <!-- SERVER 2: Rack server with 2 badge -->
+    <div class="node" style="left:57%;top:67%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none">
+        <rect x="6" y="3" width="28" height="34" stroke="#1a3a6a" stroke-width="1.5" fill="url(#hatch)"/>
+        <line x1="6" y1="14" x2="34" y2="14" stroke="#1a3a6a" stroke-width="0.8"/>
+        <line x1="6" y1="25" x2="34" y2="25" stroke="#1a3a6a" stroke-width="0.8"/>
+        <rect x="10" y="6" width="16" height="4" stroke="#1a3a6a" stroke-width="0.8" fill="url(#hatch-dense)"/>
+        <rect x="10" y="17" width="16" height="4" stroke="#1a3a6a" stroke-width="0.8" fill="url(#hatch-dense)"/>
+        <rect x="10" y="28" width="16" height="4" stroke="#1a3a6a" stroke-width="0.8" fill="url(#hatch-dense)"/>
+        <circle cx="30" cy="8" r="1.5" stroke="#1a3a6a" stroke-width="0.5" fill="none"/>
+        <circle cx="30" cy="19" r="1.5" stroke="#1a3a6a" stroke-width="0.5" fill="none"/>
+        <circle cx="30" cy="30" r="1.5" stroke="#1a3a6a" stroke-width="0.5" fill="none"/>
+        <!-- 2 badge -->
+        <circle cx="34" cy="34" r="5" fill="#d4432a" stroke="#1a3a6a" stroke-width="1"/>
+        <text x="34" y="37" text-anchor="middle" fill="#f0f4f8" font-family="Archivo Narrow,sans-serif" font-size="7" font-weight="700">2</text>
+      </svg>
+      <div class="label">Server 2</div>
+      <div class="detail">ProcessingCap T1</div>
+      <div class="health"><div class="health-fill warn" style="width:65%"></div></div>
+    </div>
+
+    <!-- DATABASE: Cylinder (technical drawing) -->
+    <div class="node" style="left:82%;top:50%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none">
+        <ellipse cx="20" cy="8" rx="14" ry="5" stroke="#1a3a6a" stroke-width="1.5" fill="url(#hatch)"/>
+        <line x1="6" y1="8" x2="6" y2="32" stroke="#1a3a6a" stroke-width="1.5"/>
+        <line x1="34" y1="8" x2="34" y2="32" stroke="#1a3a6a" stroke-width="1.5"/>
+        <ellipse cx="20" cy="32" rx="14" ry="5" stroke="#1a3a6a" stroke-width="1.5" fill="url(#hatch)"/>
+        <ellipse cx="20" cy="20" rx="14" ry="5" stroke="#1a3a6a" stroke-width="0.5" stroke-dasharray="2 1" fill="none"/>
+        <!-- Construction lines -->
+        <line x1="20" y1="3" x2="20" y2="37" stroke="#6688aa" stroke-width="0.3" stroke-dasharray="1 2"/>
+        <line x1="3" y1="20" x2="37" y2="20" stroke="#6688aa" stroke-width="0.3" stroke-dasharray="1 2"/>
+        <!-- Center mark -->
+        <circle cx="20" cy="20" r="1" fill="#d4432a"/>
+      </svg>
+      <div class="label">Database</div>
+      <div class="detail">StorageCap T1</div>
+      <div class="health"><div class="health-fill good" style="width:88%"></div></div>
+    </div>
+
+    <!-- CACHE: Lightning bolt in circle (technical drawing) -->
+    <div class="node" style="left:34%;top:18%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none">
+        <circle cx="20" cy="20" r="16" stroke="#1a3a6a" stroke-width="1.5"/>
+        <circle cx="20" cy="20" r="13" stroke="#1a3a6a" stroke-width="0.5" stroke-dasharray="2 1"/>
+        <polygon points="22,5 13,22 19,22 17,36 27,18 21,18" stroke="#1a3a6a" stroke-width="1.5" fill="url(#hatch-dense)"/>
+        <!-- Construction crosshair -->
+        <line x1="20" y1="2" x2="20" y2="38" stroke="#6688aa" stroke-width="0.3" stroke-dasharray="1 2"/>
+        <line x1="2" y1="20" x2="38" y2="20" stroke="#6688aa" stroke-width="0.3" stroke-dasharray="1 2"/>
+      </svg>
+      <div class="label">Cache</div>
+      <div class="detail">CachingCap T1 &#8212; LRU</div>
+      <div class="health"><div class="health-fill good" style="width:100%"></div></div>
+    </div>
+  </div>
+  <div class="charts">
+    <div class="chart"><h3>Throughput (req/tick)</h3><canvas id="c1"></canvas></div>
+    <div class="chart"><h3>Latency (ticks)</h3><canvas id="c2"></canvas></div>
+    <div class="gauge">
+      <div class="gauge-outer"><span class="gauge-val">95%</span></div>
+      <div class="gauge-label">Reliability</div>
+    </div>
+  </div>
+</div>
+<script>
+function drawChart(id,color){
+  const c=document.getElementById(id),ctx=c.getContext('2d');
+  c.width=c.offsetWidth*2;c.height=220;ctx.scale(2,1);
+  const w=c.offsetWidth,h=110;
+  // Grid
+  ctx.strokeStyle='#c0d4e8';ctx.lineWidth=0.5;
+  for(let y=0;y<=h;y+=22){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
+  for(let x=0;x<=w;x+=w/10){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}
+  // Data
+  const pts=Array.from({length:50},(_,i)=>Math.sin(i*0.25)*20+55+Math.random()*8);
+  ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.beginPath();
+  pts.forEach((p,i)=>{i?ctx.lineTo(i*(w/50),h-p):ctx.moveTo(0,h-p)});
+  ctx.stroke();
+}
+drawChart('c1','#1a3a6a');
+drawChart('c2','#d4432a');
+</script>
+</body>
+</html>

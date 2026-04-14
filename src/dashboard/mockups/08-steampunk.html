@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stack Attack — Steampunk</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Courier+Prime:wght@400;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1a1208;--surface:#241c10;--border:#3d2e14;--brass:#b87333;--copper:#c97d45;--gold:#d4a850;--bronze:#8b6d3c;--green:#6b8f3c;--red:#8b3c3c;--text:#d4c4a0;--dim:#7a6a4a;--rivet:#5a4a2a;--dark-brass:#7a5020}
+body{background:var(--bg);color:var(--text);font-family:'Courier Prime',monospace;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(184,115,51,0.06),transparent 70%);pointer-events:none;z-index:9999}
+
+/* Gear decorations */
+.gear{position:fixed;border:4px solid rgba(184,115,51,0.12);border-radius:50%;z-index:0;pointer-events:none}
+.gear::before,.gear::after{content:'';position:absolute;border:4px solid rgba(184,115,51,0.12);border-radius:50%}
+.gear-1{width:120px;height:120px;top:-30px;right:80px;animation:spin-gear 20s linear infinite}
+.gear-1::before{width:80px;height:80px;top:16px;left:16px}
+.gear-2{width:80px;height:80px;bottom:40px;left:-20px;animation:spin-gear 15s linear infinite reverse}
+.gear-2::before{width:50px;height:50px;top:11px;left:11px}
+.gear-3{width:60px;height:60px;top:50%;right:-10px;animation:spin-gear 12s linear infinite}
+.gear-3::before{width:36px;height:36px;top:8px;left:8px}
+@keyframes spin-gear{to{transform:rotate(360deg)}}
+.gear::after{width:12px;height:100%;top:0;left:calc(50% - 6px);border:none;border-radius:0;background:rgba(184,115,51,0.08)}
+
+/* Rivet function */
+.riveted{position:relative}
+.riveted::before,.riveted::after{content:'';position:absolute;width:8px;height:8px;border-radius:50%;background:radial-gradient(circle at 3px 3px,var(--copper),var(--rivet));box-shadow:inset 0 1px 2px rgba(0,0,0,0.5),0 1px 1px rgba(184,115,51,0.2)}
+.riveted::before{top:6px;left:6px}
+.riveted::after{top:6px;right:6px}
+
+/* Top Bar */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:linear-gradient(180deg,rgba(184,115,51,0.15),rgba(184,115,51,0.05));border-bottom:3px solid var(--brass);box-shadow:0 2px 12px rgba(0,0,0,0.4);position:relative;z-index:2}
+.topbar::after{content:'';position:absolute;bottom:-3px;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}
+.topbar h1{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:900;color:var(--brass);text-shadow:0 0 20px rgba(184,115,51,0.3),0 2px 4px rgba(0,0,0,0.5);letter-spacing:0.05em}
+.topbar-stats{display:flex;gap:20px;font-size:0.75rem}
+.stat{display:flex;flex-direction:column;align-items:center;padding:4px 12px;border:1px solid var(--border);border-radius:3px;background:rgba(184,115,51,0.05)}
+.stat-label{color:var(--dim);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.12em;font-family:'Playfair Display',serif}
+.stat-value{font-family:'Courier Prime',monospace;font-weight:700;font-size:0.85rem}
+.stat-value.brass{color:var(--brass);text-shadow:0 0 8px rgba(184,115,51,0.4)}
+.stat-value.copper{color:var(--copper);text-shadow:0 0 8px rgba(201,125,69,0.4)}
+.stat-value.gold{color:var(--gold)}
+.stat-value.green{color:var(--green)}
+.sla-ok{color:var(--green)}
+.sla-ok::after{content:' \u2713'}
+
+/* Layout */
+.main{display:grid;grid-template-columns:210px 1fr;grid-template-rows:1fr 180px;height:calc(100vh - 56px);gap:0}
+
+/* Sidebar */
+.sidebar{background:var(--surface);border-right:3px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:8px;position:relative;z-index:1;box-shadow:inset -8px 0 16px rgba(0,0,0,0.2)}
+.sidebar h2{font-family:'Playfair Display',serif;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.15em;color:var(--brass);margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px}
+.comp-tile{background:linear-gradient(135deg,rgba(184,115,51,0.08),rgba(184,115,51,0.03));border:2px solid var(--border);border-radius:3px;padding:10px;cursor:pointer;transition:all 0.25s;position:relative;overflow:hidden}
+.comp-tile::before{content:'';position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:radial-gradient(circle at 2px 2px,var(--copper),var(--rivet));box-shadow:inset 0 1px 1px rgba(0,0,0,0.5)}
+.comp-tile:hover{background:linear-gradient(135deg,rgba(184,115,51,0.18),rgba(184,115,51,0.08));border-color:var(--brass);box-shadow:0 0 12px rgba(184,115,51,0.2),inset 0 0 20px rgba(184,115,51,0.05)}
+.comp-tile .name{font-family:'Playfair Display',serif;font-size:0.72rem;font-weight:700;color:var(--brass)}
+.comp-tile .cost{font-size:0.65rem;color:var(--gold);font-style:italic}
+.ready-btn{margin-top:auto;padding:14px;background:linear-gradient(135deg,var(--brass),var(--dark-brass));color:var(--bg);border:2px solid var(--gold);border-radius:4px;font-family:'Playfair Display',serif;font-weight:900;font-size:0.85rem;cursor:pointer;text-transform:uppercase;letter-spacing:0.12em;box-shadow:0 4px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.15);text-shadow:0 1px 2px rgba(0,0,0,0.3)}
+.ready-btn:hover{background:linear-gradient(135deg,var(--copper),var(--brass));box-shadow:0 4px 20px rgba(184,115,51,0.4)}
+
+/* Board */
+.board{background:var(--bg);position:relative;overflow:hidden}
+.board::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(184,115,51,0.04) 1px,transparent 0);background-size:30px 30px}
+.board svg.connections{width:100%;height:100%;position:absolute;inset:0}
+.board svg.connections line{stroke:rgba(184,115,51,0.35);stroke-width:4;stroke-dasharray:12,6;stroke-linecap:round}
+.board svg.connections line.active{animation:pipe-flow 1.5s linear infinite}
+@keyframes pipe-flow{from{stroke-dashoffset:0}to{stroke-dashoffset:36}}
+
+/* Pipe joint circles at endpoints */
+.board svg.connections circle.joint{fill:var(--surface);stroke:var(--brass);stroke-width:2}
+
+/* Nodes */
+.node{position:absolute;width:80px;height:70px;transform:translate(-50%,-50%);z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:2px}
+.node .icon-wrap{width:40px;height:40px;display:flex;align-items:center;justify-content:center}
+.node .label{font-family:'Playfair Display',serif;font-weight:700;font-size:0.5rem;color:var(--brass);white-space:nowrap;text-shadow:0 0 6px rgba(184,115,51,0.3);margin-top:2px;text-align:center;letter-spacing:0.04em}
+.node .health{width:60px;height:6px;background:rgba(184,115,51,0.1);border-radius:3px;margin-top:3px;overflow:hidden;border:1px solid var(--border)}
+.node .health-fill{height:100%;border-radius:2px;transition:width 0.3s}
+.node .health-fill.good{background:linear-gradient(90deg,var(--green),#8baf4c);box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)}
+.node .health-fill.warn{background:linear-gradient(90deg,var(--gold),#c4a030);box-shadow:inset 0 1px 0 rgba(255,255,255,0.2)}
+.node .health-fill.bad{background:linear-gradient(90deg,var(--red),#6b2c2c)}
+
+/* Animated gear on LB icon */
+@keyframes spin-icon-gear{to{transform:rotate(360deg)}}
+
+/* Sidebar ornate bottom */
+.sidebar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--brass),transparent)}
+
+/* Charts */
+.charts{grid-column:1/-1;background:var(--surface);border-top:3px solid var(--brass);display:grid;grid-template-columns:1fr 1fr 200px;gap:1px;padding:12px 16px;box-shadow:inset 0 4px 12px rgba(0,0,0,0.3)}
+.chart{position:relative}
+.chart h3{font-family:'Playfair Display',serif;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--dim);margin-bottom:8px}
+.chart canvas{width:100%;height:120px}
+
+/* Gauge */
+.gauge{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-circle{width:110px;height:110px;border-radius:50%;border:3px solid var(--border);position:relative;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle,rgba(184,115,51,0.05),transparent);box-shadow:0 0 20px rgba(0,0,0,0.3),inset 0 0 20px rgba(0,0,0,0.2)}
+.gauge-circle::before{content:'';position:absolute;width:2px;height:40px;background:linear-gradient(to top,var(--brass),var(--red));transform-origin:bottom center;transform:rotate(-20deg);bottom:50%;left:calc(50% - 1px);border-radius:1px;box-shadow:0 0 6px rgba(184,115,51,0.5)}
+.gauge-circle::after{content:'';position:absolute;width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 3px 3px,var(--copper),var(--dark-brass));border:1px solid var(--brass)}
+.gauge-value{font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:900;color:var(--brass);text-shadow:0 0 12px rgba(184,115,51,0.4);position:absolute;bottom:12px}
+.gauge-label{font-family:'Playfair Display',serif;font-size:0.6rem;color:var(--dim);margin-top:6px;text-transform:uppercase;letter-spacing:0.12em;font-style:italic}
+</style>
+</head>
+<body>
+<div class="gear gear-1"></div>
+<div class="gear gear-2"></div>
+<div class="gear gear-3"></div>
+<div class="topbar riveted">
+  <h1>STACK ATTACK</h1>
+  <div class="topbar-stats">
+    <div class="stat"><span class="stat-label">Wave</span><span class="stat-value brass">3 / 10</span></div>
+    <div class="stat"><span class="stat-label">Phase</span><span class="stat-value copper">BUILD</span></div>
+    <div class="stat"><span class="stat-label">Budget</span><span class="stat-value gold">$450</span></div>
+    <div class="stat"><span class="stat-label">Availability</span><span class="stat-value sla-ok">95.2%</span></div>
+    <div class="stat"><span class="stat-label">Latency</span><span class="stat-value sla-ok">3.2</span></div>
+  </div>
+</div>
+<div class="main">
+  <div class="sidebar">
+    <h2>Components</h2>
+    <div class="comp-tile"><div class="name">Server</div><div class="cost">$100</div></div>
+    <div class="comp-tile"><div class="name">Database</div><div class="cost">$200</div></div>
+    <div class="comp-tile"><div class="name">Cache</div><div class="cost">$150</div></div>
+    <div class="comp-tile"><div class="name">Load Balancer</div><div class="cost">$175</div></div>
+    <div class="comp-tile"><div class="name">CDN</div><div class="cost">$200</div></div>
+    <div class="comp-tile"><div class="name">API Gateway</div><div class="cost">$250</div></div>
+    <div class="comp-tile"><div class="name">Queue</div><div class="cost">$125</div></div>
+    <button class="ready-btn">&#9654; READY</button>
+  </div>
+  <div class="board">
+    <svg class="connections">
+      <!-- Pipe connections with joint circles -->
+      <line x1="13%" y1="50%" x2="34%" y2="50%" class="active"/>
+      <line x1="34%" y1="50%" x2="57%" y2="33%"/>
+      <line x1="34%" y1="50%" x2="57%" y2="67%"/>
+      <line x1="57%" y1="33%" x2="82%" y2="50%"/>
+      <line x1="57%" y1="67%" x2="82%" y2="50%"/>
+      <line x1="34%" y1="50%" x2="34%" y2="18%" style="stroke:rgba(212,168,80,0.35)"/>
+    </svg>
+
+    <!-- CLIENT node — Monitor/screen icon -->
+    <div class="node" style="left:13%;top:50%">
+      <div class="icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Monitor frame with rivets -->
+          <rect x="4" y="4" width="32" height="22" rx="2" stroke="#b87333" stroke-width="2" fill="none"/>
+          <!-- Screen inner -->
+          <rect x="7" y="7" width="26" height="16" rx="1" fill="rgba(184,115,51,0.08)" stroke="#8b6d3c" stroke-width="1"/>
+          <!-- Stand -->
+          <line x1="20" y1="26" x2="20" y2="32" stroke="#b87333" stroke-width="2"/>
+          <!-- Base -->
+          <line x1="12" y1="32" x2="28" y2="32" stroke="#b87333" stroke-width="2" stroke-linecap="round"/>
+          <!-- Rivets on frame corners -->
+          <circle cx="6" cy="6" r="1.5" fill="#c97d45"/>
+          <circle cx="34" cy="6" r="1.5" fill="#c97d45"/>
+          <circle cx="6" cy="24" r="1.5" fill="#c97d45"/>
+          <circle cx="34" cy="24" r="1.5" fill="#c97d45"/>
+        </svg>
+      </div>
+      <div class="label">CLIENT</div>
+      <div class="health"><div class="health-fill good" style="width:100%"></div></div>
+    </div>
+
+    <!-- LOAD BALANCER node — Diamond with split arrows + animated gear -->
+    <div class="node" style="left:34%;top:50%">
+      <div class="icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Gear teeth ring (animated) -->
+          <g style="transform-origin:20px 18px;animation:spin-icon-gear 6s linear infinite">
+            <circle cx="20" cy="18" r="14" stroke="#8b6d3c" stroke-width="1.5" fill="none" stroke-dasharray="4,3"/>
+            <!-- 8 gear teeth -->
+            <rect x="18.5" y="2" width="3" height="4" rx="0.5" fill="#8b6d3c"/>
+            <rect x="18.5" y="30" width="3" height="4" rx="0.5" fill="#8b6d3c"/>
+            <rect x="2" y="16.5" width="4" height="3" rx="0.5" fill="#8b6d3c"/>
+            <rect x="34" y="16.5" width="4" height="3" rx="0.5" fill="#8b6d3c"/>
+            <rect x="8" y="7" width="3" height="3" rx="0.5" fill="#8b6d3c" transform="rotate(-45 9.5 8.5)"/>
+            <rect x="29" y="7" width="3" height="3" rx="0.5" fill="#8b6d3c" transform="rotate(45 30.5 8.5)"/>
+            <rect x="8" y="26" width="3" height="3" rx="0.5" fill="#8b6d3c" transform="rotate(45 9.5 27.5)"/>
+            <rect x="29" y="26" width="3" height="3" rx="0.5" fill="#8b6d3c" transform="rotate(-45 30.5 27.5)"/>
+          </g>
+          <!-- Diamond shape -->
+          <polygon points="20,6 30,18 20,30 10,18" stroke="#b87333" stroke-width="2" fill="rgba(184,115,51,0.1)"/>
+          <!-- Split arrows -->
+          <line x1="20" y1="18" x2="27" y2="12" stroke="#d4a850" stroke-width="1.5"/>
+          <polyline points="24,10 27,12 24,14" stroke="#d4a850" stroke-width="1.5" fill="none"/>
+          <line x1="20" y1="18" x2="27" y2="24" stroke="#d4a850" stroke-width="1.5"/>
+          <polyline points="24,22 27,24 24,26" stroke="#d4a850" stroke-width="1.5" fill="none"/>
+          <!-- Center rivet -->
+          <circle cx="20" cy="18" r="2" fill="#c97d45" stroke="#7a5020" stroke-width="0.5"/>
+        </svg>
+      </div>
+      <div class="label">LOAD BALANCER</div>
+      <div class="health"><div class="health-fill good" style="width:100%"></div></div>
+    </div>
+
+    <!-- SERVER 1 node — Rack server with drive-bay lines -->
+    <div class="node" style="left:57%;top:33%">
+      <div class="icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Server chassis -->
+          <rect x="6" y="4" width="28" height="32" rx="2" stroke="#b87333" stroke-width="2" fill="rgba(184,115,51,0.06)"/>
+          <!-- Drive bay lines -->
+          <line x1="10" y1="10" x2="30" y2="10" stroke="#8b6d3c" stroke-width="1.5"/>
+          <line x1="10" y1="16" x2="30" y2="16" stroke="#8b6d3c" stroke-width="1.5"/>
+          <line x1="10" y1="22" x2="30" y2="22" stroke="#8b6d3c" stroke-width="1.5"/>
+          <line x1="10" y1="28" x2="30" y2="28" stroke="#8b6d3c" stroke-width="1.5"/>
+          <!-- Drive LEDs -->
+          <circle cx="28" cy="13" r="1.2" fill="#6b8f3c"/>
+          <circle cx="28" cy="19" r="1.2" fill="#6b8f3c"/>
+          <circle cx="28" cy="25" r="1.2" fill="#d4a850"/>
+          <!-- Corner rivets -->
+          <circle cx="9" cy="7" r="1.2" fill="#c97d45"/>
+          <circle cx="31" cy="7" r="1.2" fill="#c97d45"/>
+          <circle cx="9" cy="33" r="1.2" fill="#c97d45"/>
+          <circle cx="31" cy="33" r="1.2" fill="#c97d45"/>
+        </svg>
+      </div>
+      <div class="label">SERVER 1</div>
+      <div class="health"><div class="health-fill good" style="width:92%"></div></div>
+    </div>
+
+    <!-- SERVER 2 node — Rack server with "2" badge -->
+    <div class="node" style="left:57%;top:67%">
+      <div class="icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Server chassis -->
+          <rect x="6" y="4" width="28" height="32" rx="2" stroke="#b87333" stroke-width="2" fill="rgba(184,115,51,0.06)"/>
+          <!-- Drive bay lines -->
+          <line x1="10" y1="10" x2="30" y2="10" stroke="#8b6d3c" stroke-width="1.5"/>
+          <line x1="10" y1="16" x2="30" y2="16" stroke="#8b6d3c" stroke-width="1.5"/>
+          <line x1="10" y1="22" x2="30" y2="22" stroke="#8b6d3c" stroke-width="1.5"/>
+          <line x1="10" y1="28" x2="30" y2="28" stroke="#8b6d3c" stroke-width="1.5"/>
+          <!-- Drive LEDs -->
+          <circle cx="28" cy="13" r="1.2" fill="#6b8f3c"/>
+          <circle cx="28" cy="19" r="1.2" fill="#d4a850"/>
+          <circle cx="28" cy="25" r="1.2" fill="#8b3c3c"/>
+          <!-- "2" badge -->
+          <rect x="10" y="11" width="10" height="10" rx="2" fill="#7a5020" stroke="#b87333" stroke-width="1"/>
+          <text x="15" y="19" font-family="Playfair Display,serif" font-size="8" font-weight="900" fill="#d4a850" text-anchor="middle" dominant-baseline="middle">2</text>
+          <!-- Corner rivets -->
+          <circle cx="9" cy="7" r="1.2" fill="#c97d45"/>
+          <circle cx="31" cy="7" r="1.2" fill="#c97d45"/>
+          <circle cx="9" cy="33" r="1.2" fill="#c97d45"/>
+          <circle cx="31" cy="33" r="1.2" fill="#c97d45"/>
+        </svg>
+      </div>
+      <div class="label">SERVER 2</div>
+      <div class="health"><div class="health-fill warn" style="width:65%"></div></div>
+    </div>
+
+    <!-- DATABASE node — Cylinder with rivets -->
+    <div class="node" style="left:82%;top:50%">
+      <div class="icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Cylinder body -->
+          <rect x="8" y="10" width="24" height="22" fill="rgba(184,115,51,0.06)" stroke="none"/>
+          <ellipse cx="20" cy="10" rx="12" ry="5" stroke="#c97d45" stroke-width="2" fill="rgba(184,115,51,0.1)"/>
+          <ellipse cx="20" cy="32" rx="12" ry="5" stroke="#c97d45" stroke-width="2" fill="none"/>
+          <!-- Side lines -->
+          <line x1="8" y1="10" x2="8" y2="32" stroke="#c97d45" stroke-width="2"/>
+          <line x1="32" y1="10" x2="32" y2="32" stroke="#c97d45" stroke-width="2"/>
+          <!-- Middle ring -->
+          <ellipse cx="20" cy="21" rx="12" ry="4" stroke="#8b6d3c" stroke-width="1" fill="none" stroke-dasharray="3,2"/>
+          <!-- Rivets on cylinder -->
+          <circle cx="10" cy="14" r="1.5" fill="#c97d45"/>
+          <circle cx="30" cy="14" r="1.5" fill="#c97d45"/>
+          <circle cx="10" cy="28" r="1.5" fill="#c97d45"/>
+          <circle cx="30" cy="28" r="1.5" fill="#c97d45"/>
+          <circle cx="20" cy="8" r="1.5" fill="#c97d45"/>
+          <!-- Ornate center dot -->
+          <circle cx="20" cy="21" r="2" fill="#b87333" stroke="#7a5020" stroke-width="0.5"/>
+        </svg>
+      </div>
+      <div class="label">DATABASE</div>
+      <div class="health"><div class="health-fill good" style="width:88%"></div></div>
+    </div>
+
+    <!-- CACHE node — Lightning bolt inside circle -->
+    <div class="node" style="left:34%;top:18%">
+      <div class="icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Outer circle with ornate dashes -->
+          <circle cx="20" cy="20" r="16" stroke="#d4a850" stroke-width="2" fill="none" stroke-dasharray="5,2"/>
+          <!-- Inner circle -->
+          <circle cx="20" cy="20" r="12" stroke="#b87333" stroke-width="1.5" fill="rgba(212,168,80,0.06)"/>
+          <!-- Lightning bolt -->
+          <polygon points="22,6 14,22 19,22 17,34 26,18 21,18" fill="rgba(212,168,80,0.25)" stroke="#d4a850" stroke-width="1.5" stroke-linejoin="round"/>
+          <!-- Rivets at cardinal points -->
+          <circle cx="20" cy="3" r="1.5" fill="#c97d45"/>
+          <circle cx="20" cy="37" r="1.5" fill="#c97d45"/>
+          <circle cx="3" cy="20" r="1.5" fill="#c97d45"/>
+          <circle cx="37" cy="20" r="1.5" fill="#c97d45"/>
+        </svg>
+      </div>
+      <div class="label">CACHE</div>
+      <div class="health"><div class="health-fill good" style="width:100%"></div></div>
+    </div>
+  </div>
+  <div class="charts">
+    <div class="chart">
+      <h3>Throughput</h3>
+      <canvas id="c1"></canvas>
+    </div>
+    <div class="chart">
+      <h3>Latency</h3>
+      <canvas id="c2"></canvas>
+    </div>
+    <div class="gauge">
+      <div class="gauge-circle"><span class="gauge-value">95%</span></div>
+      <div class="gauge-label">Reliability</div>
+    </div>
+  </div>
+</div>
+<script>
+function drawChart(id,color1,color2){
+  const c=document.getElementById(id),ctx=c.getContext('2d');
+  c.width=c.offsetWidth*2;c.height=240;ctx.scale(2,1);
+  const w=c.offsetWidth,h=120;
+  const pts=Array.from({length:50},(_,i)=>Math.sin(i*0.3)*20+50+Math.random()*10);
+  ctx.beginPath();ctx.moveTo(0,h);
+  pts.forEach((p,i)=>{ctx.lineTo(i*(w/50),h-p)});
+  ctx.lineTo(w,h);ctx.closePath();
+  const g=ctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,color1+'33');g.addColorStop(1,'transparent');
+  ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();pts.forEach((p,i)=>{i?ctx.lineTo(i*(w/50),h-p):ctx.moveTo(0,h-p)});
+  ctx.strokeStyle=color1;ctx.lineWidth=2;ctx.stroke();
+  if(color2){
+    const pts2=Array.from({length:50},(_,i)=>Math.sin(i*0.5+1)*8+15+Math.random()*5);
+    ctx.beginPath();pts2.forEach((p,i)=>{i?ctx.lineTo(i*(w/50),h-p):ctx.moveTo(0,h-p)});
+    ctx.strokeStyle=color2;ctx.lineWidth=1.5;ctx.stroke();
+  }
+  ctx.strokeStyle='rgba(184,115,51,0.1)';ctx.lineWidth=1;
+  for(let y=0;y<h;y+=30){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
+}
+drawChart('c1','#b87333','#8b6d3c');
+drawChart('c2','#d4a850');
+</script>
+</body>
+</html>

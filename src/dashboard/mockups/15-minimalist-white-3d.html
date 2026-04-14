@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stack Attack — Minimalist White 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#fafafa;color:#111;font-family:'DM Sans',sans-serif;min-height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased}
+
+/* Top Bar */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid #e0e0e0;background:#fff}
+.topbar-title{font-size:11px;font-weight:400;color:#111;letter-spacing:0.02em}
+.topbar-stats{display:flex;gap:36px}
+.stat{display:flex;flex-direction:column;align-items:center;gap:1px}
+.stat-label{font-size:9px;font-weight:400;color:#999;letter-spacing:0.08em;text-transform:uppercase}
+.stat-value{font-size:11px;font-weight:500;color:#111}
+.stat-value.dim{color:#999}
+
+/* Layout */
+.main{display:grid;grid-template-columns:180px 1fr;grid-template-rows:1fr 160px;height:calc(100vh - 48px)}
+
+/* Sidebar */
+.sidebar{background:#fff;border-right:1px solid #e0e0e0;padding:24px 16px;display:flex;flex-direction:column;gap:2px}
+.sidebar-heading{font-size:9px;font-weight:400;color:#999;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px}
+.comp-row{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid #f0f0f0}
+.comp-row:last-of-type{border-bottom:none}
+.comp-name{font-size:10px;font-weight:400;color:#111}
+.comp-cost{font-size:9px;font-weight:300;color:#999;font-variant-numeric:tabular-nums}
+.ready-btn{margin-top:auto;padding:10px;background:transparent;color:#111;border:1px solid #111;font-family:'DM Sans',sans-serif;font-weight:400;font-size:9px;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase}
+
+/* Board */
+.board{position:relative;overflow:hidden;background:#fafafa;perspective:1200px}
+.board-inner{width:100%;height:100%;position:relative;transform:perspective(1200px) rotateX(8deg);transform-origin:center 60%;transform-style:preserve-3d}
+
+/* Ground grid */
+.board-inner::before{content:'';position:absolute;inset:0;background-image:
+  linear-gradient(to right,#f0f0f0 0.5px,transparent 0.5px),
+  linear-gradient(to bottom,#f0f0f0 0.5px,transparent 0.5px);
+background-size:40px 40px;pointer-events:none;z-index:0}
+
+/* Connection lines */
+.connections{position:absolute;inset:0;z-index:1;pointer-events:none}
+.connections line{stroke:#ccc;stroke-width:0.5}
+
+/* Nodes */
+.node{position:absolute;background:#fff;border:1px solid #e0e0e0;padding:8px 10px;transform:translate(-50%,-50%) translateZ(2px);z-index:2;display:flex;flex-direction:column;align-items:center;gap:3px;box-shadow:1px 1px 0 #e0e0e0}
+.node svg.icon{width:36px;height:36px;display:block}
+.node .label{font-size:9px;font-weight:400;color:#111;letter-spacing:0.04em;white-space:nowrap}
+.node .health{height:1px;background:#f0f0f0;width:100%;margin-top:4px;overflow:hidden}
+.node .health-fill{height:100%}
+.node .health-fill.ok{background:#111}
+.node .health-fill.bad{background:#d00}
+
+/* Database: heavier shadow for weight */
+.node.db{box-shadow:1px 2px 0 #e0e0e0}
+
+/* Cache: lighter shadow */
+.node.cache{box-shadow:1px 1px 0 #f0f0f0}
+
+/* Charts */
+.charts{grid-column:1/-1;background:#fff;border-top:1px solid #e0e0e0;display:grid;grid-template-columns:1fr 1fr 160px;gap:32px;padding:14px 32px;align-items:start}
+.chart h3{font-size:9px;font-weight:400;color:#999;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px}
+.chart canvas{width:100%;height:100px}
+.reliability{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.reliability-value{font-size:28px;font-weight:300;color:#111;line-height:1}
+.reliability-label{font-size:9px;font-weight:400;color:#999;letter-spacing:0.08em;text-transform:uppercase}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="topbar-title">Stack Attack</span>
+  <div class="topbar-stats">
+    <div class="stat"><span class="stat-label">Wave</span><span class="stat-value">3 / 10</span></div>
+    <div class="stat"><span class="stat-label">Phase</span><span class="stat-value">Build</span></div>
+    <div class="stat"><span class="stat-label">Budget</span><span class="stat-value dim">$450</span></div>
+    <div class="stat"><span class="stat-label">Availability</span><span class="stat-value">95.2%</span></div>
+    <div class="stat"><span class="stat-label">Latency</span><span class="stat-value">3.2 ms</span></div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-heading">Components</div>
+    <div class="comp-row"><span class="comp-name">Server</span><span class="comp-cost">$100</span></div>
+    <div class="comp-row"><span class="comp-name">Database</span><span class="comp-cost">$200</span></div>
+    <div class="comp-row"><span class="comp-name">Cache</span><span class="comp-cost">$150</span></div>
+    <div class="comp-row"><span class="comp-name">Load Balancer</span><span class="comp-cost">$175</span></div>
+    <div class="comp-row"><span class="comp-name">CDN</span><span class="comp-cost">$200</span></div>
+    <div class="comp-row"><span class="comp-name">API Gateway</span><span class="comp-cost">$250</span></div>
+    <div class="comp-row"><span class="comp-name">Queue</span><span class="comp-cost">$125</span></div>
+    <button class="ready-btn">Ready</button>
+  </div>
+
+  <div class="board">
+    <div class="board-inner">
+      <svg class="connections" viewBox="0 0 1000 600" preserveAspectRatio="none">
+        <line x1="130" y1="300" x2="340" y2="300"/>
+        <line x1="340" y1="300" x2="570" y2="195"/>
+        <line x1="340" y1="300" x2="570" y2="405"/>
+        <line x1="570" y1="195" x2="820" y2="300"/>
+        <line x1="570" y1="405" x2="820" y2="300"/>
+        <line x1="340" y1="300" x2="340" y2="108"/>
+      </svg>
+
+      <!-- Client -->
+      <div class="node" style="left:13%;top:50%">
+        <svg class="icon" viewBox="0 0 36 36" fill="none">
+          <rect x="3" y="5" width="30" height="20" stroke="#111" stroke-width="1"/>
+          <line x1="12" y1="29" x2="24" y2="29" stroke="#111" stroke-width="1"/>
+          <line x1="18" y1="25" x2="18" y2="29" stroke="#111" stroke-width="1"/>
+        </svg>
+        <span class="label">Client</span>
+        <div class="health"><div class="health-fill ok" style="width:100%"></div></div>
+      </div>
+
+      <!-- Load Balancer -->
+      <div class="node" style="left:34%;top:50%">
+        <svg class="icon" viewBox="0 0 36 36" fill="none">
+          <polygon points="18,3 33,18 18,33 3,18" stroke="#111" stroke-width="1" fill="none"/>
+          <line x1="18" y1="18" x2="10" y2="26" stroke="#111" stroke-width="1"/>
+          <line x1="18" y1="18" x2="26" y2="26" stroke="#111" stroke-width="1"/>
+          <polygon points="8,25 10,26 12,23" fill="#111" opacity="0.5"/>
+          <polygon points="24,23 26,26 28,25" fill="#111" opacity="0.5"/>
+        </svg>
+        <span class="label">Load Balancer</span>
+        <div class="health"><div class="health-fill ok" style="width:100%"></div></div>
+      </div>
+
+      <!-- Server 1 -->
+      <div class="node" style="left:57%;top:32.5%">
+        <svg class="icon" viewBox="0 0 36 36" fill="none">
+          <rect x="5" y="3" width="26" height="30" stroke="#111" stroke-width="1"/>
+          <line x1="5" y1="11" x2="31" y2="11" stroke="#111" stroke-width="0.5"/>
+          <line x1="5" y1="19" x2="31" y2="19" stroke="#111" stroke-width="0.5"/>
+          <line x1="5" y1="27" x2="31" y2="27" stroke="#111" stroke-width="0.5"/>
+        </svg>
+        <span class="label">Server 1</span>
+        <div class="health"><div class="health-fill ok" style="width:92%"></div></div>
+      </div>
+
+      <!-- Server 2 (unhealthy — sole use of red) -->
+      <div class="node" style="left:57%;top:67.5%">
+        <svg class="icon" viewBox="0 0 36 36" fill="none">
+          <rect x="5" y="3" width="26" height="30" stroke="#111" stroke-width="1"/>
+          <line x1="5" y1="11" x2="31" y2="11" stroke="#111" stroke-width="0.5"/>
+          <line x1="5" y1="19" x2="31" y2="19" stroke="#111" stroke-width="0.5"/>
+          <line x1="5" y1="27" x2="31" y2="27" stroke="#111" stroke-width="0.5"/>
+          <rect x="25" y="27" width="7" height="7" fill="#111"/>
+          <text x="28.5" y="32.5" text-anchor="middle" font-family="DM Sans,sans-serif" font-weight="500" font-size="6" fill="#fafafa">2</text>
+        </svg>
+        <span class="label">Server 2</span>
+        <div class="health"><div class="health-fill bad" style="width:38%"></div></div>
+      </div>
+
+      <!-- Database -->
+      <div class="node db" style="left:82%;top:50%">
+        <svg class="icon" viewBox="0 0 36 36" fill="none">
+          <ellipse cx="18" cy="9" rx="13" ry="5" stroke="#111" stroke-width="1"/>
+          <line x1="5" y1="9" x2="5" y2="27" stroke="#111" stroke-width="1"/>
+          <line x1="31" y1="9" x2="31" y2="27" stroke="#111" stroke-width="1"/>
+          <ellipse cx="18" cy="27" rx="13" ry="5" stroke="#111" stroke-width="1"/>
+          <ellipse cx="18" cy="18" rx="13" ry="5" stroke="#111" stroke-width="0.5" opacity="0.2"/>
+        </svg>
+        <span class="label">Database</span>
+        <div class="health"><div class="health-fill ok" style="width:88%"></div></div>
+      </div>
+
+      <!-- Cache -->
+      <div class="node cache" style="left:34%;top:18%">
+        <svg class="icon" viewBox="0 0 36 36" fill="none">
+          <circle cx="18" cy="18" r="14" stroke="#111" stroke-width="1"/>
+          <polygon points="20,5 13,20 17,20 14,31 26,16 20,16" stroke="#111" stroke-width="1" fill="none" stroke-linejoin="miter"/>
+        </svg>
+        <span class="label">Cache</span>
+        <div class="health"><div class="health-fill ok" style="width:100%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="chart">
+      <h3>Throughput</h3>
+      <canvas id="c1"></canvas>
+    </div>
+    <div class="chart">
+      <h3>Latency</h3>
+      <canvas id="c2"></canvas>
+    </div>
+    <div class="reliability">
+      <span class="reliability-value">95%</span>
+      <span class="reliability-label">Reliability</span>
+    </div>
+  </div>
+</div>
+
+<script>
+function drawChart(id, color) {
+  var c = document.getElementById(id);
+  var ctx = c.getContext('2d');
+  var dpr = window.devicePixelRatio || 1;
+  var rect = c.getBoundingClientRect();
+  c.width = rect.width * dpr;
+  c.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  var w = rect.width, h = rect.height;
+
+  // Faint horizontal grid
+  ctx.strokeStyle = '#f0f0f0';
+  ctx.lineWidth = 0.5;
+  for (var y = 0; y < h; y += 25) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
+  // Generate data
+  var pts = [];
+  for (var i = 0; i < 60; i++) {
+    pts.push(Math.sin(i * 0.25) * 18 + 45 + Math.random() * 8);
+  }
+
+  // Fill area
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  for (var i = 0; i < pts.length; i++) {
+    ctx.lineTo(i * (w / 60), h - pts[i]);
+  }
+  ctx.lineTo(w, h);
+  ctx.closePath();
+  var g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, color + '0a');
+  g.addColorStop(1, 'transparent');
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  for (var i = 0; i < pts.length; i++) {
+    if (i === 0) ctx.moveTo(0, h - pts[i]);
+    else ctx.lineTo(i * (w / 60), h - pts[i]);
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+drawChart('c1', '#111111');
+drawChart('c2', '#999999');
+</script>
+</body>
+</html>

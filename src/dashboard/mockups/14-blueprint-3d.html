@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stack Attack — Blueprint 3D Isometric</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Archivo+Narrow:wght@400;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#e8f0f8;--blue:#1a3a6a;--line:#3a6aaa;--light:#c0d4e8;
+  --accent:#d4432a;--dim:#6688aa;--white:#f0f4f8;
+  --stroke:1.5px;
+}
+html{height:100%}
+body{background:var(--bg);color:var(--blue);font-family:'Courier Prime',monospace;min-height:100%;display:flex;flex-direction:column}
+/* Blueprint grid on body */
+body::before{content:'';position:fixed;inset:0;background-image:
+  linear-gradient(var(--light) 1px,transparent 1px),
+  linear-gradient(90deg,var(--light) 1px,transparent 1px);
+  background-size:20px 20px;opacity:0.5;pointer-events:none;z-index:0}
+
+/* ── Top Bar ── */
+.topbar{position:relative;z-index:10;display:flex;align-items:center;justify-content:space-between;padding:12px 28px;border-bottom:2px solid var(--blue);background:rgba(232,240,248,0.95);flex-shrink:0}
+.topbar h1{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:1.15rem;text-transform:uppercase;letter-spacing:0.3em}
+.topbar-stats{display:flex;gap:22px;font-size:0.7rem}
+.stat{text-transform:uppercase;letter-spacing:0.05em}
+.stat-value{font-weight:700}
+.stat-label{color:var(--dim);font-size:0.6rem}
+.topbar-sub{font-family:'Courier Prime',monospace;font-size:0.55rem;color:var(--dim);letter-spacing:0.08em;margin-top:1px}
+
+/* ── Board Container ── */
+.board-wrap{position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0}
+
+/* ── Isometric Stage ── */
+.iso-stage{
+  position:relative;
+  width:860px;height:480px;
+  transform:perspective(1000px) rotateX(50deg) rotateZ(-45deg);
+  transform-style:preserve-3d;
+  margin-top:-10px;
+}
+/* Ground plane */
+.ground{
+  position:absolute;inset:0;
+  border:2px solid var(--blue);
+  background:
+    repeating-linear-gradient(45deg,transparent,transparent 5px,rgba(26,58,106,0.06) 5px,rgba(26,58,106,0.06) 6px),
+    repeating-linear-gradient(-45deg,transparent,transparent 5px,rgba(26,58,106,0.06) 5px,rgba(26,58,106,0.06) 6px);
+}
+.ground::before{
+  content:'';position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(26,58,106,0.1) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(26,58,106,0.1) 1px,transparent 1px);
+  background-size:40px 40px;
+}
+
+/* ── 3D Wireframe ── */
+.w3d{position:absolute;transform-style:preserve-3d;cursor:pointer;z-index:3}
+.w3d:hover .f{border-color:var(--accent)!important}
+.w3d:hover .er{border-color:var(--accent)!important}
+.w3d:hover .vl{border-color:var(--accent)!important}
+
+.f{position:absolute;border:var(--stroke) solid var(--blue);background:transparent;backface-visibility:visible}
+.fd{position:absolute;border:0;border-top:0.8px solid var(--blue);background:transparent}
+.fd.dashed{border-top-style:dashed}
+
+/* Labels (counter-rotated to stay readable) */
+.lb3{position:absolute;font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:0.12em;color:var(--blue);white-space:nowrap;transform:rotateZ(45deg) rotateX(-50deg);z-index:6}
+.sl3{position:absolute;font-family:'Courier Prime',monospace;font-size:9px;color:var(--dim);white-space:nowrap;transform:rotateZ(45deg) rotateX(-50deg);z-index:6}
+
+/* Dimension text */
+.de{position:absolute;font-family:'Courier Prime',monospace;font-size:8px;color:var(--dim);white-space:nowrap;z-index:5;transform:rotateZ(45deg) rotateX(-50deg)}
+
+/* Shadow on ground */
+.sh{position:absolute;background:rgba(26,58,106,0.05);border:0.5px solid rgba(26,58,106,0.06);z-index:0}
+
+/* Annotation circle (red) */
+.ac{position:absolute;width:24px;height:24px;border-radius:50%;border:2px solid var(--accent);background:var(--accent);display:flex;align-items:center;justify-content:center;font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:12px;color:var(--white);transform:rotateZ(45deg) rotateX(-50deg);z-index:7}
+
+/* Crosshair */
+.xh{position:absolute;z-index:5}
+.xh::before,.xh::after{content:'';position:absolute;background:var(--accent)}
+.xh::before{width:18px;height:1.5px;top:50%;left:50%;transform:translate(-50%,-50%)}
+.xh::after{width:1.5px;height:18px;top:50%;left:50%;transform:translate(-50%,-50%)}
+
+/* Construction dashed line */
+.cl{position:absolute;border:0;border-top:0.5px dashed var(--dim);opacity:0.45}
+.cl-v{position:absolute;border:0;border-left:0.5px dashed var(--dim);opacity:0.45}
+
+/* Cylinder parts */
+.er{position:absolute;border:var(--stroke) solid var(--blue);border-radius:50%;background:transparent}
+.er.dashed{border-style:dashed;border-width:0.8px}
+.vl{position:absolute;width:0;border-left:var(--stroke) solid var(--blue)}
+
+/* ── Charts Section ── */
+.charts{position:relative;z-index:10;height:185px;border-top:2px solid var(--blue);display:grid;grid-template-columns:1fr 1fr 200px;padding:12px 24px;gap:18px;background:rgba(232,240,248,0.96);flex-shrink:0}
+.chart h3{font-family:'Archivo Narrow',sans-serif;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.15em;color:var(--dim);margin-bottom:6px}
+.chart canvas{width:100%;height:130px}
+.gauge{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-ring{width:120px;height:120px;position:relative}
+.gauge-ring canvas{width:120px;height:120px}
+.gauge-val{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Archivo Narrow',sans-serif;font-size:1.8rem;font-weight:700;color:var(--blue)}
+.gauge-label{font-family:'Courier Prime',monospace;font-size:0.55rem;color:var(--dim);margin-top:6px;text-transform:uppercase;letter-spacing:0.1em}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>Stack Attack &#8212; System Architecture</h1>
+    <div class="topbar-sub">Isometric Assembly Diagram &#x2014; Axonometric Blueprint View</div>
+  </div>
+  <div class="topbar-stats">
+    <div class="stat"><span class="stat-label">Wave</span> <span class="stat-value">3 / 10</span></div>
+    <div class="stat"><span class="stat-label">Phase</span> <span class="stat-value">BUILD</span></div>
+    <div class="stat"><span class="stat-label">Budget</span> <span class="stat-value" style="color:var(--accent)">$450</span></div>
+    <div class="stat"><span class="stat-label">Availability</span> <span class="stat-value">95.2%</span></div>
+    <div class="stat"><span class="stat-label">Latency</span> <span class="stat-value">3.2</span></div>
+  </div>
+</div>
+
+<div class="board-wrap">
+  <div class="iso-stage" id="stage">
+    <div class="ground"></div>
+
+    <!-- ═══ Shadows ═══ -->
+    <div class="sh" style="left:30px;top:210px;width:140px;height:80px"></div>
+    <div class="sh" style="left:250px;top:200px;width:100px;height:100px"></div>
+    <div class="sh" style="left:475px;top:90px;width:85px;height:140px"></div>
+    <div class="sh" style="left:475px;top:310px;width:85px;height:140px"></div>
+    <div class="sh" style="left:700px;top:185px;width:110px;height:110px"></div>
+    <div class="sh" style="left:310px;top:30px;width:65px;height:65px"></div>
+
+    <!-- ═══ Connection Lines + Dimension Annotations ═══ -->
+    <svg style="position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none">
+      <!-- Client center → LB center -->
+      <line x1="155" y1="250" x2="285" y2="250" stroke="#3a6aaa" stroke-width="1.5"/>
+      <!-- LB → Server1 -->
+      <line x1="330" y1="230" x2="495" y2="155" stroke="#3a6aaa" stroke-width="1.5"/>
+      <!-- LB → Server2 -->
+      <line x1="330" y1="270" x2="495" y2="375" stroke="#3a6aaa" stroke-width="1.5"/>
+      <!-- Server1 → DB -->
+      <line x1="560" y1="155" x2="720" y2="230" stroke="#3a6aaa" stroke-width="1.5"/>
+      <!-- Server2 → DB -->
+      <line x1="560" y1="375" x2="720" y2="270" stroke="#3a6aaa" stroke-width="1.5"/>
+      <!-- LB → Cache (dashed) -->
+      <line x1="305" y1="220" x2="340" y2="90" stroke="#3a6aaa" stroke-width="1.5" stroke-dasharray="6 3"/>
+
+      <!-- Dimension annotations -->
+      <text x="200" y="242" fill="#6688aa" font-family="Courier Prime,monospace" font-size="9">bw: 100</text>
+      <text x="395" y="178" fill="#6688aa" font-family="Courier Prime,monospace" font-size="9">lat: 1</text>
+      <text x="395" y="318" fill="#6688aa" font-family="Courier Prime,monospace" font-size="9">lat: 1</text>
+      <text x="630" y="232" fill="#6688aa" font-family="Courier Prime,monospace" font-size="9">lat: 3</text>
+      <text x="305" y="148" fill="#6688aa" font-family="Courier Prime,monospace" font-size="9">ttl: 60</text>
+
+      <!-- Outer dimension lines (exploded view style) -->
+      <!-- Bottom width dimension -->
+      <line x1="15" y1="465" x2="845" y2="465" stroke="#6688aa" stroke-width="0.5" stroke-dasharray="3 2"/>
+      <line x1="15" y1="460" x2="15" y2="470" stroke="#6688aa" stroke-width="0.7"/>
+      <line x1="845" y1="460" x2="845" y2="470" stroke="#6688aa" stroke-width="0.7"/>
+      <text x="430" y="462" fill="#6688aa" font-family="Courier Prime,monospace" font-size="8" text-anchor="middle">860u</text>
+      <!-- Right height dimension -->
+      <line x1="848" y1="15" x2="848" y2="465" stroke="#6688aa" stroke-width="0.5" stroke-dasharray="3 2"/>
+      <line x1="843" y1="15" x2="853" y2="15" stroke="#6688aa" stroke-width="0.7"/>
+      <line x1="843" y1="465" x2="853" y2="465" stroke="#6688aa" stroke-width="0.7"/>
+      <text x="840" y="245" fill="#6688aa" font-family="Courier Prime,monospace" font-size="8" text-anchor="end" transform="rotate(-90 840 245)">480u</text>
+    </svg>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- CLIENT — Flat wide box with monitor screen     -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="w3d" style="left:30px;top:200px;width:130px;height:70px">
+      <!-- Bottom -->
+      <div class="f" style="width:130px;height:70px;transform:translateZ(0)"></div>
+      <!-- Top -->
+      <div class="f" style="width:130px;height:70px;transform:translateZ(28px)"></div>
+      <!-- Front -->
+      <div class="f" style="width:130px;height:28px;bottom:0;transform:rotateX(-90deg);transform-origin:bottom"></div>
+      <!-- Back -->
+      <div class="f" style="width:130px;height:28px;top:0;transform:rotateX(90deg);transform-origin:top"></div>
+      <!-- Left -->
+      <div class="f" style="width:70px;height:28px;top:0;left:0;transform:rotateY(90deg);transform-origin:top left"></div>
+      <!-- Right -->
+      <div class="f" style="width:70px;height:28px;top:0;right:0;transform:rotateY(-90deg);transform-origin:top right"></div>
+      <!-- Screen outline on top face -->
+      <div class="f" style="width:100px;height:46px;left:15px;top:12px;transform:translateZ(29px);border:0.8px dashed var(--blue)"></div>
+      <!-- Scan lines -->
+      <div class="fd" style="width:88px;left:21px;top:22px;transform:translateZ(29px)"></div>
+      <div class="fd" style="width:88px;left:21px;top:34px;transform:translateZ(29px)"></div>
+      <div class="fd" style="width:88px;left:21px;top:46px;transform:translateZ(29px)"></div>
+      <!-- Construction line extending right -->
+      <div class="cl" style="width:170px;left:-20px;top:35px;transform:translateZ(32px)"></div>
+    </div>
+    <div class="lb3" style="left:50px;top:280px">Client</div>
+    <div class="sl3" style="left:50px;top:296px">Entry Point</div>
+    <!-- Client dimension -->
+    <div class="de" style="left:58px;top:198px">130 x 70 x 28</div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- LOAD BALANCER — Diamond shape in 3D            -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="w3d" style="left:255px;top:200px;width:90px;height:90px">
+      <!-- Bottom diamond (rotated square) -->
+      <div class="f" style="width:62px;height:62px;left:14px;top:14px;transform:rotateZ(45deg) translateZ(0)"></div>
+      <!-- Top diamond -->
+      <div class="f" style="width:62px;height:62px;left:14px;top:14px;transform:rotateZ(45deg) translateZ(44px)"></div>
+      <!-- Side faces of the diamond prism -->
+      <div class="f" style="width:62px;height:44px;left:14px;top:14px;transform:rotateZ(45deg) rotateX(-90deg);transform-origin:bottom"></div>
+      <div class="f" style="width:62px;height:44px;left:14px;top:14px;transform:rotateZ(45deg) rotateX(90deg);transform-origin:top"></div>
+      <div class="f" style="width:44px;height:62px;left:14px;top:14px;transform:rotateZ(45deg) rotateY(90deg);transform-origin:left"></div>
+      <div class="f" style="width:44px;height:62px;left:14px;top:14px;transform:rotateZ(45deg) rotateY(-90deg);transform-origin:right"></div>
+      <!-- Inner dashed diamond -->
+      <div class="f" style="width:38px;height:38px;left:26px;top:26px;transform:rotateZ(45deg) translateZ(22px);border:0.8px dashed var(--blue)"></div>
+      <!-- Split-arrow overlay -->
+      <svg style="position:absolute;width:90px;height:90px;top:0;left:0;transform:translateZ(46px);pointer-events:none" viewBox="0 0 90 90">
+        <line x1="45" y1="45" x2="12" y2="22" stroke="#1a3a6a" stroke-width="1"/>
+        <line x1="45" y1="45" x2="12" y2="68" stroke="#1a3a6a" stroke-width="1"/>
+        <line x1="45" y1="45" x2="78" y2="22" stroke="#1a3a6a" stroke-width="1"/>
+        <line x1="45" y1="45" x2="78" y2="68" stroke="#1a3a6a" stroke-width="1"/>
+        <polygon points="10,20 16,23 13,27" fill="#1a3a6a"/>
+        <polygon points="10,70 16,67 13,63" fill="#1a3a6a"/>
+        <polygon points="80,20 74,23 77,27" fill="#1a3a6a"/>
+        <polygon points="80,70 74,67 77,63" fill="#1a3a6a"/>
+        <circle cx="45" cy="45" r="2.5" fill="#d4432a"/>
+      </svg>
+      <div class="cl" style="width:140px;left:-25px;top:45px;transform:translateZ(48px)"></div>
+    </div>
+    <div class="lb3" style="left:255px;top:298px">Load Balancer</div>
+    <div class="sl3" style="left:255px;top:314px">Round-robin T1</div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SERVER 1 — Tall tower wireframe box             -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="w3d" style="left:478px;top:70px;width:75px;height:75px">
+      <!-- Bottom -->
+      <div class="f" style="width:75px;height:75px;transform:translateZ(0)"></div>
+      <!-- Top -->
+      <div class="f" style="width:75px;height:75px;transform:translateZ(110px)"></div>
+      <!-- Front -->
+      <div class="f" style="width:75px;height:110px;bottom:0;transform:rotateX(-90deg);transform-origin:bottom"></div>
+      <!-- Back -->
+      <div class="f" style="width:75px;height:110px;top:0;transform:rotateX(90deg);transform-origin:top"></div>
+      <!-- Left -->
+      <div class="f" style="width:75px;height:110px;left:0;top:0;transform:rotateY(90deg);transform-origin:left"></div>
+      <!-- Right -->
+      <div class="f" style="width:75px;height:110px;right:0;top:0;transform:rotateY(-90deg);transform-origin:right"></div>
+      <!-- Horizontal section lines on front face -->
+      <div class="fd" style="width:75px;left:0;bottom:0;transform:rotateX(-90deg) translateZ(-36px);transform-origin:bottom"></div>
+      <div class="fd" style="width:75px;left:0;bottom:0;transform:rotateX(-90deg) translateZ(-73px);transform-origin:bottom"></div>
+      <!-- Dashed inner panels (rack bays) on front -->
+      <div class="f" style="width:52px;height:28px;left:12px;bottom:0;transform:rotateX(-90deg) translateZ(-5px);transform-origin:bottom;border:0.8px dashed var(--blue)"></div>
+      <div class="f" style="width:52px;height:28px;left:12px;bottom:0;transform:rotateX(-90deg) translateZ(-42px);transform-origin:bottom;border:0.8px dashed var(--blue)"></div>
+      <div class="f" style="width:52px;height:28px;left:12px;bottom:0;transform:rotateX(-90deg) translateZ(-78px);transform-origin:bottom;border:0.8px dashed var(--blue)"></div>
+      <!-- Vertical construction line -->
+      <div class="cl-v" style="height:150px;left:37px;top:-20px"></div>
+    </div>
+    <div class="lb3" style="left:480px;top:160px">Server 1</div>
+    <div class="sl3" style="left:480px;top:176px">ProcessingCap T1</div>
+    <div class="de" style="left:560px;top:100px">h: 30u</div>
+    <div class="de" style="left:495px;top:150px">w: 20u</div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SERVER 2 — Tower wireframe with red "2" badge   -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="w3d" style="left:478px;top:305px;width:75px;height:75px">
+      <!-- Bottom -->
+      <div class="f" style="width:75px;height:75px;transform:translateZ(0)"></div>
+      <!-- Top -->
+      <div class="f" style="width:75px;height:75px;transform:translateZ(110px)"></div>
+      <!-- Front -->
+      <div class="f" style="width:75px;height:110px;bottom:0;transform:rotateX(-90deg);transform-origin:bottom"></div>
+      <!-- Back -->
+      <div class="f" style="width:75px;height:110px;top:0;transform:rotateX(90deg);transform-origin:top"></div>
+      <!-- Left -->
+      <div class="f" style="width:75px;height:110px;left:0;top:0;transform:rotateY(90deg);transform-origin:left"></div>
+      <!-- Right -->
+      <div class="f" style="width:75px;height:110px;right:0;top:0;transform:rotateY(-90deg);transform-origin:right"></div>
+      <!-- Section lines -->
+      <div class="fd" style="width:75px;left:0;bottom:0;transform:rotateX(-90deg) translateZ(-36px);transform-origin:bottom"></div>
+      <div class="fd" style="width:75px;left:0;bottom:0;transform:rotateX(-90deg) translateZ(-73px);transform-origin:bottom"></div>
+      <!-- Rack bays -->
+      <div class="f" style="width:52px;height:28px;left:12px;bottom:0;transform:rotateX(-90deg) translateZ(-5px);transform-origin:bottom;border:0.8px dashed var(--blue)"></div>
+      <div class="f" style="width:52px;height:28px;left:12px;bottom:0;transform:rotateX(-90deg) translateZ(-42px);transform-origin:bottom;border:0.8px dashed var(--blue)"></div>
+      <div class="f" style="width:52px;height:28px;left:12px;bottom:0;transform:rotateX(-90deg) translateZ(-78px);transform-origin:bottom;border:0.8px dashed var(--blue)"></div>
+      <!-- Red "2" badge -->
+      <div class="ac" style="right:-10px;top:-10px;transform:translateZ(115px) rotateZ(45deg) rotateX(-50deg)">2</div>
+    </div>
+    <div class="lb3" style="left:480px;top:395px">Server 2</div>
+    <div class="sl3" style="left:480px;top:411px">ProcessingCap T1</div>
+    <div class="de" style="left:560px;top:340px">h: 30u</div>
+    <div class="de" style="left:495px;top:385px">w: 20u</div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- DATABASE — Cylinder wireframe                   -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="w3d" style="left:700px;top:180px;width:100px;height:110px">
+      <!-- Bottom ellipse -->
+      <div class="er" style="width:100px;height:40px;left:0;top:70px"></div>
+      <!-- Top ellipse (lifted) -->
+      <div class="er" style="width:100px;height:40px;left:0;top:0;transform:translateZ(80px)"></div>
+      <!-- Middle dashed ellipse -->
+      <div class="er dashed" style="width:100px;height:40px;left:0;top:35px;transform:translateZ(40px)"></div>
+      <!-- Vertical edge lines -->
+      <div class="vl" style="height:70px;left:0;top:20px"></div>
+      <div class="vl" style="height:70px;right:0;top:20px"></div>
+      <!-- Construction cross -->
+      <div class="cl" style="width:130px;left:-15px;top:55px;transform:translateZ(40px)"></div>
+      <div class="cl-v" style="height:130px;left:50px;top:-10px"></div>
+      <!-- Center dot -->
+      <div style="position:absolute;width:5px;height:5px;background:var(--accent);border-radius:50%;left:48px;top:53px;transform:translateZ(40px)"></div>
+    </div>
+    <div class="lb3" style="left:712px;top:300px">Database</div>
+    <div class="sl3" style="left:712px;top:316px">StorageCap T1</div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- CACHE — Small cube with lightning bolt          -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="w3d" style="left:310px;top:30px;width:55px;height:55px">
+      <!-- Bottom -->
+      <div class="f" style="width:55px;height:55px;transform:translateZ(0)"></div>
+      <!-- Top -->
+      <div class="f" style="width:55px;height:55px;transform:translateZ(55px)"></div>
+      <!-- Front -->
+      <div class="f" style="width:55px;height:55px;bottom:0;transform:rotateX(-90deg);transform-origin:bottom"></div>
+      <!-- Back -->
+      <div class="f" style="width:55px;height:55px;top:0;transform:rotateX(90deg);transform-origin:top"></div>
+      <!-- Left -->
+      <div class="f" style="width:55px;height:55px;left:0;top:0;transform:rotateY(90deg);transform-origin:left"></div>
+      <!-- Right -->
+      <div class="f" style="width:55px;height:55px;right:0;top:0;transform:rotateY(-90deg);transform-origin:right"></div>
+      <!-- Lightning bolt on top face -->
+      <svg style="position:absolute;width:32px;height:38px;left:12px;top:8px;transform:translateZ(57px)" viewBox="0 0 32 38" fill="none">
+        <polygon points="18,0 8,18 15,18 13,38 25,16 18,16" stroke="#1a3a6a" stroke-width="1.5" fill="none"/>
+      </svg>
+      <!-- Red crosshair at center of top face -->
+      <div class="xh" style="left:27px;top:27px;width:0;height:0;transform:translateZ(57px)"></div>
+    </div>
+    <div class="lb3" style="left:305px;top:98px">Cache</div>
+    <div class="sl3" style="left:305px;top:114px">CachingCap T1 &#8212; LRU</div>
+
+  </div>
+</div>
+
+<!-- ── Charts Section ── -->
+<div class="charts">
+  <div class="chart">
+    <h3>Throughput (req/tick)</h3>
+    <canvas id="c1"></canvas>
+  </div>
+  <div class="chart">
+    <h3>Latency (ticks)</h3>
+    <canvas id="c2"></canvas>
+  </div>
+  <div class="gauge">
+    <div class="gauge-ring">
+      <canvas id="gaugeCanvas" width="240" height="240" style="width:120px;height:120px"></canvas>
+      <div class="gauge-val">95%</div>
+    </div>
+    <div class="gauge-label">Reliability</div>
+  </div>
+</div>
+
+<script>
+/* ── Line Charts on Graph Paper Grid ── */
+function drawChart(id, color) {
+  var c = document.getElementById(id), ctx = c.getContext('2d');
+  var dpr = 2;
+  c.width = c.offsetWidth * dpr;
+  c.height = 260;
+  ctx.scale(dpr, dpr);
+  var w = c.offsetWidth, h = 130;
+
+  // Fine grid
+  ctx.strokeStyle = '#c0d4e8';
+  ctx.lineWidth = 0.5;
+  for (var y = 0; y <= h; y += 13) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+  for (var x = 0; x <= w; x += w / 20) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+
+  // Major gridlines
+  ctx.strokeStyle = '#a8c0d8';
+  ctx.lineWidth = 0.8;
+  for (var y = 0; y <= h; y += 65) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+  for (var x = 0; x <= w; x += w / 5) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+
+  // Data
+  var pts = [];
+  for (var i = 0; i < 60; i++) pts.push(Math.sin(i * 0.22) * 25 + 60 + Math.random() * 10);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (var i = 0; i < pts.length; i++) {
+    var px = i * (w / 60), py = h - pts[i];
+    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  }
+  ctx.stroke();
+
+  // Data point markers
+  ctx.fillStyle = color;
+  for (var i = 0; i < pts.length; i += 5) {
+    ctx.beginPath();
+    ctx.arc(i * (w / 60), h - pts[i], 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Axis labels
+  ctx.fillStyle = '#6688aa';
+  ctx.font = '9px Courier Prime, monospace';
+  ctx.fillText('0', 2, h - 2);
+  ctx.fillText(color === '#1a3a6a' ? '100' : '10', 2, 10);
+}
+drawChart('c1', '#1a3a6a');
+drawChart('c2', '#d4432a');
+
+/* ── Engineering Gauge with tick marks ── */
+(function() {
+  var c = document.getElementById('gaugeCanvas'), ctx = c.getContext('2d');
+  var cx = 120, cy = 120, r = 100;
+
+  // Outer ring
+  ctx.strokeStyle = '#1a3a6a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+
+  // Inner ring
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(cx, cy, r - 12, 0, Math.PI * 2); ctx.stroke();
+
+  // Tick marks
+  for (var i = 0; i < 40; i++) {
+    var a = (i / 40) * Math.PI * 2 - Math.PI / 2;
+    var len = i % 5 === 0 ? 14 : 7;
+    ctx.strokeStyle = '#1a3a6a';
+    ctx.lineWidth = i % 5 === 0 ? 1.5 : 0.8;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * (r - 2), cy + Math.sin(a) * (r - 2));
+    ctx.lineTo(cx + Math.cos(a) * (r - 2 - len), cy + Math.sin(a) * (r - 2 - len));
+    ctx.stroke();
+  }
+
+  // 95% arc
+  var sa = -Math.PI / 2, ea = sa + 0.95 * Math.PI * 2;
+  ctx.strokeStyle = '#1a3a6a'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(cx, cy, r - 24, sa, ea); ctx.stroke();
+
+  // Remaining 5%
+  ctx.strokeStyle = '#c0d4e8'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.arc(cx, cy, r - 24, ea, sa + Math.PI * 2); ctx.stroke();
+
+  // Center crosshair
+  ctx.strokeStyle = '#6688aa'; ctx.lineWidth = 0.5; ctx.setLineDash([3, 2]);
+  ctx.beginPath(); ctx.moveTo(cx - 30, cy); ctx.lineTo(cx + 30, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy - 30); ctx.lineTo(cx, cy + 30); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Center dot
+  ctx.fillStyle = '#d4432a';
+  ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fill();
+})();
+</script>
+</body>
+</html>

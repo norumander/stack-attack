@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stack Attack — Military Tactical</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1a1f15;--surface:#222818;--border:#3a4530;--amber:#c8a000;--tan:#c4b28a;--olive-light:#6b7a52;--green:#5a8a3c;--red:#c44830;--orange:#d48030;--text:#c4b28a;--dim:#6b6b52;--hud:#c8a000}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:
+  repeating-linear-gradient(0deg,transparent,transparent 1px,rgba(200,160,0,0.015) 1px,rgba(200,160,0,0.015) 2px),
+  repeating-linear-gradient(90deg,transparent,transparent 1px,rgba(200,160,0,0.015) 1px,rgba(200,160,0,0.015) 2px);
+pointer-events:none;z-index:9999}
+body::after{content:'CLASSIFIED';position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);font-family:'Rajdhani',sans-serif;font-size:8rem;font-weight:700;color:rgba(196,72,48,0.04);pointer-events:none;z-index:9998;letter-spacing:0.3em;white-space:nowrap}
+
+/* Top Bar */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--surface);border-bottom:2px solid var(--amber);position:relative}
+.topbar::before{content:'▮ TACTICAL DISPLAY — AUTH LEVEL 3';position:absolute;top:2px;right:20px;font-size:0.45rem;color:var(--dim);letter-spacing:0.2em;font-family:'Share Tech Mono',monospace}
+.topbar h1{font-family:'Rajdhani',sans-serif;font-size:1.2rem;font-weight:700;color:var(--amber);letter-spacing:0.2em;text-transform:uppercase}
+.topbar h1::before{content:'◆ ';color:var(--red)}
+.topbar-stats{display:flex;gap:20px;font-size:0.75rem}
+.stat{display:flex;flex-direction:column;align-items:center;padding:2px 10px;border:1px solid var(--border);background:rgba(200,160,0,0.03)}
+.stat-label{color:var(--dim);font-size:0.55rem;text-transform:uppercase;letter-spacing:0.15em;font-family:'Share Tech Mono',monospace}
+.stat-value{font-family:'Share Tech Mono',monospace;font-weight:400;font-size:0.8rem}
+.stat-value.amber{color:var(--amber)}
+.stat-value.red{color:var(--red)}
+.stat-value.tan{color:var(--tan)}
+.stat-value.green{color:var(--green)}
+.sla-ok{color:var(--green)}
+.sla-ok::after{content:' ✓'}
+
+/* Layout */
+.main{display:grid;grid-template-columns:200px 1fr;grid-template-rows:1fr 180px;height:calc(100vh - 50px);gap:0}
+
+/* Sidebar */
+.sidebar{background:var(--surface);border-right:2px solid var(--border);padding:14px;display:flex;flex-direction:column;gap:6px}
+.sidebar h2{font-family:'Share Tech Mono',monospace;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.2em;color:var(--amber);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+.sidebar h2::before{content:'// '}
+.comp-tile{background:rgba(200,160,0,0.04);border:1px solid var(--border);padding:8px 10px;cursor:pointer;transition:all 0.2s;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))}
+.comp-tile:hover{background:rgba(200,160,0,0.1);border-color:var(--amber)}
+.comp-tile .name{font-family:'Rajdhani',sans-serif;font-size:0.7rem;font-weight:700;color:var(--tan);text-transform:uppercase;letter-spacing:0.05em}
+.comp-tile .cost{font-size:0.6rem;color:var(--amber);font-family:'Share Tech Mono',monospace}
+.comp-tile .cost::before{content:'COST: '}
+.ready-btn{margin-top:auto;padding:12px;background:var(--amber);color:var(--bg);border:none;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:0.85rem;cursor:pointer;text-transform:uppercase;letter-spacing:0.15em;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px))}
+.ready-btn:hover{background:var(--orange)}
+
+/* Board */
+.board{position:relative;overflow:hidden;background:var(--bg)}
+.board::before{content:'';position:absolute;inset:0;background-image:
+  radial-gradient(circle at center,transparent 0%,transparent 3px,rgba(200,160,0,0.03) 3px,rgba(200,160,0,0.03) 4px,transparent 4px);
+  background-size:80px 80px}
+.board::after{content:'';position:absolute;left:50%;top:50%;width:60px;height:60px;transform:translate(-50%,-50%);border:1px solid rgba(200,160,0,0.12);border-radius:50%;box-shadow:inset 0 0 0 1px rgba(200,160,0,0.06)}
+.crosshair-h,.crosshair-v{position:absolute;background:rgba(200,160,0,0.06)}
+.crosshair-h{left:0;right:0;top:50%;height:1px}
+.crosshair-v{top:0;bottom:0;left:50%;width:1px}
+.board svg.connections{width:100%;height:100%;position:absolute;inset:0;z-index:1}
+.board svg.connections line{stroke:rgba(200,160,0,0.3);stroke-width:2;stroke-dasharray:8 4}
+.board svg.connections line.active{animation:line-pulse 1.5s ease-in-out infinite alternate}
+@keyframes line-pulse{from{stroke:rgba(200,160,0,0.3)}to{stroke:rgba(200,160,0,0.7)}}
+
+/* Nodes */
+.node{position:absolute;background:var(--surface);border:2px solid var(--amber);padding:6px 10px;transform:translate(-50%,-50%);z-index:2;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,6px 100%,0 calc(100% - 6px));width:80px;display:flex;flex-direction:column;align-items:center}
+.node svg.icon{width:40px;height:40px;display:block}
+.node .label{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:0.55rem;color:var(--amber);white-space:nowrap;text-transform:uppercase;letter-spacing:0.1em;margin-top:2px}
+.node .threat{height:4px;background:rgba(200,160,0,0.1);margin-top:4px;overflow:hidden;width:100%}
+.node .threat-fill{height:100%;transition:width 0.3s}
+.node .threat-fill.none{background:var(--green)}
+.node .threat-fill.low{background:var(--green)}
+.node .threat-fill.med{background:var(--orange)}
+.node .threat-fill.high{background:var(--red)}
+.node .threat-label{font-size:0.45rem;color:var(--dim);font-family:'Share Tech Mono',monospace;margin-top:2px}
+/* Crosshair markers on nodes */
+.node::before{content:'';position:absolute;top:-6px;left:50%;transform:translateX(-50%);width:8px;height:8px;border:1.5px solid var(--amber);border-radius:50%;opacity:0.5}
+.node::after{content:'+';position:absolute;top:-5px;left:50%;transform:translateX(-50%);font-size:6px;color:var(--amber);opacity:0.5;font-family:'Share Tech Mono',monospace}
+.node.client{border-color:var(--dim)}
+.node.client::before{border-color:var(--dim)}
+.node.db{border-color:var(--olive-light)}
+.node.db::before{border-color:var(--olive-light)}
+.node.cache{border-color:var(--orange)}
+.node.cache::before{border-color:var(--orange)}
+
+/* Charts */
+.charts{grid-column:1/-1;background:var(--surface);border-top:2px solid var(--border);display:grid;grid-template-columns:1fr 1fr 200px;gap:1px;padding:12px 16px}
+.chart{position:relative}
+.chart h3{font-family:'Share Tech Mono',monospace;font-size:0.5rem;text-transform:uppercase;letter-spacing:0.15em;color:var(--dim);margin-bottom:8px}
+.chart h3::before{content:'» ';color:var(--amber)}
+.chart canvas{width:100%;height:120px}
+.gauge{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-ring{width:100px;height:100px;border-radius:50%;border:3px solid var(--border);position:relative;display:flex;align-items:center;justify-content:center}
+.gauge-ring::before{content:'';position:absolute;inset:4px;border-radius:50%;border:3px solid transparent;border-top-color:var(--green);border-right-color:var(--green);border-bottom-color:var(--green);animation:gauge-spin 4s linear infinite}
+@keyframes gauge-spin{to{transform:rotate(360deg)}}
+.gauge-value{font-family:'Share Tech Mono',monospace;font-size:1.1rem;color:var(--green)}
+.gauge-label{font-size:0.55rem;color:var(--dim);margin-top:6px;text-transform:uppercase;letter-spacing:0.15em;font-family:'Share Tech Mono',monospace}
+
+.classified-stamp{position:absolute;bottom:12px;right:16px;font-family:'Rajdhani',sans-serif;font-size:0.6rem;font-weight:700;color:var(--red);border:2px solid var(--red);padding:2px 10px;transform:rotate(-5deg);opacity:0.5;letter-spacing:0.2em;z-index:3}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>STACK ATTACK</h1>
+  <div class="topbar-stats">
+    <div class="stat"><span class="stat-label">Wave</span><span class="stat-value amber">3 / 10</span></div>
+    <div class="stat"><span class="stat-label">Phase</span><span class="stat-value red">BUILD</span></div>
+    <div class="stat"><span class="stat-label">Budget</span><span class="stat-value tan">$450</span></div>
+    <div class="stat"><span class="stat-label">Availability</span><span class="stat-value sla-ok">95.2%</span></div>
+    <div class="stat"><span class="stat-label">Latency</span><span class="stat-value sla-ok">3.2</span></div>
+  </div>
+</div>
+<div class="main">
+  <div class="sidebar">
+    <h2>Assets</h2>
+    <div class="comp-tile"><div class="name">Server</div><div class="cost">$100</div></div>
+    <div class="comp-tile"><div class="name">Database</div><div class="cost">$200</div></div>
+    <div class="comp-tile"><div class="name">Cache</div><div class="cost">$150</div></div>
+    <div class="comp-tile"><div class="name">Load Balancer</div><div class="cost">$175</div></div>
+    <div class="comp-tile"><div class="name">CDN</div><div class="cost">$200</div></div>
+    <div class="comp-tile"><div class="name">API Gateway</div><div class="cost">$250</div></div>
+    <div class="comp-tile"><div class="name">Queue</div><div class="cost">$125</div></div>
+    <button class="ready-btn">▶ DEPLOY</button>
+  </div>
+  <div class="board">
+    <div class="crosshair-h"></div>
+    <div class="crosshair-v"></div>
+    <svg class="connections">
+      <line x1="13%" y1="50%" x2="34%" y2="50%" class="active"/>
+      <line x1="34%" y1="50%" x2="57%" y2="33%"/>
+      <line x1="34%" y1="50%" x2="57%" y2="67%"/>
+      <line x1="57%" y1="33%" x2="82%" y2="50%"/>
+      <line x1="57%" y1="67%" x2="82%" y2="50%"/>
+      <line x1="34%" y1="50%" x2="34%" y2="18%" style="stroke:rgba(208,128,48,0.3)"/>
+    </svg>
+
+    <!-- Client: monitor/screen -->
+    <div class="node client" style="left:13%;top:50%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="6" width="32" height="22" rx="1" stroke="#6b6b52" stroke-width="2.5"/>
+        <line x1="14" y1="32" x2="26" y2="32" stroke="#6b6b52" stroke-width="2.5"/>
+        <line x1="20" y1="28" x2="20" y2="32" stroke="#6b6b52" stroke-width="2.5"/>
+        <line x1="10" y1="22" x2="30" y2="22" stroke="#6b6b52" stroke-width="1.5" opacity="0.4"/>
+      </svg>
+      <div class="label">Client</div>
+      <div class="threat"><div class="threat-fill none" style="width:100%"></div></div>
+      <div class="threat-label">THREAT: NONE</div>
+    </div>
+
+    <!-- Load Balancer: diamond with split arrows -->
+    <div class="node" style="left:34%;top:50%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="20,4 36,20 20,36 4,20" stroke="#c8a000" stroke-width="2.5" fill="none"/>
+        <line x1="20" y1="20" x2="10" y2="30" stroke="#c8a000" stroke-width="2" opacity="0.6"/>
+        <line x1="20" y1="20" x2="30" y2="30" stroke="#c8a000" stroke-width="2" opacity="0.6"/>
+        <polygon points="8,29 10,30 12,27" fill="#c8a000" opacity="0.6"/>
+        <polygon points="28,27 30,30 32,29" fill="#c8a000" opacity="0.6"/>
+      </svg>
+      <div class="label">Load Balancer</div>
+      <div class="threat"><div class="threat-fill low" style="width:100%"></div></div>
+      <div class="threat-label">THREAT: LOW</div>
+    </div>
+
+    <!-- Server 1: rack server -->
+    <div class="node" style="left:57%;top:33%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="6" y="4" width="28" height="32" rx="1" stroke="#c8a000" stroke-width="2.5"/>
+        <line x1="6" y1="12" x2="34" y2="12" stroke="#c8a000" stroke-width="2"/>
+        <line x1="6" y1="20" x2="34" y2="20" stroke="#c8a000" stroke-width="2"/>
+        <line x1="6" y1="28" x2="34" y2="28" stroke="#c8a000" stroke-width="2"/>
+        <circle cx="30" cy="8" r="1.5" fill="#c8a000" opacity="0.5"/>
+        <circle cx="30" cy="16" r="1.5" fill="#c8a000" opacity="0.5"/>
+        <circle cx="30" cy="24" r="1.5" fill="#c8a000" opacity="0.5"/>
+      </svg>
+      <div class="label">Server 1</div>
+      <div class="threat"><div class="threat-fill low" style="width:92%"></div></div>
+      <div class="threat-label">THREAT: LOW</div>
+    </div>
+
+    <!-- Server 2: rack server with "2" badge -->
+    <div class="node" style="left:57%;top:67%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="6" y="4" width="28" height="32" rx="1" stroke="#c8a000" stroke-width="2.5"/>
+        <line x1="6" y1="12" x2="34" y2="12" stroke="#c8a000" stroke-width="2"/>
+        <line x1="6" y1="20" x2="34" y2="20" stroke="#c8a000" stroke-width="2"/>
+        <line x1="6" y1="28" x2="34" y2="28" stroke="#c8a000" stroke-width="2"/>
+        <circle cx="30" cy="8" r="1.5" fill="#c8a000" opacity="0.5"/>
+        <circle cx="30" cy="16" r="1.5" fill="#c8a000" opacity="0.5"/>
+        <circle cx="30" cy="24" r="1.5" fill="#c8a000" opacity="0.5"/>
+        <!-- "2" badge -->
+        <rect x="26" y="28" width="10" height="10" rx="1" fill="#c8a000"/>
+        <text x="31" y="36" text-anchor="middle" font-family="Rajdhani,sans-serif" font-weight="700" font-size="8" fill="#1a1f15">2</text>
+      </svg>
+      <div class="label">Server 2</div>
+      <div class="threat"><div class="threat-fill med" style="width:65%"></div></div>
+      <div class="threat-label">THREAT: MED</div>
+    </div>
+
+    <!-- Database: cylinder -->
+    <div class="node db" style="left:82%;top:50%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <ellipse cx="20" cy="10" rx="14" ry="5" stroke="#6b7a52" stroke-width="2.5"/>
+        <line x1="6" y1="10" x2="6" y2="30" stroke="#6b7a52" stroke-width="2.5"/>
+        <line x1="34" y1="10" x2="34" y2="30" stroke="#6b7a52" stroke-width="2.5"/>
+        <ellipse cx="20" cy="30" rx="14" ry="5" stroke="#6b7a52" stroke-width="2.5"/>
+        <ellipse cx="20" cy="20" rx="14" ry="5" stroke="#6b7a52" stroke-width="1.5" opacity="0.35"/>
+      </svg>
+      <div class="label">Database</div>
+      <div class="threat"><div class="threat-fill low" style="width:88%"></div></div>
+      <div class="threat-label">THREAT: LOW</div>
+    </div>
+
+    <!-- Cache: lightning bolt in circle -->
+    <div class="node cache" style="left:34%;top:18%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="20" cy="20" r="16" stroke="#d48030" stroke-width="2.5"/>
+        <polygon points="22,6 14,22 19,22 16,34 28,18 22,18" stroke="#d48030" stroke-width="2" fill="none" stroke-linejoin="bevel"/>
+      </svg>
+      <div class="label">Cache</div>
+      <div class="threat"><div class="threat-fill none" style="width:100%"></div></div>
+      <div class="threat-label">THREAT: NONE</div>
+    </div>
+
+    <div class="classified-stamp">CLASSIFIED</div>
+  </div>
+  <div class="charts">
+    <div class="chart">
+      <h3>Throughput</h3>
+      <canvas id="c1"></canvas>
+    </div>
+    <div class="chart">
+      <h3>Latency</h3>
+      <canvas id="c2"></canvas>
+    </div>
+    <div class="gauge">
+      <div class="gauge-ring"><span class="gauge-value">95%</span></div>
+      <div class="gauge-label">Reliability</div>
+    </div>
+  </div>
+</div>
+<script>
+function drawChart(id,color1,color2){
+  const c=document.getElementById(id),ctx=c.getContext('2d');
+  c.width=c.offsetWidth*2;c.height=240;ctx.scale(2,1);
+  const w=c.offsetWidth,h=120;
+  const pts=Array.from({length:50},(_,i)=>Math.sin(i*0.3)*20+50+Math.random()*10);
+  ctx.beginPath();ctx.moveTo(0,h);
+  pts.forEach((p,i)=>{ctx.lineTo(i*(w/50),h-p)});
+  ctx.lineTo(w,h);ctx.closePath();
+  const g=ctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,color1+'33');g.addColorStop(1,'transparent');
+  ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();pts.forEach((p,i)=>{i?ctx.lineTo(i*(w/50),h-p):ctx.moveTo(0,h-p)});
+  ctx.strokeStyle=color1;ctx.lineWidth=2;ctx.stroke();
+  ctx.strokeStyle='rgba(200,160,0,0.08)';ctx.lineWidth=1;
+  for(let y=0;y<h;y+=30){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
+  if(color2){
+    const pts2=Array.from({length:50},(_,i)=>Math.sin(i*0.5+1)*8+15+Math.random()*5);
+    ctx.beginPath();pts2.forEach((p,i)=>{i?ctx.lineTo(i*(w/50),h-p):ctx.moveTo(0,h-p)});
+    ctx.strokeStyle=color2;ctx.lineWidth=1.5;ctx.stroke();
+  }
+}
+drawChart('c1','#5a8a3c','#c44830');
+drawChart('c2','#c8a000');
+</script>
+</body>
+</html>

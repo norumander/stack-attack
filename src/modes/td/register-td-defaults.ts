@@ -8,6 +8,9 @@ import { StorageCapability } from "@capabilities/storage/storage-capability.js";
 import { CachingCapability } from "@capabilities/caching/caching-capability.js";
 import { RoutingCapability } from "@capabilities/routing/routing-capability.js";
 import { AuthCapability } from "@capabilities/auth/auth-capability.js";
+import { QueueCapability } from "@capabilities/queue/queue-capability.js";
+import { BatchProcessingCapability } from "@capabilities/batch-processing/batch-processing-capability.js";
+import { CircuitBreakerCapability } from "@capabilities/circuit-breaker/circuit-breaker-capability.js";
 import {
   SERVER_ENTRY,
   DATABASE_ENTRY,
@@ -16,6 +19,9 @@ import {
   CLIENT_ENTRY,
   CDN_ENTRY,
   API_GATEWAY_ENTRY,
+  QUEUE_ENTRY,
+  WORKER_ENTRY,
+  CIRCUIT_BREAKER_ENTRY,
 } from "./td-component-entries.js";
 
 /**
@@ -73,8 +79,8 @@ export function registerTDDefaults(
     id: "forwarding-pipe" as CapabilityId,
     factory: () =>
       new ForwardingCapability("forwarding-pipe" as CapabilityId, {
-        handledTypes: ["api_read", "api_write", "static_asset", "auth_required"],
-        throughputPerTier: 200,
+        handledTypes: ["api_read", "api_write", "static_asset", "auth_required", "batch", "event", "stream"],
+        throughputPerTier: 500,
         emitForwardedEvent: true,
       }),
   });
@@ -114,6 +120,22 @@ export function registerTDDefaults(
     factory: () => new MonitoringCapability("monitoring" as CapabilityId),
   });
 
+  capRegistry.register({
+    id: "queue" as CapabilityId,
+    factory: () => new QueueCapability("queue" as CapabilityId),
+    documentsSubInterfaces: ["EngineBufferable"],
+  });
+  capRegistry.register({
+    id: "batch-processing" as CapabilityId,
+    factory: () => new BatchProcessingCapability("batch-processing" as CapabilityId),
+    documentsSubInterfaces: ["EnginePullable"],
+  });
+  capRegistry.register({
+    id: "circuit-breaker" as CapabilityId,
+    factory: () => new CircuitBreakerCapability("circuit-breaker" as CapabilityId),
+    documentsSubInterfaces: ["EngineConsultable"],
+  });
+
   compRegistry.register(CLIENT_ENTRY);
   compRegistry.register(SERVER_ENTRY);
   compRegistry.register(DATABASE_ENTRY);
@@ -121,6 +143,9 @@ export function registerTDDefaults(
   compRegistry.register(LOAD_BALANCER_ENTRY);
   compRegistry.register(CDN_ENTRY);
   compRegistry.register(API_GATEWAY_ENTRY);
+  compRegistry.register(QUEUE_ENTRY);
+  compRegistry.register(WORKER_ENTRY);
+  compRegistry.register(CIRCUIT_BREAKER_ENTRY);
 
   compRegistry.validate();
 }

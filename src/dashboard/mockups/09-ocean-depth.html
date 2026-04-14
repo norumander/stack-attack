@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stack Attack — Ocean Depth</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#040820;--surface:#0a1628;--border:#0e2040;--cyan:#00e5ff;--aqua:#00bcd4;--teal:#00897b;--deep:#1a237e;--glow-cyan:rgba(0,229,255,0.15);--glow-aqua:rgba(0,188,212,0.15);--green:#00e676;--yellow:#ffeb3b;--red:#ff5252;--text:#b0d8e8;--dim:#4a6a7a;--jelly:rgba(0,229,255,0.08);--purple:#7c4dff}
+body{background:linear-gradient(180deg,var(--bg) 0%,#061028 40%,var(--surface) 100%);color:var(--text);font-family:'Quicksand',sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+
+/* Bubble particles */
+.bubble{position:fixed;border-radius:50%;background:radial-gradient(circle at 30% 30%,rgba(0,229,255,0.12),rgba(0,229,255,0.02));border:1px solid rgba(0,229,255,0.08);z-index:0;pointer-events:none;animation:bubble-rise linear infinite}
+.bubble:nth-child(1){width:12px;height:12px;left:10%;bottom:-20px;animation-duration:12s;animation-delay:0s}
+.bubble:nth-child(2){width:8px;height:8px;left:25%;bottom:-20px;animation-duration:15s;animation-delay:2s}
+.bubble:nth-child(3){width:18px;height:18px;left:45%;bottom:-20px;animation-duration:18s;animation-delay:1s}
+.bubble:nth-child(4){width:6px;height:6px;left:60%;bottom:-20px;animation-duration:10s;animation-delay:4s}
+.bubble:nth-child(5){width:14px;height:14px;left:75%;bottom:-20px;animation-duration:14s;animation-delay:3s}
+.bubble:nth-child(6){width:10px;height:10px;left:88%;bottom:-20px;animation-duration:16s;animation-delay:5s}
+.bubble:nth-child(7){width:20px;height:20px;left:35%;bottom:-20px;animation-duration:20s;animation-delay:7s}
+.bubble:nth-child(8){width:7px;height:7px;left:55%;bottom:-20px;animation-duration:11s;animation-delay:6s}
+@keyframes bubble-rise{
+  0%{transform:translateY(0) translateX(0) scale(1);opacity:0}
+  10%{opacity:0.6}
+  50%{transform:translateY(-50vh) translateX(20px) scale(1.1)}
+  90%{opacity:0.3}
+  100%{transform:translateY(-110vh) translateX(-10px) scale(0.8);opacity:0}
+}
+
+/* Caustic light effect */
+body::before{content:'';position:fixed;inset:0;background:
+  radial-gradient(ellipse at 20% 20%,rgba(0,229,255,0.03),transparent 50%),
+  radial-gradient(ellipse at 80% 60%,rgba(0,188,212,0.03),transparent 50%),
+  radial-gradient(ellipse at 50% 80%,rgba(0,137,123,0.02),transparent 40%);
+pointer-events:none;z-index:9999;animation:caustic 8s ease-in-out infinite alternate}
+@keyframes caustic{0%{opacity:0.5}50%{opacity:1}100%{opacity:0.6}}
+
+/* Top Bar */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:linear-gradient(180deg,rgba(0,229,255,0.06),transparent);border-bottom:1px solid rgba(0,229,255,0.12);backdrop-filter:blur(8px);position:relative;z-index:2}
+.topbar h1{font-family:'Quicksand',sans-serif;font-size:1.2rem;font-weight:700;color:var(--cyan);text-shadow:0 0 20px rgba(0,229,255,0.4),0 0 40px rgba(0,229,255,0.15);letter-spacing:0.08em}
+.topbar-stats{display:flex;gap:16px;font-size:0.75rem}
+.stat{display:flex;flex-direction:column;align-items:center;padding:4px 14px;border-radius:20px;background:rgba(0,229,255,0.04);border:1px solid rgba(0,229,255,0.1)}
+.stat-label{color:var(--dim);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.1em;font-weight:500}
+.stat-value{font-weight:700;font-size:0.85rem}
+.stat-value.cyan{color:var(--cyan);text-shadow:0 0 8px rgba(0,229,255,0.5)}
+.stat-value.aqua{color:var(--aqua);text-shadow:0 0 8px rgba(0,188,212,0.5)}
+.stat-value.teal{color:var(--teal)}
+.stat-value.green{color:var(--green);text-shadow:0 0 8px rgba(0,230,118,0.4)}
+.sla-ok{color:var(--green)}
+.sla-ok::after{content:' \u2713'}
+
+/* Layout */
+.main{display:grid;grid-template-columns:210px 1fr;grid-template-rows:1fr 180px;height:calc(100vh - 52px);gap:0}
+
+/* Sidebar */
+.sidebar{background:rgba(10,22,40,0.9);border-right:1px solid rgba(0,229,255,0.1);padding:16px;display:flex;flex-direction:column;gap:8px;position:relative;z-index:1;backdrop-filter:blur(8px)}
+.sidebar h2{font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;color:var(--aqua);margin-bottom:8px;text-shadow:0 0 10px rgba(0,188,212,0.3)}
+.comp-tile{background:rgba(0,229,255,0.03);border:1px solid rgba(0,229,255,0.1);border-radius:16px;padding:10px 14px;cursor:pointer;transition:all 0.3s ease}
+.comp-tile:hover{background:rgba(0,229,255,0.08);border-color:rgba(0,229,255,0.3);box-shadow:0 0 20px rgba(0,229,255,0.1),inset 0 0 20px rgba(0,229,255,0.03);transform:translateX(2px)}
+.comp-tile .name{font-weight:700;font-size:0.72rem;color:var(--cyan)}
+.comp-tile .cost{font-size:0.65rem;color:var(--aqua);font-weight:500}
+.ready-btn{margin-top:auto;padding:14px;background:linear-gradient(135deg,var(--aqua),var(--teal));color:white;border:none;border-radius:24px;font-family:'Quicksand',sans-serif;font-weight:700;font-size:0.85rem;cursor:pointer;text-transform:uppercase;letter-spacing:0.1em;box-shadow:0 4px 20px rgba(0,188,212,0.3);transition:all 0.3s}
+.ready-btn:hover{box-shadow:0 4px 30px rgba(0,229,255,0.4);transform:translateY(-1px)}
+
+/* Board */
+.board{background:transparent;position:relative;overflow:hidden}
+.board::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(0,229,255,0.03) 1px,transparent 0);background-size:40px 40px}
+.board svg.connections{width:100%;height:100%;position:absolute;inset:0}
+
+/* Jellyfish glow animation on icons */
+@keyframes jelly-pulse{
+  0%,100%{filter:drop-shadow(0 0 4px rgba(0,229,255,0.3)) drop-shadow(0 0 8px rgba(0,229,255,0.1))}
+  50%{filter:drop-shadow(0 0 8px rgba(0,229,255,0.5)) drop-shadow(0 0 16px rgba(0,229,255,0.2))}
+}
+
+/* Nodes */
+.node{position:absolute;width:80px;height:70px;transform:translate(-50%,-50%);z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:2px}
+.node .icon-wrap{width:40px;height:40px;display:flex;align-items:center;justify-content:center;animation:jelly-pulse 3s ease-in-out infinite}
+.node .icon-wrap svg{overflow:visible}
+.node .label{font-weight:700;font-size:0.5rem;color:var(--cyan);white-space:nowrap;text-shadow:0 0 8px rgba(0,229,255,0.4);margin-top:2px;text-align:center}
+.node .health{width:60px;height:4px;background:rgba(0,229,255,0.08);border-radius:4px;margin-top:3px;overflow:hidden}
+.node .health-fill{height:100%;border-radius:4px;transition:width 0.3s}
+.node .health-fill.good{background:linear-gradient(90deg,var(--teal),var(--green));box-shadow:0 0 6px rgba(0,230,118,0.4)}
+.node .health-fill.warn{background:linear-gradient(90deg,var(--yellow),#ffa726);box-shadow:0 0 6px rgba(255,235,59,0.4)}
+.node .health-fill.bad{background:var(--red);box-shadow:0 0 6px rgba(255,82,82,0.4)}
+
+/* Charts */
+.charts{grid-column:1/-1;background:rgba(10,22,40,0.9);border-top:1px solid rgba(0,229,255,0.1);display:grid;grid-template-columns:1fr 1fr 200px;gap:1px;padding:12px 16px;backdrop-filter:blur(8px)}
+.chart{position:relative}
+.chart h3{font-size:0.6rem;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--dim);margin-bottom:8px}
+.chart canvas{width:100%;height:120px}
+
+/* Gauge */
+.gauge{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-circle{width:105px;height:105px;border-radius:50%;border:2px solid rgba(0,229,255,0.2);position:relative;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle,rgba(0,229,255,0.04),transparent);box-shadow:0 0 30px rgba(0,229,255,0.08),inset 0 0 30px rgba(0,229,255,0.04);animation:gauge-pulse 4s ease-in-out infinite alternate}
+@keyframes gauge-pulse{from{box-shadow:0 0 30px rgba(0,229,255,0.08),inset 0 0 30px rgba(0,229,255,0.04)}to{box-shadow:0 0 40px rgba(0,229,255,0.15),inset 0 0 40px rgba(0,229,255,0.06)}}
+.gauge-circle::before{content:'';position:absolute;inset:6px;border-radius:50%;border:2px solid transparent;border-top-color:var(--green);border-right-color:var(--green);border-bottom-color:rgba(0,230,118,0.3);animation:gauge-spin 4s linear infinite}
+@keyframes gauge-spin{to{transform:rotate(360deg)}}
+.gauge-value{font-size:1.2rem;font-weight:700;color:var(--green);text-shadow:0 0 15px rgba(0,230,118,0.5)}
+.gauge-label{font-size:0.6rem;color:var(--dim);margin-top:6px;text-transform:uppercase;letter-spacing:0.1em;font-weight:600}
+</style>
+</head>
+<body>
+<!-- Bubbles -->
+<div class="bubble"></div><div class="bubble"></div><div class="bubble"></div><div class="bubble"></div>
+<div class="bubble"></div><div class="bubble"></div><div class="bubble"></div><div class="bubble"></div>
+
+<!-- SVG filter definitions for bioluminescent glow -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <filter id="bio-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="bio-glow-strong" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+</svg>
+
+<div class="topbar">
+  <h1>STACK ATTACK</h1>
+  <div class="topbar-stats">
+    <div class="stat"><span class="stat-label">Wave</span><span class="stat-value cyan">3 / 10</span></div>
+    <div class="stat"><span class="stat-label">Phase</span><span class="stat-value aqua">BUILD</span></div>
+    <div class="stat"><span class="stat-label">Budget</span><span class="stat-value teal">$450</span></div>
+    <div class="stat"><span class="stat-label">Availability</span><span class="stat-value sla-ok">95.2%</span></div>
+    <div class="stat"><span class="stat-label">Latency</span><span class="stat-value sla-ok">3.2</span></div>
+  </div>
+</div>
+<div class="main">
+  <div class="sidebar">
+    <h2>Components</h2>
+    <div class="comp-tile"><div class="name">Server</div><div class="cost">$100</div></div>
+    <div class="comp-tile"><div class="name">Database</div><div class="cost">$200</div></div>
+    <div class="comp-tile"><div class="name">Cache</div><div class="cost">$150</div></div>
+    <div class="comp-tile"><div class="name">Load Balancer</div><div class="cost">$175</div></div>
+    <div class="comp-tile"><div class="name">CDN</div><div class="cost">$200</div></div>
+    <div class="comp-tile"><div class="name">API Gateway</div><div class="cost">$250</div></div>
+    <div class="comp-tile"><div class="name">Queue</div><div class="cost">$125</div></div>
+    <button class="ready-btn">&#9654; READY</button>
+  </div>
+  <div class="board">
+    <svg class="connections">
+      <!-- Curved bezier connection lines -->
+      <path d="M 13% 50% C 23% 50%, 24% 50%, 34% 50%" stroke="rgba(0,229,255,0.25)" stroke-width="2" fill="none" filter="url(#bio-glow)">
+        <animate attributeName="stroke-opacity" values="0.2;0.5;0.2" dur="2s" repeatCount="indefinite"/>
+      </path>
+      <path d="M 34% 50% C 42% 48%, 49% 36%, 57% 33%" stroke="rgba(0,229,255,0.2)" stroke-width="2" fill="none" filter="url(#bio-glow)"/>
+      <path d="M 34% 50% C 42% 52%, 49% 64%, 57% 67%" stroke="rgba(0,229,255,0.2)" stroke-width="2" fill="none" filter="url(#bio-glow)"/>
+      <path d="M 57% 33% C 66% 36%, 73% 44%, 82% 50%" stroke="rgba(0,229,255,0.2)" stroke-width="2" fill="none" filter="url(#bio-glow)"/>
+      <path d="M 57% 67% C 66% 64%, 73% 56%, 82% 50%" stroke="rgba(0,229,255,0.2)" stroke-width="2" fill="none" filter="url(#bio-glow)"/>
+      <path d="M 34% 50% C 34% 40%, 34% 28%, 34% 18%" stroke="rgba(255,235,59,0.15)" stroke-width="2" fill="none" filter="url(#bio-glow)"/>
+    </svg>
+
+    <!-- CLIENT node — Monitor/screen, organic rounded -->
+    <div class="node" style="left:13%;top:50%">
+      <div class="icon-wrap" style="animation-delay:0s">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" filter="url(#bio-glow)">
+          <!-- Rounded monitor -->
+          <rect x="4" y="5" width="32" height="21" rx="6" stroke="#00e5ff" stroke-width="1.5" fill="rgba(0,229,255,0.04)"/>
+          <!-- Screen glow -->
+          <rect x="8" y="9" width="24" height="13" rx="4" fill="rgba(0,229,255,0.06)" stroke="#00bcd4" stroke-width="0.8"/>
+          <!-- Stand (organic) -->
+          <path d="M17 26 Q20 30 23 26" stroke="#00e5ff" stroke-width="1.5" fill="none"/>
+          <ellipse cx="20" cy="32" rx="7" ry="2" stroke="#00bcd4" stroke-width="1" fill="none"/>
+        </svg>
+      </div>
+      <div class="label">CLIENT</div>
+      <div class="health"><div class="health-fill good" style="width:100%"></div></div>
+    </div>
+
+    <!-- LOAD BALANCER node — Diamond with split arrows -->
+    <div class="node" style="left:34%;top:50%">
+      <div class="icon-wrap" style="animation-delay:0.5s">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" filter="url(#bio-glow)">
+          <!-- Rounded diamond -->
+          <path d="M20 4 Q32 18 20 36 Q8 18 20 4Z" stroke="#00e5ff" stroke-width="1.5" fill="rgba(0,229,255,0.04)"/>
+          <!-- Split arrows curving outward -->
+          <path d="M20 16 C23 13 26 11 29 10" stroke="#00bcd4" stroke-width="1.5" fill="none"/>
+          <polyline points="27,7 29,10 26,11" stroke="#00bcd4" stroke-width="1.2" fill="none"/>
+          <path d="M20 24 C23 27 26 29 29 30" stroke="#00bcd4" stroke-width="1.5" fill="none"/>
+          <polyline points="27,33 29,30 26,29" stroke="#00bcd4" stroke-width="1.2" fill="none"/>
+          <!-- Center dot -->
+          <circle cx="20" cy="20" r="2.5" fill="rgba(0,229,255,0.2)" stroke="#00e5ff" stroke-width="1"/>
+        </svg>
+      </div>
+      <div class="label">LOAD BALANCER</div>
+      <div class="health"><div class="health-fill good" style="width:100%"></div></div>
+    </div>
+
+    <!-- SERVER 1 node — Rack server rounded -->
+    <div class="node" style="left:57%;top:33%">
+      <div class="icon-wrap" style="animation-delay:1s">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" filter="url(#bio-glow)">
+          <!-- Server chassis rounded -->
+          <rect x="6" y="4" width="28" height="32" rx="6" stroke="#00e5ff" stroke-width="1.5" fill="rgba(0,229,255,0.04)"/>
+          <!-- Drive bay lines (rounded) -->
+          <line x1="11" y1="12" x2="29" y2="12" stroke="#00bcd4" stroke-width="1" stroke-linecap="round"/>
+          <line x1="11" y1="18" x2="29" y2="18" stroke="#00bcd4" stroke-width="1" stroke-linecap="round"/>
+          <line x1="11" y1="24" x2="29" y2="24" stroke="#00bcd4" stroke-width="1" stroke-linecap="round"/>
+          <line x1="11" y1="30" x2="29" y2="30" stroke="#00bcd4" stroke-width="1" stroke-linecap="round"/>
+          <!-- Glowing LEDs -->
+          <circle cx="27" cy="15" r="1.5" fill="#00e676" opacity="0.8"/>
+          <circle cx="27" cy="21" r="1.5" fill="#00e676" opacity="0.8"/>
+          <circle cx="27" cy="27" r="1.5" fill="#00e5ff" opacity="0.6"/>
+        </svg>
+      </div>
+      <div class="label">SERVER 1</div>
+      <div class="health"><div class="health-fill good" style="width:92%"></div></div>
+    </div>
+
+    <!-- SERVER 2 node — Rack server with "2" badge -->
+    <div class="node" style="left:57%;top:67%">
+      <div class="icon-wrap" style="animation-delay:1.5s">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" filter="url(#bio-glow)">
+          <!-- Server chassis rounded -->
+          <rect x="6" y="4" width="28" height="32" rx="6" stroke="#00e5ff" stroke-width="1.5" fill="rgba(0,229,255,0.04)"/>
+          <!-- Drive bay lines -->
+          <line x1="11" y1="12" x2="29" y2="12" stroke="#00bcd4" stroke-width="1" stroke-linecap="round"/>
+          <line x1="11" y1="18" x2="29" y2="18" stroke="#00bcd4" stroke-width="1" stroke-linecap="round"/>
+          <line x1="11" y1="24" x2="29" y2="24" stroke="#00bcd4" stroke-width="1" stroke-linecap="round"/>
+          <line x1="11" y1="30" x2="29" y2="30" stroke="#00bcd4" stroke-width="1" stroke-linecap="round"/>
+          <!-- LEDs showing warn state -->
+          <circle cx="27" cy="15" r="1.5" fill="#00e676" opacity="0.8"/>
+          <circle cx="27" cy="21" r="1.5" fill="#ffeb3b" opacity="0.8"/>
+          <circle cx="27" cy="27" r="1.5" fill="#ff5252" opacity="0.6"/>
+          <!-- "2" badge bubble -->
+          <circle cx="13" cy="15" r="5" fill="rgba(0,229,255,0.12)" stroke="#00e5ff" stroke-width="1"/>
+          <text x="13" y="15" font-family="Quicksand,sans-serif" font-size="7" font-weight="700" fill="#00e5ff" text-anchor="middle" dominant-baseline="central">2</text>
+        </svg>
+      </div>
+      <div class="label">SERVER 2</div>
+      <div class="health"><div class="health-fill warn" style="width:65%"></div></div>
+    </div>
+
+    <!-- DATABASE node — Cylinder (stacked ellipses) -->
+    <div class="node" style="left:82%;top:50%">
+      <div class="icon-wrap" style="animation-delay:2s">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" filter="url(#bio-glow-strong)">
+          <!-- Cylinder body -->
+          <ellipse cx="20" cy="10" rx="12" ry="5" stroke="#7c4dff" stroke-width="1.5" fill="rgba(124,77,255,0.06)"/>
+          <line x1="8" y1="10" x2="8" y2="32" stroke="#7c4dff" stroke-width="1.5"/>
+          <line x1="32" y1="10" x2="32" y2="32" stroke="#7c4dff" stroke-width="1.5"/>
+          <ellipse cx="20" cy="32" rx="12" ry="5" stroke="#7c4dff" stroke-width="1.5" fill="none"/>
+          <!-- Middle ring -->
+          <ellipse cx="20" cy="21" rx="12" ry="4" stroke="rgba(124,77,255,0.4)" stroke-width="0.8" fill="none"/>
+          <!-- Internal glow -->
+          <ellipse cx="20" cy="21" rx="6" ry="2" fill="rgba(124,77,255,0.08)"/>
+        </svg>
+      </div>
+      <div class="label">DATABASE</div>
+      <div class="health"><div class="health-fill good" style="width:88%"></div></div>
+    </div>
+
+    <!-- CACHE node — Lightning bolt inside circle -->
+    <div class="node" style="left:34%;top:18%">
+      <div class="icon-wrap" style="animation-delay:2.5s">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" filter="url(#bio-glow-strong)">
+          <!-- Outer glowing circle -->
+          <circle cx="20" cy="20" r="16" stroke="#ffeb3b" stroke-width="1.5" fill="rgba(255,235,59,0.03)"/>
+          <!-- Inner circle -->
+          <circle cx="20" cy="20" r="11" stroke="rgba(255,235,59,0.4)" stroke-width="0.8" fill="none"/>
+          <!-- Lightning bolt -->
+          <polygon points="22,7 14,22 19,22 17,33 26,18 21,18" fill="rgba(255,235,59,0.12)" stroke="#ffeb3b" stroke-width="1.2" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="label">CACHE</div>
+      <div class="health"><div class="health-fill good" style="width:100%"></div></div>
+    </div>
+  </div>
+  <div class="charts">
+    <div class="chart">
+      <h3>Throughput</h3>
+      <canvas id="c1"></canvas>
+    </div>
+    <div class="chart">
+      <h3>Latency</h3>
+      <canvas id="c2"></canvas>
+    </div>
+    <div class="gauge">
+      <div class="gauge-circle"><span class="gauge-value">95%</span></div>
+      <div class="gauge-label">Reliability</div>
+    </div>
+  </div>
+</div>
+<script>
+function drawChart(id,color1,color2){
+  const c=document.getElementById(id),ctx=c.getContext('2d');
+  c.width=c.offsetWidth*2;c.height=240;ctx.scale(2,1);
+  const w=c.offsetWidth,h=120;
+  const pts=Array.from({length:50},(_,i)=>Math.sin(i*0.3)*20+50+Math.random()*10);
+  ctx.beginPath();ctx.moveTo(0,h);
+  pts.forEach((p,i)=>{ctx.lineTo(i*(w/50),h-p)});
+  ctx.lineTo(w,h);ctx.closePath();
+  const g=ctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,color1+'30');g.addColorStop(1,'transparent');
+  ctx.fillStyle=g;ctx.fill();
+  ctx.shadowColor=color1;ctx.shadowBlur=8;
+  ctx.beginPath();pts.forEach((p,i)=>{i?ctx.lineTo(i*(w/50),h-p):ctx.moveTo(0,h-p)});
+  ctx.strokeStyle=color1;ctx.lineWidth=2;ctx.stroke();
+  ctx.shadowBlur=0;
+  if(color2){
+    const pts2=Array.from({length:50},(_,i)=>Math.sin(i*0.5+1)*8+15+Math.random()*5);
+    ctx.shadowColor=color2;ctx.shadowBlur=6;
+    ctx.beginPath();pts2.forEach((p,i)=>{i?ctx.lineTo(i*(w/50),h-p):ctx.moveTo(0,h-p)});
+    ctx.strokeStyle=color2;ctx.lineWidth=1.5;ctx.stroke();
+    ctx.shadowBlur=0;
+  }
+}
+drawChart('c1','#00e5ff','#00e676');
+drawChart('c2','#7c4dff');
+</script>
+</body>
+</html>

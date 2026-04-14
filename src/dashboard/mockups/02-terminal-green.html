@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stack Attack — Terminal Green</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--g:#33ff33;--gd:#1a8a1a;--bg:#0a0a0a;--surface:#0d0d0d;--dim:#1a6b1a}
+body{background:var(--bg);color:var(--g);font-family:'VT323',monospace;font-size:16px;min-height:100vh;overflow:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,0.6));pointer-events:none;z-index:9998}
+body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 1px,rgba(0,0,0,0.15) 1px,rgba(0,0,0,0.15) 3px);pointer-events:none;z-index:9999;animation:flicker 0.15s infinite}
+@keyframes flicker{0%,100%{opacity:0.97}50%{opacity:1}}
+
+.topbar{padding:8px 16px;border-bottom:1px solid var(--gd);display:flex;justify-content:space-between;font-size:18px}
+.topbar span{margin-right:24px}
+.prompt::before{content:'> ';color:var(--dim)}
+.blink{animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+
+.main{display:grid;grid-template-columns:220px 1fr;grid-template-rows:1fr 160px;height:calc(100vh - 40px)}
+
+.sidebar{border-right:1px solid var(--gd);padding:12px;font-size:16px}
+.sidebar h2{color:var(--dim);font-size:14px;margin-bottom:8px;text-transform:uppercase}
+.comp-tile{padding:6px 0;cursor:pointer;border-bottom:1px dotted var(--dim)}
+.comp-tile:hover{color:#66ff66;text-shadow:0 0 8px rgba(51,255,51,0.5)}
+.comp-tile .cost{color:var(--dim);float:right}
+.ready-btn{margin-top:16px;width:100%;padding:10px;background:transparent;border:2px solid var(--g);color:var(--g);font-family:'VT323',monospace;font-size:20px;cursor:pointer;text-transform:uppercase;letter-spacing:4px}
+.ready-btn:hover{background:var(--g);color:var(--bg);text-shadow:none}
+
+.board{position:relative;background:var(--bg)}
+.board svg.connections{width:100%;height:100%;position:absolute;inset:0}
+.board svg.connections line{stroke:var(--gd);stroke-width:1;stroke-dasharray:6 4}
+.board svg.connections line.active{stroke:var(--g);stroke-width:1.5;animation:dash 1s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-20}}
+
+/* Icon Nodes */
+.node{position:absolute;transform:translate(-50%,-50%);z-index:2;display:flex;flex-direction:column;align-items:center;width:80px;height:70px;cursor:pointer}
+.node svg.icon{width:40px;height:40px;flex-shrink:0}
+.node .label{font-size:13px;color:var(--g);white-space:nowrap;margin-top:2px}
+.node .bar{display:block;height:3px;width:56px;margin-top:3px;background:var(--dim)}
+.node .bar-fill{display:block;height:3px;background:var(--g)}
+.node:hover{text-shadow:0 0 10px var(--g)}
+.node:hover svg.icon{filter:drop-shadow(0 0 6px rgba(51,255,51,0.6))}
+
+.charts{grid-column:1/-1;border-top:1px solid var(--gd);display:grid;grid-template-columns:1fr 1fr 180px;padding:8px 12px;gap:12px}
+.chart h3{font-size:13px;color:var(--dim);margin-bottom:4px;text-transform:uppercase}
+.chart canvas{width:100%;height:110px}
+.gauge{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-val{font-size:48px;color:var(--g);text-shadow:0 0 20px rgba(51,255,51,0.4)}
+.gauge-label{font-size:13px;color:var(--dim);text-transform:uppercase}
+.gauge-bar{width:80%;height:6px;background:var(--dim);margin-top:8px}
+.gauge-bar-fill{width:95%;height:100%;background:var(--g);box-shadow:0 0 6px var(--g)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="prompt">STACK ATTACK v3.1.0</span>
+  <span>WAVE 3/10</span>
+  <span>PHASE: <span style="color:#66ff66">BUILD</span></span>
+  <span>BUDGET: $450</span>
+  <span>AVAIL: 95.2%</span>
+  <span>LAT: 3.2<span class="blink">_</span></span>
+</div>
+<div class="main">
+  <div class="sidebar">
+    <h2>-- components --</h2>
+    <div class="comp-tile">[1] Server <span class="cost">$100</span></div>
+    <div class="comp-tile">[2] Database <span class="cost">$200</span></div>
+    <div class="comp-tile">[3] Cache <span class="cost">$150</span></div>
+    <div class="comp-tile">[4] Load Balancer <span class="cost">$175</span></div>
+    <div class="comp-tile">[5] CDN <span class="cost">$200</span></div>
+    <div class="comp-tile">[6] API Gateway <span class="cost">$250</span></div>
+    <div class="comp-tile">[7] Queue <span class="cost">$125</span></div>
+    <button class="ready-btn">[ENTER] READY</button>
+  </div>
+  <div class="board">
+    <!-- Connection lines -->
+    <svg class="connections">
+      <line x1="12%" y1="50%" x2="33%" y2="50%" class="active"/>
+      <line x1="33%" y1="50%" x2="56%" y2="32%"/>
+      <line x1="33%" y1="50%" x2="56%" y2="68%"/>
+      <line x1="56%" y1="32%" x2="82%" y2="50%"/>
+      <line x1="56%" y1="68%" x2="82%" y2="50%"/>
+      <line x1="33%" y1="50%" x2="33%" y2="18%"/>
+    </svg>
+
+    <!-- CLIENT: Monitor wireframe -->
+    <div class="node" style="left:12%;top:50%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none">
+        <rect x="5" y="5" width="30" height="20" stroke="#33ff33" stroke-width="1"/>
+        <line x1="14" y1="29" x2="26" y2="29" stroke="#33ff33" stroke-width="1"/>
+        <line x1="20" y1="25" x2="20" y2="29" stroke="#33ff33" stroke-width="1"/>
+        <line x1="8" y1="10" x2="18" y2="10" stroke="#33ff33" stroke-width="0.5" opacity="0.5"/>
+        <line x1="8" y1="14" x2="14" y2="14" stroke="#33ff33" stroke-width="0.5" opacity="0.4"/>
+        <rect x="8" y="17" width="4" height="4" stroke="#33ff33" stroke-width="0.5" opacity="0.3"/>
+      </svg>
+      <span class="label">[CLIENT]</span>
+      <span class="bar"><span class="bar-fill" style="width:100%"></span></span>
+    </div>
+
+    <!-- LOAD BALANCER: Diamond with arrows -->
+    <div class="node" style="left:33%;top:50%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none">
+        <polygon points="20,3 37,20 20,37 3,20" stroke="#33ff33" stroke-width="1" fill="none"/>
+        <line x1="20" y1="20" x2="7" y2="13" stroke="#33ff33" stroke-width="1"/>
+        <line x1="20" y1="20" x2="7" y2="27" stroke="#33ff33" stroke-width="1"/>
+        <line x1="20" y1="20" x2="33" y2="13" stroke="#33ff33" stroke-width="1"/>
+        <line x1="20" y1="20" x2="33" y2="27" stroke="#33ff33" stroke-width="1"/>
+        <polygon points="5,12 9,13 7,16" fill="#33ff33"/>
+        <polygon points="5,28 9,27 7,24" fill="#33ff33"/>
+        <polygon points="35,12 31,13 33,16" fill="#33ff33"/>
+        <polygon points="35,28 31,27 33,24" fill="#33ff33"/>
+      </svg>
+      <span class="label">[LOAD_BAL]</span>
+      <span class="bar"><span class="bar-fill" style="width:100%"></span></span>
+    </div>
+
+    <!-- SERVER 1: Rack server -->
+    <div class="node" style="left:56%;top:32%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none">
+        <rect x="7" y="3" width="26" height="34" stroke="#33ff33" stroke-width="1"/>
+        <line x1="7" y1="14" x2="33" y2="14" stroke="#33ff33" stroke-width="0.5"/>
+        <line x1="7" y1="25" x2="33" y2="25" stroke="#33ff33" stroke-width="0.5"/>
+        <line x1="11" y1="8" x2="25" y2="8" stroke="#33ff33" stroke-width="1"/>
+        <line x1="11" y1="19" x2="25" y2="19" stroke="#33ff33" stroke-width="1"/>
+        <line x1="11" y1="30" x2="25" y2="30" stroke="#33ff33" stroke-width="1"/>
+        <circle cx="29" cy="8" r="1" fill="#33ff33"/>
+        <circle cx="29" cy="19" r="1" fill="#33ff33"/>
+        <circle cx="29" cy="30" r="1" fill="#33ff33"/>
+      </svg>
+      <span class="label">[SERVER_1]</span>
+      <span class="bar"><span class="bar-fill" style="width:90%"></span></span>
+    </div>
+
+    <!-- SERVER 2: Rack server with 2 badge -->
+    <div class="node" style="left:56%;top:68%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none">
+        <rect x="7" y="3" width="26" height="34" stroke="#33ff33" stroke-width="1"/>
+        <line x1="7" y1="14" x2="33" y2="14" stroke="#33ff33" stroke-width="0.5"/>
+        <line x1="7" y1="25" x2="33" y2="25" stroke="#33ff33" stroke-width="0.5"/>
+        <line x1="11" y1="8" x2="25" y2="8" stroke="#33ff33" stroke-width="1"/>
+        <line x1="11" y1="19" x2="25" y2="19" stroke="#33ff33" stroke-width="1"/>
+        <line x1="11" y1="30" x2="25" y2="30" stroke="#33ff33" stroke-width="1"/>
+        <circle cx="29" cy="8" r="1" fill="#33ff33"/>
+        <circle cx="29" cy="19" r="1" fill="#33ff33"/>
+        <circle cx="29" cy="30" r="1" fill="#33ff33"/>
+        <!-- 2 badge -->
+        <circle cx="34" cy="34" r="5" stroke="#33ff33" stroke-width="1" fill="#0a0a0a"/>
+        <text x="34" y="37" text-anchor="middle" fill="#33ff33" font-family="VT323,monospace" font-size="9">2</text>
+      </svg>
+      <span class="label">[SERVER_2]</span>
+      <span class="bar"><span class="bar-fill" style="width:62%"></span></span>
+    </div>
+
+    <!-- DATABASE: Cylinder -->
+    <div class="node" style="left:82%;top:50%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none">
+        <ellipse cx="20" cy="8" rx="13" ry="5" stroke="#33ff33" stroke-width="1"/>
+        <line x1="7" y1="8" x2="7" y2="32" stroke="#33ff33" stroke-width="1"/>
+        <line x1="33" y1="8" x2="33" y2="32" stroke="#33ff33" stroke-width="1"/>
+        <ellipse cx="20" cy="32" rx="13" ry="5" stroke="#33ff33" stroke-width="1"/>
+        <ellipse cx="20" cy="20" rx="13" ry="5" stroke="#33ff33" stroke-width="0.5" stroke-dasharray="3 2" opacity="0.4"/>
+      </svg>
+      <span class="label">[DATABASE]</span>
+      <span class="bar"><span class="bar-fill" style="width:85%"></span></span>
+    </div>
+
+    <!-- CACHE: Lightning bolt in circle -->
+    <div class="node" style="left:33%;top:18%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none">
+        <circle cx="20" cy="20" r="16" stroke="#33ff33" stroke-width="1"/>
+        <polygon points="22,5 13,22 19,22 17,36 27,18 21,18" stroke="#33ff33" stroke-width="1" fill="none"/>
+      </svg>
+      <span class="label">[CACHE]</span>
+      <span class="bar"><span class="bar-fill" style="width:100%"></span></span>
+    </div>
+  </div>
+  <div class="charts">
+    <div class="chart"><h3>throughput (req/tick)</h3><canvas id="c1"></canvas></div>
+    <div class="chart"><h3>latency (ticks)</h3><canvas id="c2"></canvas></div>
+    <div class="gauge">
+      <div class="gauge-val">95%</div>
+      <div class="gauge-label">reliability</div>
+      <div class="gauge-bar"><div class="gauge-bar-fill"></div></div>
+    </div>
+  </div>
+</div>
+<script>
+function drawChart(id,color){
+  const c=document.getElementById(id),ctx=c.getContext('2d');
+  c.width=c.offsetWidth*2;c.height=220;ctx.scale(2,1);
+  const w=c.offsetWidth,h=110;
+  const pts=Array.from({length:60},(_,i)=>Math.sin(i*0.2)*25+55+Math.random()*8);
+  ctx.strokeStyle=color;ctx.lineWidth=1;ctx.beginPath();
+  pts.forEach((p,i)=>{
+    const x=i*(w/60),y=h-p;
+    i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+  });
+  ctx.stroke();
+  // Horizontal grid
+  ctx.strokeStyle='#1a6b1a';ctx.lineWidth=0.5;
+  for(let y=0;y<h;y+=22){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
+}
+drawChart('c1','#33ff33');
+drawChart('c2','#33ff33');
+</script>
+</body>
+</html>

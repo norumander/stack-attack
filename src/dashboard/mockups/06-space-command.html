@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stack Attack — Space Command</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700;800&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#050510;--surface:rgba(10,15,40,0.85);--border:rgba(77,201,246,0.15);--holo:#4dc9f6;--holo-dim:rgba(77,201,246,0.4);--accent:#7b61ff;--green:#00e676;--yellow:#ffd740;--red:#ff5252;--text:#c8dce8;--dim:#4a6080;--white:#e8f4ff}
+body{background:var(--bg);color:var(--text);font-family:'Exo 2',sans-serif;min-height:100vh;overflow:hidden;position:relative}
+
+/* Star field */
+.stars,.stars2{position:fixed;inset:0;pointer-events:none}
+.stars{background:radial-gradient(1px 1px at 10% 20%,rgba(255,255,255,0.8),transparent),
+  radial-gradient(1px 1px at 30% 70%,rgba(255,255,255,0.6),transparent),
+  radial-gradient(1px 1px at 50% 10%,rgba(255,255,255,0.7),transparent),
+  radial-gradient(1px 1px at 70% 40%,rgba(255,255,255,0.5),transparent),
+  radial-gradient(1px 1px at 90% 80%,rgba(255,255,255,0.6),transparent),
+  radial-gradient(1px 1px at 15% 55%,rgba(255,255,255,0.4),transparent),
+  radial-gradient(1px 1px at 45% 85%,rgba(255,255,255,0.7),transparent),
+  radial-gradient(1px 1px at 80% 15%,rgba(255,255,255,0.5),transparent),
+  radial-gradient(1.5px 1.5px at 25% 45%,rgba(77,201,246,0.6),transparent),
+  radial-gradient(1.5px 1.5px at 65% 55%,rgba(123,97,255,0.5),transparent);animation:twinkle 6s ease-in-out infinite alternate}
+.stars2{background:radial-gradient(1px 1px at 5% 90%,rgba(255,255,255,0.5),transparent),
+  radial-gradient(1px 1px at 22% 35%,rgba(255,255,255,0.4),transparent),
+  radial-gradient(1px 1px at 55% 50%,rgba(255,255,255,0.6),transparent),
+  radial-gradient(1px 1px at 78% 65%,rgba(255,255,255,0.5),transparent),
+  radial-gradient(1px 1px at 88% 25%,rgba(255,255,255,0.7),transparent),
+  radial-gradient(1px 1px at 42% 12%,rgba(255,255,255,0.3),transparent);animation:twinkle 8s ease-in-out 2s infinite alternate}
+@keyframes twinkle{0%{opacity:0.6}100%{opacity:1}}
+
+/* Glow filter for SVG icons */
+svg.icon .glow{filter:drop-shadow(0 0 4px rgba(77,201,246,0.6))}
+
+/* Top Bar */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border);backdrop-filter:blur(12px);position:relative}
+.topbar::before,.topbar::after{content:'';position:absolute;width:12px;height:12px;border-color:var(--holo);border-style:solid}
+.topbar::before{top:0;left:0;border-width:2px 0 0 2px}
+.topbar::after{top:0;right:0;border-width:2px 2px 0 0}
+.topbar h1{font-family:'Exo 2',sans-serif;font-size:1.1rem;font-weight:800;color:var(--holo);letter-spacing:0.15em;text-shadow:0 0 20px rgba(77,201,246,0.4)}
+.topbar h1::before{content:'◇ ';font-size:0.8rem}
+.topbar-stats{display:flex;gap:18px;font-size:0.75rem}
+.stat{display:flex;flex-direction:column;align-items:center}
+.stat-label{color:var(--dim);font-size:0.55rem;text-transform:uppercase;letter-spacing:0.12em;font-weight:300}
+.stat-value{font-weight:700;font-size:0.85rem}
+.stat-value.holo{color:var(--holo);text-shadow:0 0 8px rgba(77,201,246,0.5)}
+.stat-value.accent{color:var(--accent);text-shadow:0 0 8px rgba(123,97,255,0.5)}
+.stat-value.yellow{color:var(--yellow)}
+.stat-value.green{color:var(--green);text-shadow:0 0 8px rgba(0,230,118,0.4)}
+.sla-ok{color:var(--green);text-shadow:0 0 8px rgba(0,230,118,0.4)}
+.sla-ok::after{content:' ✓'}
+
+/* Layout */
+.main{display:grid;grid-template-columns:200px 1fr;grid-template-rows:1fr 180px;height:calc(100vh - 48px);gap:0}
+
+/* Sidebar */
+.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:16px;display:flex;flex-direction:column;gap:7px;backdrop-filter:blur(12px);position:relative}
+.sidebar::before,.sidebar::after{content:'';position:absolute;width:10px;height:10px;border-color:var(--holo);border-style:solid}
+.sidebar::before{bottom:0;left:0;border-width:0 0 2px 2px}
+.sidebar::after{bottom:0;right:-1px;border-width:0 2px 2px 0}
+.sidebar h2{font-size:0.6rem;font-weight:300;text-transform:uppercase;letter-spacing:0.2em;color:var(--holo);margin-bottom:6px;opacity:0.7}
+.comp-tile{background:rgba(77,201,246,0.04);border:1px solid rgba(77,201,246,0.12);border-radius:2px;padding:9px 10px;cursor:pointer;transition:all 0.25s;position:relative}
+.comp-tile::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:var(--holo);opacity:0;transition:opacity 0.25s}
+.comp-tile:hover{background:rgba(77,201,246,0.1);border-color:var(--holo)}
+.comp-tile:hover::before{opacity:0.6}
+.comp-tile .name{font-size:0.7rem;font-weight:600;color:var(--white);letter-spacing:0.03em}
+.comp-tile .cost{font-size:0.6rem;color:var(--holo);font-weight:300}
+.ready-btn{margin-top:auto;padding:14px;background:transparent;color:var(--holo);border:1px solid var(--holo);border-radius:2px;font-family:'Exo 2',sans-serif;font-weight:700;font-size:0.85rem;cursor:pointer;text-transform:uppercase;letter-spacing:0.15em;position:relative;overflow:hidden;box-shadow:0 0 15px rgba(77,201,246,0.15),inset 0 0 15px rgba(77,201,246,0.05)}
+.ready-btn:hover{background:rgba(77,201,246,0.1);box-shadow:0 0 30px rgba(77,201,246,0.3)}
+.ready-btn::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(77,201,246,0.15),transparent);transform:translateX(-100%);animation:shimmer 3s infinite}
+@keyframes shimmer{to{transform:translateX(100%)}}
+
+/* Board */
+.board{position:relative;overflow:hidden;background:var(--bg)}
+.board::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(77,201,246,0.04) 1px,transparent 0);background-size:50px 50px}
+.board svg.connections{width:100%;height:100%;position:absolute;inset:0;z-index:1}
+.board svg.connections line{stroke:rgba(77,201,246,0.25);stroke-width:2}
+.board svg.connections line.active{animation:line-glow 2s ease-in-out infinite alternate}
+@keyframes line-glow{from{stroke:rgba(77,201,246,0.2);stroke-width:2}to{stroke:rgba(77,201,246,0.7);stroke-width:3}}
+
+/* Pulsing animation for active nodes */
+@keyframes node-pulse{0%{box-shadow:0 0 20px rgba(77,201,246,0.1),inset 0 0 20px rgba(77,201,246,0.03)}50%{box-shadow:0 0 30px rgba(77,201,246,0.25),inset 0 0 25px rgba(77,201,246,0.06)}100%{box-shadow:0 0 20px rgba(77,201,246,0.1),inset 0 0 20px rgba(77,201,246,0.03)}}
+
+/* Nodes */
+.node{position:absolute;background:rgba(10,15,40,0.9);border:1px solid var(--holo);border-radius:3px;padding:6px 8px;transform:translate(-50%,-50%);z-index:2;backdrop-filter:blur(8px);width:80px;display:flex;flex-direction:column;align-items:center;animation:node-pulse 3s ease-in-out infinite}
+/* Corner accents */
+.node::before,.node::after{content:'';position:absolute;width:8px;height:8px;border-color:var(--holo);border-style:solid}
+.node::before{top:-1px;left:-1px;border-width:2px 0 0 2px}
+.node::after{bottom:-1px;right:-1px;border-width:0 2px 2px 0}
+.node svg.icon{width:40px;height:40px;display:block}
+.node .label{font-weight:600;font-size:0.55rem;color:var(--holo);white-space:nowrap;letter-spacing:0.08em;text-transform:uppercase;margin-top:2px}
+.node .health{height:3px;background:rgba(77,201,246,0.1);border-radius:1px;margin-top:4px;overflow:hidden;width:100%}
+.node .health-fill{height:100%;border-radius:1px;transition:width 0.3s}
+.node .health-fill.good{background:var(--green);box-shadow:0 0 6px rgba(0,230,118,0.4)}
+.node .health-fill.warn{background:var(--yellow);box-shadow:0 0 6px rgba(255,215,64,0.4)}
+.node .health-fill.bad{background:var(--red);box-shadow:0 0 6px rgba(255,82,82,0.4)}
+.node.client{border-color:var(--dim);animation:none;box-shadow:0 0 15px rgba(74,96,128,0.1)}
+.node.client::before,.node.client::after{border-color:var(--dim)}
+.node.db{border-color:var(--accent);box-shadow:0 0 20px rgba(123,97,255,0.15)}
+.node.db::before,.node.db::after{border-color:var(--accent)}
+.node.cache{border-color:var(--yellow);box-shadow:0 0 20px rgba(255,215,64,0.1)}
+.node.cache::before,.node.cache::after{border-color:var(--yellow)}
+
+/* Charts */
+.charts{grid-column:1/-1;background:var(--surface);border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 200px;gap:1px;padding:12px 16px;backdrop-filter:blur(12px);position:relative}
+.charts::before,.charts::after{content:'';position:absolute;width:10px;height:10px;border-color:var(--holo);border-style:solid}
+.charts::before{bottom:0;left:0;border-width:0 0 2px 2px}
+.charts::after{bottom:0;right:0;border-width:0 2px 2px 0}
+.chart{position:relative}
+.chart h3{font-size:0.5rem;font-weight:300;text-transform:uppercase;letter-spacing:0.12em;color:var(--dim);margin-bottom:8px}
+.chart canvas{width:100%;height:120px}
+.gauge{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-ring{width:100px;height:100px;border-radius:50%;position:relative;display:flex;align-items:center;justify-content:center}
+.gauge-ring::before{content:'';position:absolute;inset:0;border-radius:50%;border:2px solid rgba(77,201,246,0.1);box-shadow:0 0 15px rgba(77,201,246,0.05)}
+.gauge-ring::after{content:'';position:absolute;inset:3px;border-radius:50%;border:3px solid transparent;border-top-color:var(--green);border-right-color:var(--green);border-bottom-color:var(--green);box-shadow:0 0 10px rgba(0,230,118,0.3),inset 0 0 10px rgba(0,230,118,0.1);animation:gauge-spin 4s linear infinite}
+@keyframes gauge-spin{to{transform:rotate(360deg)}}
+.gauge-value{font-size:1.3rem;font-weight:800;color:var(--green);text-shadow:0 0 20px rgba(0,230,118,0.5);z-index:1}
+.gauge-label{font-size:0.55rem;color:var(--dim);margin-top:8px;text-transform:uppercase;letter-spacing:0.12em;font-weight:300}
+</style>
+</head>
+<body>
+<div class="stars"></div>
+<div class="stars2"></div>
+
+<!-- SVG glow filter definition -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-yellow">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-accent">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+</svg>
+
+<div class="topbar">
+  <h1>STACK ATTACK</h1>
+  <div class="topbar-stats">
+    <div class="stat"><span class="stat-label">Wave</span><span class="stat-value holo">3 / 10</span></div>
+    <div class="stat"><span class="stat-label">Phase</span><span class="stat-value accent">BUILD</span></div>
+    <div class="stat"><span class="stat-label">Budget</span><span class="stat-value yellow">$450</span></div>
+    <div class="stat"><span class="stat-label">Availability</span><span class="stat-value sla-ok">95.2%</span></div>
+    <div class="stat"><span class="stat-label">Latency</span><span class="stat-value sla-ok">3.2</span></div>
+  </div>
+</div>
+<div class="main">
+  <div class="sidebar">
+    <h2>Components</h2>
+    <div class="comp-tile"><div class="name">Server</div><div class="cost">$100</div></div>
+    <div class="comp-tile"><div class="name">Database</div><div class="cost">$200</div></div>
+    <div class="comp-tile"><div class="name">Cache</div><div class="cost">$150</div></div>
+    <div class="comp-tile"><div class="name">Load Balancer</div><div class="cost">$175</div></div>
+    <div class="comp-tile"><div class="name">CDN</div><div class="cost">$200</div></div>
+    <div class="comp-tile"><div class="name">API Gateway</div><div class="cost">$250</div></div>
+    <div class="comp-tile"><div class="name">Queue</div><div class="cost">$125</div></div>
+    <button class="ready-btn">▶ READY</button>
+  </div>
+  <div class="board">
+    <svg class="connections">
+      <line x1="13%" y1="50%" x2="34%" y2="50%" class="active"/>
+      <line x1="34%" y1="50%" x2="57%" y2="33%"/>
+      <line x1="34%" y1="50%" x2="57%" y2="67%"/>
+      <line x1="57%" y1="33%" x2="82%" y2="50%"/>
+      <line x1="57%" y1="67%" x2="82%" y2="50%"/>
+      <line x1="34%" y1="50%" x2="34%" y2="18%" style="stroke:rgba(255,215,64,0.25)"/>
+    </svg>
+
+    <!-- Client: monitor/screen -->
+    <div class="node client" style="left:13%;top:50%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" filter="url(#glow)">
+        <rect x="4" y="6" width="32" height="22" rx="2" stroke="#4a6080" stroke-width="1.5"/>
+        <line x1="14" y1="32" x2="26" y2="32" stroke="#4a6080" stroke-width="1.5"/>
+        <line x1="20" y1="28" x2="20" y2="32" stroke="#4a6080" stroke-width="1.5"/>
+        <rect x="8" y="9" width="24" height="15" rx="1" stroke="#4a6080" stroke-width="0.5" opacity="0.3"/>
+      </svg>
+      <div class="label">Client</div>
+      <div class="health"><div class="health-fill good" style="width:100%"></div></div>
+    </div>
+
+    <!-- Load Balancer: diamond with split arrows -->
+    <div class="node" style="left:34%;top:50%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" filter="url(#glow)">
+        <polygon points="20,4 36,20 20,36 4,20" stroke="#4dc9f6" stroke-width="1.5" fill="rgba(77,201,246,0.05)"/>
+        <line x1="20" y1="20" x2="11" y2="29" stroke="#4dc9f6" stroke-width="1.2"/>
+        <line x1="20" y1="20" x2="29" y2="29" stroke="#4dc9f6" stroke-width="1.2"/>
+        <polygon points="9,28 11,29 13,26" fill="#4dc9f6" opacity="0.7"/>
+        <polygon points="27,26 29,29 31,28" fill="#4dc9f6" opacity="0.7"/>
+      </svg>
+      <div class="label">Load Balancer</div>
+      <div class="health"><div class="health-fill good" style="width:100%"></div></div>
+    </div>
+
+    <!-- Server 1: rack server -->
+    <div class="node" style="left:57%;top:33%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" filter="url(#glow)">
+        <rect x="6" y="4" width="28" height="32" rx="2" stroke="#4dc9f6" stroke-width="1.5" fill="rgba(77,201,246,0.03)"/>
+        <line x1="6" y1="12" x2="34" y2="12" stroke="#4dc9f6" stroke-width="1"/>
+        <line x1="6" y1="20" x2="34" y2="20" stroke="#4dc9f6" stroke-width="1"/>
+        <line x1="6" y1="28" x2="34" y2="28" stroke="#4dc9f6" stroke-width="1"/>
+        <circle cx="30" cy="8" r="1.5" fill="#4dc9f6" opacity="0.6"/>
+        <circle cx="30" cy="16" r="1.5" fill="#4dc9f6" opacity="0.6"/>
+        <circle cx="30" cy="24" r="1.5" fill="#4dc9f6" opacity="0.6"/>
+      </svg>
+      <div class="label">Server 1</div>
+      <div class="health"><div class="health-fill good" style="width:92%"></div></div>
+    </div>
+
+    <!-- Server 2: rack server with "2" badge -->
+    <div class="node" style="left:57%;top:67%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" filter="url(#glow)">
+        <rect x="6" y="4" width="28" height="32" rx="2" stroke="#4dc9f6" stroke-width="1.5" fill="rgba(77,201,246,0.03)"/>
+        <line x1="6" y1="12" x2="34" y2="12" stroke="#4dc9f6" stroke-width="1"/>
+        <line x1="6" y1="20" x2="34" y2="20" stroke="#4dc9f6" stroke-width="1"/>
+        <line x1="6" y1="28" x2="34" y2="28" stroke="#4dc9f6" stroke-width="1"/>
+        <circle cx="30" cy="8" r="1.5" fill="#4dc9f6" opacity="0.6"/>
+        <circle cx="30" cy="16" r="1.5" fill="#4dc9f6" opacity="0.6"/>
+        <circle cx="30" cy="24" r="1.5" fill="#4dc9f6" opacity="0.6"/>
+        <!-- "2" badge -->
+        <circle cx="31" cy="33" r="5" fill="#4dc9f6" opacity="0.9"/>
+        <text x="31" y="35.5" text-anchor="middle" font-family="Exo 2,sans-serif" font-weight="800" font-size="7" fill="#050510">2</text>
+      </svg>
+      <div class="label">Server 2</div>
+      <div class="health"><div class="health-fill warn" style="width:65%"></div></div>
+    </div>
+
+    <!-- Database: cylinder -->
+    <div class="node db" style="left:82%;top:50%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" filter="url(#glow-accent)">
+        <ellipse cx="20" cy="10" rx="14" ry="5" stroke="#7b61ff" stroke-width="1.5" fill="rgba(123,97,255,0.05)"/>
+        <line x1="6" y1="10" x2="6" y2="30" stroke="#7b61ff" stroke-width="1.5"/>
+        <line x1="34" y1="10" x2="34" y2="30" stroke="#7b61ff" stroke-width="1.5"/>
+        <ellipse cx="20" cy="30" rx="14" ry="5" stroke="#7b61ff" stroke-width="1.5" fill="rgba(123,97,255,0.05)"/>
+        <ellipse cx="20" cy="20" rx="14" ry="5" stroke="#7b61ff" stroke-width="0.8" opacity="0.3"/>
+      </svg>
+      <div class="label">Database</div>
+      <div class="health"><div class="health-fill good" style="width:88%"></div></div>
+    </div>
+
+    <!-- Cache: lightning bolt in circle -->
+    <div class="node cache" style="left:34%;top:18%">
+      <svg class="icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" filter="url(#glow-yellow)">
+        <circle cx="20" cy="20" r="16" stroke="#ffd740" stroke-width="1.5" fill="rgba(255,215,64,0.04)"/>
+        <polygon points="22,6 14,22 19,22 16,34 28,18 22,18" stroke="#ffd740" stroke-width="1.2" fill="rgba(255,215,64,0.1)" stroke-linejoin="round"/>
+      </svg>
+      <div class="label">Cache</div>
+      <div class="health"><div class="health-fill good" style="width:100%"></div></div>
+    </div>
+  </div>
+  <div class="charts">
+    <div class="chart">
+      <h3>Throughput</h3>
+      <canvas id="c1"></canvas>
+    </div>
+    <div class="chart">
+      <h3>Latency</h3>
+      <canvas id="c2"></canvas>
+    </div>
+    <div class="gauge">
+      <div class="gauge-ring"><span class="gauge-value">95%</span></div>
+      <div class="gauge-label">Reliability</div>
+    </div>
+  </div>
+</div>
+<script>
+function drawChart(id,color1,color2){
+  const c=document.getElementById(id),ctx=c.getContext('2d');
+  c.width=c.offsetWidth*2;c.height=240;ctx.scale(2,1);
+  const w=c.offsetWidth,h=120;
+  const pts=Array.from({length:50},(_,i)=>Math.sin(i*0.3)*20+50+Math.random()*10);
+  ctx.beginPath();ctx.moveTo(0,h);
+  pts.forEach((p,i)=>{ctx.lineTo(i*(w/50),h-p)});
+  ctx.lineTo(w,h);ctx.closePath();
+  const g=ctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,color1+'33');g.addColorStop(1,'transparent');
+  ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();pts.forEach((p,i)=>{i?ctx.lineTo(i*(w/50),h-p):ctx.moveTo(0,h-p)});
+  ctx.strokeStyle=color1;ctx.lineWidth=2;ctx.stroke();
+  if(color2){
+    const pts2=Array.from({length:50},(_,i)=>Math.sin(i*0.5+1)*8+15+Math.random()*5);
+    ctx.beginPath();pts2.forEach((p,i)=>{i?ctx.lineTo(i*(w/50),h-p):ctx.moveTo(0,h-p)});
+    ctx.strokeStyle=color2;ctx.lineWidth=1.5;ctx.stroke();
+  }
+}
+drawChart('c1','#00e676','#ff5252');
+drawChart('c2','#7b61ff');
+</script>
+</body>
+</html>

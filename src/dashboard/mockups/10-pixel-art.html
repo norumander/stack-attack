@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stack Attack — Pixel Art</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1a1c2c;--surface:#21243d;--border:#3a3f5c;--blue:#3e8bff;--red:#b13e53;--green:#38b764;--dkgreen:#257953;--yellow:#ffcd75;--orange:#ef7d57;--pink:#e6559a;--cyan:#41a6f6;--purple:#5d275d;--navy:#29366f;--white:#f4f4f4;--dim:#5a5f7a;--dark:#13141f;--text:#c8cad0}
+body{background:var(--bg);color:var(--text);font-family:'Press Start 2P',monospace;min-height:100vh;overflow-x:hidden;position:relative;image-rendering:pixelated}
+
+/* Dithered background */
+body::before{content:'';position:fixed;inset:0;background-image:
+  repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,255,255,0.008) 3px,rgba(255,255,255,0.008) 4px),
+  repeating-linear-gradient(90deg,transparent,transparent 3px,rgba(255,255,255,0.008) 3px,rgba(255,255,255,0.008) 4px);
+pointer-events:none;z-index:0}
+
+/* Scanline overlay */
+body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.06) 2px,rgba(0,0,0,0.06) 4px);pointer-events:none;z-index:9999}
+
+/* Top Bar */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface);border-bottom:4px solid var(--border);position:relative;z-index:2;image-rendering:pixelated}
+.topbar::after{content:'';position:absolute;bottom:-8px;left:0;right:0;height:4px;background:repeating-linear-gradient(90deg,var(--blue) 0px,var(--blue) 8px,var(--red) 8px,var(--red) 16px,var(--green) 16px,var(--green) 24px,var(--yellow) 24px,var(--yellow) 32px);image-rendering:pixelated}
+.topbar h1{font-size:0.7rem;color:var(--yellow);text-shadow:2px 2px 0 rgba(0,0,0,0.5);letter-spacing:0.05em}
+.topbar-stats{display:flex;gap:12px;font-size:0.5rem}
+.stat{display:flex;flex-direction:column;align-items:center;padding:4px 10px;border:2px solid var(--border);background:var(--dark)}
+.stat-label{color:var(--dim);font-size:0.4rem;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px}
+.stat-value{font-size:0.55rem}
+.stat-value.blue{color:var(--blue);text-shadow:1px 1px 0 rgba(0,0,0,0.5)}
+.stat-value.pink{color:var(--pink);text-shadow:1px 1px 0 rgba(0,0,0,0.5)}
+.stat-value.yellow{color:var(--yellow)}
+.stat-value.green{color:var(--green)}
+.sla-ok{color:var(--green)}
+.sla-ok::after{content:' OK';color:var(--green)}
+
+/* Layout */
+.main{display:grid;grid-template-columns:200px 1fr;grid-template-rows:1fr 180px;height:calc(100vh - 60px);gap:0}
+
+/* Sidebar */
+.sidebar{background:var(--surface);border-right:4px solid var(--border);padding:12px;display:flex;flex-direction:column;gap:6px;position:relative;z-index:1}
+.sidebar h2{font-size:0.45rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--cyan);margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid var(--border)}
+.comp-tile{background:var(--dark);border:2px solid var(--border);padding:8px 10px;cursor:pointer;transition:all 0.1s;position:relative}
+.comp-tile:hover{border-color:var(--blue);background:rgba(62,139,255,0.08);transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--blue)}
+.comp-tile:active{transform:translate(0,0);box-shadow:none}
+.comp-tile .name{font-size:0.5rem;color:var(--white);margin-bottom:2px}
+.comp-tile .cost{font-size:0.4rem;color:var(--yellow)}
+.comp-tile::before{content:'';position:absolute;top:4px;right:4px;width:6px;height:6px;background:var(--green);box-shadow:0 0 0 1px var(--dark)}
+.ready-btn{margin-top:auto;padding:12px;background:var(--green);color:var(--dark);border:3px solid #2a9a54;font-family:'Press Start 2P',monospace;font-size:0.6rem;cursor:pointer;text-transform:uppercase;letter-spacing:0.05em;box-shadow:3px 3px 0 rgba(0,0,0,0.4);transition:all 0.1s}
+.ready-btn:hover{background:#4dc878;transform:translate(-1px,-1px);box-shadow:4px 4px 0 rgba(0,0,0,0.4)}
+.ready-btn:active{transform:translate(2px,2px);box-shadow:none}
+
+/* Board */
+.board{background:var(--bg);position:relative;overflow:hidden}
+.board::before{content:'';position:absolute;inset:0;background-image:
+  linear-gradient(rgba(255,255,255,0.02) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(255,255,255,0.02) 1px,transparent 1px);
+background-size:32px 32px}
+.board svg.connections{width:100%;height:100%;position:absolute;inset:0}
+.board svg.connections line{stroke:var(--blue);stroke-width:3;stroke-dasharray:6,6;opacity:0.5}
+.board svg.connections line.active{animation:pixel-march 0.5s steps(4) infinite}
+@keyframes pixel-march{from{stroke-dashoffset:0}to{stroke-dashoffset:12}}
+
+/* Nodes */
+.node{position:absolute;width:80px;height:70px;transform:translate(-50%,-50%);z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:1px}
+.node .icon-wrap{width:40px;height:40px;display:flex;align-items:center;justify-content:center}
+.node .icon-wrap svg{image-rendering:pixelated;overflow:visible}
+.node .label{font-size:0.32rem;color:var(--white);white-space:nowrap;text-shadow:1px 1px 0 rgba(0,0,0,0.6);margin-top:2px;text-align:center}
+/* 8-bit segmented health bar */
+.node .health{width:60px;height:8px;background:var(--dark);margin-top:2px;display:flex;gap:1px;padding:1px;border:2px solid var(--border)}
+.node .health-fill{height:100%;display:flex;gap:1px}
+.node .health-fill.good .seg{background:var(--green)}
+.node .health-fill.warn .seg{background:var(--yellow)}
+.node .health-fill.bad .seg{background:var(--red)}
+.seg{width:5px;height:100%;flex-shrink:0}
+
+/* Charts */
+.charts{grid-column:1/-1;background:var(--surface);border-top:4px solid var(--border);display:grid;grid-template-columns:1fr 1fr 200px;gap:1px;padding:10px 14px}
+.chart{position:relative}
+.chart h3{font-size:0.4rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--dim);margin-bottom:6px}
+.chart canvas{width:100%;height:120px}
+
+/* Gauge */
+.gauge{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-ring{width:100px;height:100px;position:relative;display:flex;align-items:center;justify-content:center}
+.gauge-ring::before{content:'';position:absolute;inset:0;border:4px solid var(--border);border-radius:0;background:var(--dark);clip-path:circle(50%)}
+.gauge-ring::after{content:'';position:absolute;inset:8px;border:3px solid var(--green);border-radius:0;clip-path:circle(50%);animation:pixel-blink 2s steps(2) infinite}
+@keyframes pixel-blink{0%,100%{border-color:var(--green)}50%{border-color:#2a9a54}}
+.gauge-value{font-size:0.7rem;color:var(--green);text-shadow:1px 1px 0 rgba(0,0,0,0.6);z-index:1;position:relative}
+.gauge-label{font-size:0.4rem;color:var(--dim);margin-top:6px;text-transform:uppercase;letter-spacing:0.08em}
+.hp-bar{width:90px;height:10px;background:var(--dark);border:2px solid var(--border);margin-top:8px;display:flex;padding:1px;gap:1px}
+.hp-seg{width:8px;height:100%;background:var(--green);flex-shrink:0}
+.hp-seg.empty{background:transparent}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>STACK ATTACK</h1>
+  <div class="topbar-stats">
+    <div class="stat"><span class="stat-label">Wave</span><span class="stat-value blue">3/10</span></div>
+    <div class="stat"><span class="stat-label">Phase</span><span class="stat-value pink">BUILD</span></div>
+    <div class="stat"><span class="stat-label">Budget</span><span class="stat-value yellow">$450</span></div>
+    <div class="stat"><span class="stat-label">Avail</span><span class="stat-value sla-ok">95.2%</span></div>
+    <div class="stat"><span class="stat-label">Latency</span><span class="stat-value sla-ok">3.2</span></div>
+  </div>
+</div>
+<div class="main">
+  <div class="sidebar">
+    <h2>Components</h2>
+    <div class="comp-tile"><div class="name">Server</div><div class="cost">$100</div></div>
+    <div class="comp-tile"><div class="name">Database</div><div class="cost">$200</div></div>
+    <div class="comp-tile"><div class="name">Cache</div><div class="cost">$150</div></div>
+    <div class="comp-tile"><div class="name">Load Balancer</div><div class="cost">$175</div></div>
+    <div class="comp-tile"><div class="name">CDN</div><div class="cost">$200</div></div>
+    <div class="comp-tile"><div class="name">API Gateway</div><div class="cost">$250</div></div>
+    <div class="comp-tile"><div class="name">Queue</div><div class="cost">$125</div></div>
+    <button class="ready-btn">&#9654; READY</button>
+  </div>
+  <div class="board">
+    <svg class="connections">
+      <line x1="13%" y1="50%" x2="34%" y2="50%" class="active"/>
+      <line x1="34%" y1="50%" x2="57%" y2="33%"/>
+      <line x1="34%" y1="50%" x2="57%" y2="67%"/>
+      <line x1="57%" y1="33%" x2="82%" y2="50%"/>
+      <line x1="57%" y1="67%" x2="82%" y2="50%"/>
+      <line x1="34%" y1="50%" x2="34%" y2="18%" style="stroke:var(--yellow);opacity:0.4"/>
+    </svg>
+
+    <!-- CLIENT node — Pixel art monitor (8x8 grid, 5px per cell = 40x40) -->
+    <div class="node" style="left:13%;top:50%">
+      <div class="icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated">
+          <!-- Monitor frame - cyan -->
+          <rect x="5" y="5" width="30" height="20" fill="#41a6f6"/>
+          <!-- Screen interior - dark -->
+          <rect x="10" y="10" width="20" height="10" fill="#1a1c2c"/>
+          <!-- Screen scanline highlights -->
+          <rect x="10" y="12" width="20" height="2" fill="#29366f"/>
+          <rect x="10" y="16" width="20" height="2" fill="#29366f"/>
+          <!-- Stand -->
+          <rect x="17" y="25" width="6" height="5" fill="#41a6f6"/>
+          <!-- Base -->
+          <rect x="10" y="30" width="20" height="5" fill="#41a6f6"/>
+          <!-- Base shadow -->
+          <rect x="10" y="33" width="20" height="2" fill="#29366f"/>
+        </svg>
+      </div>
+      <div class="label">CLIENT</div>
+      <div class="health"><div class="health-fill good"><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div></div></div>
+    </div>
+
+    <!-- LOAD BALANCER node — Pixel diamond + arrows - orange -->
+    <div class="node" style="left:34%;top:50%">
+      <div class="icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated">
+          <!-- Diamond shape built from rects -->
+          <rect x="17" y="2" width="6" height="5" fill="#ef7d57"/>
+          <rect x="12" y="7" width="16" height="5" fill="#ef7d57"/>
+          <rect x="7" y="12" width="26" height="5" fill="#ef7d57"/>
+          <rect x="7" y="17" width="26" height="5" fill="#ef7d57"/>
+          <rect x="12" y="22" width="16" height="5" fill="#ef7d57"/>
+          <rect x="17" y="27" width="6" height="5" fill="#ef7d57"/>
+          <!-- Dark center -->
+          <rect x="15" y="12" width="10" height="10" fill="#1a1c2c"/>
+          <!-- Arrow right-up -->
+          <rect x="27" y="7" width="5" height="5" fill="#ffcd75"/>
+          <rect x="32" y="5" width="5" height="5" fill="#ffcd75"/>
+          <rect x="32" y="10" width="3" height="3" fill="#ffcd75"/>
+          <!-- Arrow right-down -->
+          <rect x="27" y="22" width="5" height="5" fill="#ffcd75"/>
+          <rect x="32" y="24" width="5" height="5" fill="#ffcd75"/>
+          <rect x="32" y="21" width="3" height="3" fill="#ffcd75"/>
+        </svg>
+      </div>
+      <div class="label">LOAD BAL.</div>
+      <div class="health"><div class="health-fill good"><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div></div></div>
+    </div>
+
+    <!-- SERVER 1 node — Pixel rack server - green -->
+    <div class="node" style="left:57%;top:33%">
+      <div class="icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated">
+          <!-- Server chassis -->
+          <rect x="5" y="2" width="30" height="36" fill="#38b764"/>
+          <!-- Shadow/depth on right and bottom -->
+          <rect x="30" y="2" width="5" height="36" fill="#257953"/>
+          <rect x="5" y="33" width="30" height="5" fill="#257953"/>
+          <!-- Drive bays (dark slots) -->
+          <rect x="8" y="5" width="20" height="5" fill="#1a1c2c"/>
+          <rect x="8" y="12" width="20" height="5" fill="#1a1c2c"/>
+          <rect x="8" y="19" width="20" height="5" fill="#1a1c2c"/>
+          <rect x="8" y="26" width="20" height="5" fill="#1a1c2c"/>
+          <!-- Drive LEDs -->
+          <rect x="25" y="7" width="3" height="2" fill="#a7f070"/>
+          <rect x="25" y="14" width="3" height="2" fill="#a7f070"/>
+          <rect x="25" y="21" width="3" height="2" fill="#ffcd75"/>
+        </svg>
+      </div>
+      <div class="label">SERVER 1</div>
+      <div class="health"><div class="health-fill good"><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div></div></div>
+    </div>
+
+    <!-- SERVER 2 node — Pixel rack server with "2" badge - green -->
+    <div class="node" style="left:57%;top:67%">
+      <div class="icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated">
+          <!-- Server chassis -->
+          <rect x="5" y="2" width="30" height="36" fill="#38b764"/>
+          <rect x="30" y="2" width="5" height="36" fill="#257953"/>
+          <rect x="5" y="33" width="30" height="5" fill="#257953"/>
+          <!-- Drive bays -->
+          <rect x="8" y="5" width="20" height="5" fill="#1a1c2c"/>
+          <rect x="8" y="12" width="20" height="5" fill="#1a1c2c"/>
+          <rect x="8" y="19" width="20" height="5" fill="#1a1c2c"/>
+          <rect x="8" y="26" width="20" height="5" fill="#1a1c2c"/>
+          <!-- LEDs - mixed health -->
+          <rect x="25" y="7" width="3" height="2" fill="#a7f070"/>
+          <rect x="25" y="14" width="3" height="2" fill="#ffcd75"/>
+          <rect x="25" y="21" width="3" height="2" fill="#b13e53"/>
+          <!-- "2" badge - pixel art number -->
+          <rect x="8" y="12" width="10" height="10" fill="#5d275d"/>
+          <!-- Pixel "2" character -->
+          <rect x="10" y="13" width="6" height="2" fill="#ffcd75"/>
+          <rect x="14" y="15" width="2" height="2" fill="#ffcd75"/>
+          <rect x="10" y="17" width="6" height="2" fill="#ffcd75"/>
+          <rect x="10" y="19" width="2" height="2" fill="#ffcd75"/>
+          <rect x="10" y="19" width="6" height="2" fill="#ffcd75"/>
+        </svg>
+      </div>
+      <div class="label">SERVER 2</div>
+      <div class="health"><div class="health-fill warn"><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div></div></div>
+    </div>
+
+    <!-- DATABASE node — Pixel cylinder - purple -->
+    <div class="node" style="left:82%;top:50%">
+      <div class="icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated">
+          <!-- Top ellipse approximated as stepped rects -->
+          <rect x="12" y="2" width="16" height="3" fill="#5d275d"/>
+          <rect x="8" y="5" width="24" height="3" fill="#5d275d"/>
+          <!-- Top highlight -->
+          <rect x="12" y="3" width="16" height="2" fill="#b13e53"/>
+          <!-- Body -->
+          <rect x="8" y="8" width="24" height="22" fill="#5d275d"/>
+          <!-- Side shadow -->
+          <rect x="28" y="8" width="4" height="22" fill="#3a1f3a"/>
+          <!-- Middle ring -->
+          <rect x="8" y="18" width="24" height="3" fill="#b13e53"/>
+          <!-- Bottom ellipse -->
+          <rect x="8" y="30" width="24" height="3" fill="#5d275d"/>
+          <rect x="12" y="33" width="16" height="3" fill="#5d275d"/>
+          <!-- Bottom shadow -->
+          <rect x="12" y="34" width="16" height="2" fill="#3a1f3a"/>
+          <!-- Data dots -->
+          <rect x="13" y="12" width="3" height="3" fill="#b13e53"/>
+          <rect x="18" y="12" width="3" height="3" fill="#b13e53"/>
+          <rect x="23" y="12" width="3" height="3" fill="#b13e53"/>
+        </svg>
+      </div>
+      <div class="label">DATABASE</div>
+      <div class="health"><div class="health-fill good"><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div></div></div>
+    </div>
+
+    <!-- CACHE node — Pixel lightning bolt in circle - yellow -->
+    <div class="node" style="left:34%;top:18%">
+      <div class="icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated">
+          <!-- Circle approximated with rects (octagon-ish) -->
+          <rect x="12" y="2" width="16" height="3" fill="#29366f"/>
+          <rect x="7" y="5" width="26" height="3" fill="#29366f"/>
+          <rect x="5" y="8" width="30" height="24" fill="#29366f"/>
+          <rect x="7" y="32" width="26" height="3" fill="#29366f"/>
+          <rect x="12" y="35" width="16" height="3" fill="#29366f"/>
+          <!-- Lightning bolt pixel art - yellow -->
+          <rect x="20" y="5" width="5" height="5" fill="#ffcd75"/>
+          <rect x="17" y="10" width="8" height="3" fill="#ffcd75"/>
+          <rect x="15" y="13" width="5" height="3" fill="#ffcd75"/>
+          <rect x="15" y="16" width="10" height="3" fill="#ef7d57"/>
+          <rect x="20" y="19" width="5" height="3" fill="#ffcd75"/>
+          <rect x="17" y="22" width="8" height="3" fill="#ffcd75"/>
+          <rect x="15" y="25" width="5" height="5" fill="#ffcd75"/>
+          <!-- Highlight spark pixels -->
+          <rect x="25" y="13" width="3" height="3" fill="#ffcd75"/>
+          <rect x="10" y="20" width="3" height="3" fill="#ffcd75"/>
+        </svg>
+      </div>
+      <div class="label">CACHE</div>
+      <div class="health"><div class="health-fill good"><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div><div class="seg"></div></div></div>
+    </div>
+  </div>
+  <div class="charts">
+    <div class="chart">
+      <h3>Throughput</h3>
+      <canvas id="c1"></canvas>
+    </div>
+    <div class="chart">
+      <h3>Latency</h3>
+      <canvas id="c2"></canvas>
+    </div>
+    <div class="gauge">
+      <div class="gauge-ring"><span class="gauge-value">95%</span></div>
+      <div class="gauge-label">Reliability</div>
+      <div class="hp-bar">
+        <div class="hp-seg"></div><div class="hp-seg"></div><div class="hp-seg"></div><div class="hp-seg"></div>
+        <div class="hp-seg"></div><div class="hp-seg"></div><div class="hp-seg"></div><div class="hp-seg"></div>
+        <div class="hp-seg empty"></div><div class="hp-seg empty"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function drawChart(id,color1,color2){
+  const c=document.getElementById(id),ctx=c.getContext('2d');
+  c.width=c.offsetWidth*2;c.height=240;ctx.scale(2,1);
+  const w=c.offsetWidth,h=120;
+  ctx.imageSmoothingEnabled=false;
+  const pts=Array.from({length:50},(_,i)=>Math.sin(i*0.3)*20+50+Math.random()*10);
+  const step=Math.floor(w/50);
+  ctx.beginPath();ctx.moveTo(0,h);
+  pts.forEach((p,i)=>{
+    const x=i*step;
+    ctx.lineTo(x,h-Math.round(p/4)*4);
+    ctx.lineTo(x+step,h-Math.round(p/4)*4);
+  });
+  ctx.lineTo(w,h);ctx.closePath();
+  const g=ctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,color1+'30');g.addColorStop(1,'transparent');
+  ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();
+  pts.forEach((p,i)=>{
+    const x=i*step,y=h-Math.round(p/4)*4;
+    if(i===0){ctx.moveTo(x,y)}else{ctx.lineTo(x,y)}
+    ctx.lineTo(x+step,y);
+  });
+  ctx.strokeStyle=color1;ctx.lineWidth=2;ctx.stroke();
+  pts.forEach((p,i)=>{
+    if(i%5===0){
+      ctx.fillStyle=color1;
+      ctx.fillRect(i*step-2,h-Math.round(p/4)*4-2,4,4);
+    }
+  });
+  if(color2){
+    const pts2=Array.from({length:50},(_,i)=>Math.sin(i*0.5+1)*8+15+Math.random()*5);
+    ctx.beginPath();
+    pts2.forEach((p,i)=>{
+      const x=i*step,y=h-Math.round(p/4)*4;
+      if(i===0){ctx.moveTo(x,y)}else{ctx.lineTo(x,y)}
+      ctx.lineTo(x+step,y);
+    });
+    ctx.strokeStyle=color2;ctx.lineWidth=2;ctx.stroke();
+  }
+  ctx.strokeStyle='rgba(255,255,255,0.04)';ctx.lineWidth=1;
+  for(let y=0;y<h;y+=32){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
+  for(let x=0;x<w;x+=32){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}
+}
+drawChart('c1','#38b764','#b13e53');
+drawChart('c2','#5d275d');
+</script>
+</body>
+</html>

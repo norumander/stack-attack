@@ -233,3 +233,91 @@ export const API_GATEWAY_ENTRY: ComponentRegistryEntry = {
   visual: { icon: "api-gateway", color: "#ec4899", shape: "trapezoid" },
   conditionProfile: DEFAULT_CONDITION_PROFILE,
 };
+
+export const QUEUE_ENTRY: ComponentRegistryEntry = {
+  type: "queue",
+  name: "Queue",
+  description:
+    "Buffers batch requests so your API servers stay responsive. Trades latency for throughput.",
+  longDescription:
+    "A Queue sits between your API path and async Workers. Batch requests are buffered " +
+    "in the Queue instead of blocking Server processing slots. Workers pull from the " +
+    "Queue independently, processing jobs without affecting API response times.",
+  capabilitiesHuman: [
+    "Buffers batch requests in a FIFO queue (32 slots at tier 1)",
+    "Prevents batch jobs from blocking synchronous API traffic",
+    "Workers pull from the Queue to process async",
+  ],
+  capabilities: [
+    { id: "queue" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "forwarding-pipe" as CapabilityId, defaultTier: 1, maxTier: 2 },
+    { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+  ],
+  ports: [
+    { id: "p-in" as PortId, direction: "ingress", dataType: "any", capacity: 2, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "any", capacity: 2, connections: [] },
+  ],
+  placementCost: 125,
+  upgradeCostCurve: [125, 250, 500],
+  visual: { icon: "queue", color: "#f97316", shape: "rectangle" },
+  conditionProfile: DEFAULT_CONDITION_PROFILE,
+};
+
+export const WORKER_ENTRY: ComponentRegistryEntry = {
+  type: "worker",
+  name: "Worker",
+  description:
+    "Async batch processor. Pulls jobs from a Queue without blocking your API servers.",
+  longDescription:
+    "A Worker pulls batch jobs from a connected Queue and processes them independently. " +
+    "At tier 1, it processes 5 batch jobs per tick. Workers scale separately from " +
+    "your API Servers — add more Workers for heavier batch loads without affecting API latency.",
+  capabilitiesHuman: [
+    "Processes batch requests (5/tick at tier 1)",
+    "Pulls from connected Queue component",
+    "Operates independently of synchronous API traffic",
+  ],
+  capabilities: [
+    { id: "batch-processing" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+  ],
+  ports: [
+    { id: "p-in" as PortId, direction: "ingress", dataType: "any", capacity: 2, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "data", capacity: 1, connections: [] },
+  ],
+  placementCost: 125,
+  upgradeCostCurve: [125, 250, 500],
+  visual: { icon: "worker", color: "#eab308", shape: "rectangle" },
+  conditionProfile: DEFAULT_CONDITION_PROFILE,
+};
+
+export const CIRCUIT_BREAKER_ENTRY: ComponentRegistryEntry = {
+  type: "circuit_breaker",
+  name: "Circuit Breaker",
+  description:
+    "Stops traffic to failing servers. Prevents one failure from crashing your entire system.",
+  longDescription:
+    "A Circuit Breaker sits between your Load Balancer and each Server. When a Server " +
+    "fails, the Circuit Breaker detects consecutive failures, opens the circuit, and " +
+    "stops routing traffic to the dead server. Traffic reroutes to healthy servers. " +
+    "When the server recovers, the circuit half-opens and probes with single requests.",
+  capabilitiesHuman: [
+    "CLOSED: passes all traffic through normally",
+    "OPEN: fast-fails traffic to prevent cascade (after 5 failures)",
+    "HALF_OPEN: probes recovery with single requests",
+    "Cooldown: 10 ticks at tier 1, 3 ticks at tier 3",
+  ],
+  capabilities: [
+    { id: "circuit-breaker" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "forwarding-pipe" as CapabilityId, defaultTier: 1, maxTier: 2 },
+    { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+  ],
+  ports: [
+    { id: "p-in" as PortId, direction: "ingress", dataType: "any", capacity: 2, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "any", capacity: 1, connections: [] },
+  ],
+  placementCost: 100,
+  upgradeCostCurve: [100, 200, 400],
+  visual: { icon: "circuit-breaker", color: "#ef4444", shape: "octagon" },
+  conditionProfile: RESILIENT_CONDITION_PROFILE,
+};

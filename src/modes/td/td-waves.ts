@@ -25,6 +25,33 @@ export interface TDWaveDefinition {
     readonly minBudget: number;
     readonly penaltyPerTick: number;
   };
+  /** Override default connection bandwidth (300) in tryConnect for high-intensity waves. */
+  readonly connectionBandwidth?: number;
+  /**
+   * Mid-wave chaos events. Tick is wave-relative (0 = first simulate tick).
+   * Uses symbolic targeting: chaosKind + targetType + targetIndex are resolved
+   * at runtime by the TDModeController against the live topology.
+   */
+  readonly chaosSchedule?: readonly {
+    readonly tick: number;
+    readonly chaosKind: "component_failure" | "zone_outage";
+    readonly targetType?: string;
+    readonly targetIndex?: number;
+    readonly zone?: string;
+    readonly durationTicks?: number;
+  }[];
+  /** Stream request config for waves with stream traffic. */
+  readonly streamConfig?: {
+    readonly duration: number;
+    readonly bandwidth: number;
+  };
+  /** Multi-zone topology override for geographic waves. */
+  readonly zoneTopology?: {
+    readonly zones: readonly string[];
+    readonly pairLatency: ReadonlyMap<string, number>;
+  };
+  /** Zone distribution for traffic generation (zone name → weight 0-1). */
+  readonly zoneDistribution?: ReadonlyMap<string, number>;
 }
 
 export const WAVE_1: TDWaveDefinition = {
@@ -134,5 +161,87 @@ export const WAVE_5: TDWaveDefinition = {
     maxAvgLatency: 7,
     minBudget: 0,
     penaltyPerTick: 5,
+  },
+};
+
+export const WAVE_6: TDWaveDefinition = {
+  id: 6,
+  name: "Async Workloads",
+  startingBudget: 1000,
+  intensity: 250,
+  composition: new Map([
+    ["api_read", 0.25],
+    ["api_write", 0.15],
+    ["static_asset", 0.25],
+    ["auth_required", 0.15],
+    ["batch", 0.15],
+    ["event", 0.05],
+  ]),
+  duration: 30,
+  ttl: 12,
+  availableComponents: [
+    "server", "database", "cache", "load_balancer", "cdn", "api_gateway",
+    "queue", "worker",
+  ],
+  dropThreshold: 0.05,
+  revenuePerRequestType: new Map([
+    ["api_read", 1],
+    ["api_write", 2],
+    ["static_asset", 0.3],
+    ["auth_required", 1.5],
+    ["batch", 5],
+    ["event", 0],
+  ]),
+  keyPoolSize: 15,
+  connectionBandwidth: 500,
+  sla: {
+    availabilityTarget: 0.93,
+    maxAvgLatency: 7,
+    minBudget: 0,
+    penaltyPerTick: 6,
+  },
+};
+
+export const WAVE_7: TDWaveDefinition = {
+  id: 7,
+  name: "The Outage",
+  startingBudget: 1200,
+  intensity: 350,
+  composition: new Map([
+    ["api_read", 0.25],
+    ["api_write", 0.15],
+    ["static_asset", 0.25],
+    ["auth_required", 0.15],
+    ["batch", 0.15],
+    ["event", 0.05],
+  ]),
+  duration: 30,
+  ttl: 12,
+  availableComponents: [
+    "server", "database", "cache", "load_balancer", "cdn", "api_gateway",
+    "queue", "worker", "circuit_breaker",
+  ],
+  dropThreshold: 0.05,
+  revenuePerRequestType: new Map([
+    ["api_read", 1],
+    ["api_write", 2],
+    ["static_asset", 0.3],
+    ["auth_required", 1.5],
+    ["batch", 5],
+    ["event", 0],
+  ]),
+  keyPoolSize: 15,
+  connectionBandwidth: 600,
+  chaosSchedule: [
+    // Tick 15: one server goes down (the real outage)
+    { tick: 15, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
+    // Tick 22: second hit — same server fails again after partial recovery
+    { tick: 22, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
+  ],
+  sla: {
+    availabilityTarget: 0.90,
+    maxAvgLatency: 8,
+    minBudget: -200,
+    penaltyPerTick: 8,
   },
 };

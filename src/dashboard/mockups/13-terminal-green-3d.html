@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stack Attack — Terminal Green 3D Isometric</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--g:#33ff33;--gd:#1a8a1a;--bg:#050505;--dim:#1a6b1a;--glow:rgba(51,255,51,0.35)}
+
+body{background:var(--bg);color:var(--g);font-family:'VT323',monospace;font-size:16px;min-height:100vh;overflow-x:hidden;position:relative}
+
+/* CRT vignette */
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at center,transparent 40%,rgba(0,0,0,0.7));pointer-events:none;z-index:9998}
+/* Scanlines */
+body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 1px,rgba(0,0,0,0.12) 1px,rgba(0,0,0,0.12) 3px);pointer-events:none;z-index:9999;animation:flicker 0.15s infinite}
+@keyframes flicker{0%,100%{opacity:0.97}50%{opacity:1}}
+
+/* ── Top Bar ── */
+.topbar{padding:10px 20px;border-bottom:1px solid var(--gd);display:flex;justify-content:space-between;align-items:center;font-size:18px;background:rgba(0,0,0,0.6);position:relative;z-index:10;flex-wrap:wrap}
+.topbar span{margin-right:24px;white-space:nowrap}
+.prompt::before{content:'> ';color:var(--dim)}
+.blink{animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+.phase-val{color:#66ff66}
+
+/* ── Layout ── */
+.main{display:grid;grid-template-columns:200px 1fr 200px;grid-template-rows:1fr 180px;height:calc(100vh - 48px)}
+
+/* ── Sidebar (component palette) ── */
+.sidebar{border-right:1px solid var(--gd);padding:12px;font-size:16px;background:rgba(0,0,0,0.4);z-index:10}
+.sidebar h2{color:var(--dim);font-size:14px;margin-bottom:8px;text-transform:uppercase;letter-spacing:2px}
+.comp-tile{padding:8px 4px;cursor:pointer;border-bottom:1px dotted var(--dim);transition:all .15s}
+.comp-tile:hover{color:#66ff66;text-shadow:0 0 8px var(--glow);padding-left:8px}
+.comp-tile .cost{color:var(--dim);float:right}
+.ready-btn{margin-top:16px;width:100%;padding:10px;background:transparent;border:2px solid var(--g);color:var(--g);font-family:'VT323',monospace;font-size:20px;cursor:pointer;text-transform:uppercase;letter-spacing:4px;transition:all .2s}
+.ready-btn:hover{background:var(--g);color:var(--bg);text-shadow:none;box-shadow:0 0 20px var(--glow)}
+
+/* ── Right Panel (info) ── */
+.right-panel{border-left:1px solid var(--gd);padding:12px;font-size:14px;background:rgba(0,0,0,0.4);z-index:10}
+.right-panel h2{color:var(--dim);font-size:14px;margin-bottom:8px;text-transform:uppercase;letter-spacing:2px}
+.info-row{padding:6px 0;border-bottom:1px dotted rgba(26,138,26,0.3);display:flex;justify-content:space-between}
+.info-row .label{color:var(--dim)}
+.info-row .val{color:var(--g);text-shadow:0 0 6px var(--glow)}
+.log-area{margin-top:12px;font-size:13px;color:var(--dim);line-height:1.6;max-height:200px;overflow:hidden}
+.log-area .log-line::before{content:'> ';color:rgba(51,255,51,0.3)}
+.log-area .log-line.highlight{color:var(--g)}
+
+/* ── 3D Board Area ── */
+.board-container{position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(ellipse at 50% 60%,rgba(51,255,51,0.03) 0%,transparent 70%)}
+
+/* Ambient glow under the board */
+.board-container::before{content:'';position:absolute;width:500px;height:300px;background:radial-gradient(ellipse,rgba(51,255,51,0.08) 0%,transparent 70%);top:55%;left:50%;transform:translate(-50%,-50%);pointer-events:none}
+
+.iso-scene{
+  transform-style:preserve-3d;
+  perspective:800px;
+  width:640px;height:400px;
+  position:relative;
+}
+.iso-board{
+  width:640px;height:400px;
+  transform:perspective(800px) rotateX(55deg) rotateZ(-45deg);
+  transform-style:preserve-3d;
+  position:relative;
+}
+
+/* Grid floor */
+.grid-floor{
+  position:absolute;inset:0;
+  background:
+    linear-gradient(var(--dim) 1px,transparent 1px),
+    linear-gradient(90deg,var(--dim) 1px,transparent 1px);
+  background-size:60px 60px;
+  opacity:0.15;
+  border:1px solid var(--gd);
+  box-shadow:0 0 60px rgba(51,255,51,0.06);
+}
+
+/* ── 3D Box Base ── */
+.box-3d{
+  position:absolute;
+  transform-style:preserve-3d;
+  cursor:pointer;
+  transition:transform .3s;
+}
+.box-3d:hover{transform:translateZ(5px)}
+.box-3d:hover .top{background:rgba(51,255,51,0.2)}
+
+.box-3d .top{
+  position:absolute;
+  width:100%;height:100%;
+  background:rgba(51,255,51,0.08);
+  border:1.5px solid var(--g);
+  transform:translateZ(var(--box-h,30px));
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;color:var(--g);
+  box-shadow:inset 0 0 15px rgba(51,255,51,0.05);
+}
+.box-3d .front{
+  position:absolute;
+  width:100%;height:var(--box-h,30px);
+  background:rgba(51,255,51,0.04);
+  border:1.5px solid var(--g);
+  transform-origin:bottom center;
+  transform:rotateX(-90deg);
+  bottom:0;left:0;
+  overflow:hidden;
+}
+.box-3d .right-face{
+  position:absolute;
+  width:var(--box-h,30px);height:100%;
+  background:rgba(51,255,51,0.02);
+  border:1.5px solid var(--g);
+  transform-origin:center right;
+  transform:rotateY(90deg);
+  right:0;top:0;
+  overflow:hidden;
+}
+
+/* ── Component-specific styles ── */
+
+/* Client: short flat monitor box */
+.client{--box-h:18px;width:70px;height:50px;left:40px;top:170px}
+.client .top{box-shadow:inset 0 0 20px rgba(51,255,51,0.15),0 0 12px rgba(51,255,51,0.1)}
+.client .screen-glow{
+  position:absolute;inset:6px;
+  background:rgba(51,255,51,0.12);
+  border:1px solid rgba(51,255,51,0.4);
+  animation:screenPulse 2s ease-in-out infinite;
+}
+@keyframes screenPulse{0%,100%{opacity:0.6}50%{opacity:1}}
+.client .top .lbl{font-size:12px;position:relative;z-index:1}
+
+/* Load Balancer: diamond/rotated shape */
+.lb{--box-h:28px;width:56px;height:56px;left:180px;top:166px}
+.lb .top{transform:translateZ(28px) rotate(45deg);border-radius:2px}
+.lb .front{height:28px}
+.lb .right-face{width:28px}
+
+/* Server towers: tall narrow */
+.server{--box-h:55px;width:50px;height:65px}
+.server1{left:330px;top:110px}
+.server2{left:330px;top:230px}
+.server .front .drive-bay{
+  width:70%;height:3px;margin:5px auto 0;
+  background:var(--gd);border:1px solid var(--g);
+  box-shadow:0 0 4px rgba(51,255,51,0.2);
+}
+.server .right-face .side-label{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  font-size:16px;color:var(--gd);
+}
+
+/* Database: stacked shorter boxes (cylinder approx) */
+.db{--box-h:40px;width:60px;height:55px;left:480px;top:170px}
+.db .top{border-radius:50%;background:rgba(51,255,51,0.1)}
+.db .front .db-stripe{
+  width:100%;height:4px;
+  background:rgba(51,255,51,0.15);
+  border-bottom:1px solid var(--gd);
+}
+
+/* Cache: small glowing cube */
+.cache{--box-h:30px;width:40px;height:40px;left:220px;top:70px}
+.cache .top{
+  box-shadow:inset 0 0 20px rgba(51,255,51,0.2),0 0 20px rgba(51,255,51,0.15);
+  background:rgba(51,255,51,0.12);
+}
+.cache .bolt{
+  font-size:18px;color:var(--g);
+  text-shadow:0 0 10px var(--g);
+  position:relative;z-index:1;
+}
+
+/* ── Connection lines on isometric plane ── */
+.iso-connections{
+  position:absolute;inset:0;
+  transform:translateZ(1px);
+  pointer-events:none;
+}
+.iso-connections svg{width:100%;height:100%}
+.iso-connections line{stroke:var(--gd);stroke-width:1.5;stroke-dasharray:8 5}
+.iso-connections line.active{stroke:var(--g);stroke-width:1.5;animation:dashFlow 1.2s linear infinite}
+@keyframes dashFlow{to{stroke-dashoffset:-26}}
+
+/* Data packet animation along connections */
+.packet{
+  position:absolute;width:6px;height:6px;
+  background:var(--g);border-radius:50%;
+  box-shadow:0 0 8px var(--g),0 0 16px rgba(51,255,51,0.3);
+  animation:packetMove 3s linear infinite;
+  transform:translateZ(4px);
+}
+@keyframes packetMove{
+  0%{left:75px;top:195px;opacity:0}
+  5%{opacity:1}
+  25%{left:195px;top:192px}
+  50%{left:345px;top:140px}
+  75%{left:490px;top:195px}
+  95%{opacity:1}
+  100%{left:540px;top:195px;opacity:0}
+}
+.packet.p2{animation-delay:-1.5s}
+.packet.p3{
+  animation:packetMove2 2.5s linear infinite;
+  animation-delay:-0.8s;
+}
+@keyframes packetMove2{
+  0%{left:195px;top:192px;opacity:0}
+  10%{opacity:1}
+  50%{left:240px;top:90px}
+  90%{opacity:1}
+  100%{left:240px;top:90px;opacity:0}
+}
+
+/* Component labels floating above boxes */
+.node-label{
+  position:absolute;
+  font-size:12px;color:var(--g);
+  text-align:center;white-space:nowrap;
+  transform:translateZ(var(--label-z,60px));
+  text-shadow:0 0 8px rgba(51,255,51,0.4);
+  pointer-events:none;
+}
+
+/* ── Bottom Charts ── */
+.charts{grid-column:1/-1;border-top:1px solid var(--gd);display:grid;grid-template-columns:1fr 1fr 220px;padding:10px 16px;gap:16px;background:rgba(0,0,0,0.5);z-index:10}
+.chart h3{font-size:14px;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:2px}
+.chart canvas{width:100%;height:120px;display:block}
+.gauge{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-val{font-size:54px;color:var(--g);text-shadow:0 0 25px rgba(51,255,51,0.4);line-height:1}
+.gauge-label{font-size:14px;color:var(--dim);text-transform:uppercase;letter-spacing:2px;margin-top:4px}
+.gauge-bar{width:85%;height:6px;background:var(--dim);margin-top:10px;border-radius:3px;overflow:hidden}
+.gauge-bar-fill{width:95.2%;height:100%;background:var(--g);box-shadow:0 0 8px var(--g);border-radius:3px}
+.gauge-sub{font-size:12px;color:var(--dim);margin-top:6px}
+</style>
+</head>
+<body>
+
+<!-- ── Top Bar ── -->
+<div class="topbar">
+  <span class="prompt">STACK ATTACK v3.1.0</span>
+  <span>WAVE 3/10</span>
+  <span>PHASE: <span class="phase-val">BUILD</span></span>
+  <span>BUDGET: $450</span>
+  <span>AVAIL: 95.2%</span>
+  <span>LAT: 3.2ms<span class="blink">_</span></span>
+</div>
+
+<div class="main">
+  <!-- ── Left Sidebar: Component Palette ── -->
+  <div class="sidebar">
+    <h2>-- components --</h2>
+    <div class="comp-tile">[1] Server       <span class="cost">$100</span></div>
+    <div class="comp-tile">[2] Database     <span class="cost">$200</span></div>
+    <div class="comp-tile">[3] Cache        <span class="cost">$150</span></div>
+    <div class="comp-tile">[4] Load Balancer<span class="cost">$175</span></div>
+    <div class="comp-tile">[5] CDN          <span class="cost">$200</span></div>
+    <div class="comp-tile">[6] API Gateway  <span class="cost">$250</span></div>
+    <div class="comp-tile">[7] Queue        <span class="cost">$125</span></div>
+    <button class="ready-btn">[ENTER] READY</button>
+  </div>
+
+  <!-- ── 3D Isometric Board ── -->
+  <div class="board-container">
+    <div class="iso-scene">
+      <div class="iso-board">
+        <!-- Grid floor -->
+        <div class="grid-floor"></div>
+
+        <!-- Connection lines on the isometric plane -->
+        <div class="iso-connections">
+          <svg viewBox="0 0 640 400" preserveAspectRatio="none">
+            <!-- Client to LB -->
+            <line x1="95" y1="195" x2="195" y2="192" class="active"/>
+            <!-- LB to Server 1 -->
+            <line x1="220" y1="180" x2="345" y2="140" class="active"/>
+            <!-- LB to Server 2 -->
+            <line x1="220" y1="200" x2="345" y2="255" class="active"/>
+            <!-- Server 1 to DB -->
+            <line x1="375" y1="140" x2="495" y2="190"/>
+            <!-- Server 2 to DB -->
+            <line x1="375" y1="260" x2="495" y2="200"/>
+            <!-- LB to Cache -->
+            <line x1="210" y1="175" x2="238" y2="105"/>
+          </svg>
+        </div>
+
+        <!-- Data packets -->
+        <div class="packet"></div>
+        <div class="packet p2"></div>
+        <div class="packet p3"></div>
+
+        <!-- CLIENT -->
+        <div class="box-3d client" title="Client">
+          <div class="top">
+            <div class="screen-glow"></div>
+            <span class="lbl">CLIENT</span>
+          </div>
+          <div class="front" style="height:18px">
+            <div style="width:100%;height:100%;background:linear-gradient(180deg,rgba(51,255,51,0.05),transparent)"></div>
+          </div>
+          <div class="right-face" style="width:18px">
+            <div style="width:100%;height:100%;background:linear-gradient(90deg,rgba(51,255,51,0.03),transparent)"></div>
+          </div>
+        </div>
+
+        <!-- LOAD BALANCER -->
+        <div class="box-3d lb" title="Load Balancer">
+          <div class="top">LB</div>
+          <div class="front" style="height:28px"></div>
+          <div class="right-face" style="width:28px"></div>
+        </div>
+
+        <!-- SERVER 1 -->
+        <div class="box-3d server server1" title="Server 1">
+          <div class="top">SRV-1</div>
+          <div class="front" style="height:55px">
+            <div class="drive-bay"></div>
+            <div class="drive-bay"></div>
+            <div class="drive-bay"></div>
+            <div class="drive-bay"></div>
+            <div class="drive-bay"></div>
+            <div class="drive-bay"></div>
+          </div>
+          <div class="right-face" style="width:55px">
+            <div class="side-label">1</div>
+          </div>
+        </div>
+
+        <!-- SERVER 2 -->
+        <div class="box-3d server server2" title="Server 2">
+          <div class="top">SRV-2</div>
+          <div class="front" style="height:55px">
+            <div class="drive-bay"></div>
+            <div class="drive-bay"></div>
+            <div class="drive-bay"></div>
+            <div class="drive-bay"></div>
+            <div class="drive-bay"></div>
+            <div class="drive-bay"></div>
+          </div>
+          <div class="right-face" style="width:55px">
+            <div class="side-label">2</div>
+          </div>
+        </div>
+
+        <!-- DATABASE -->
+        <div class="box-3d db" title="Database">
+          <div class="top">DB</div>
+          <div class="front" style="height:40px">
+            <div class="db-stripe"></div>
+            <div class="db-stripe"></div>
+            <div class="db-stripe"></div>
+            <div class="db-stripe"></div>
+            <div class="db-stripe"></div>
+            <div class="db-stripe"></div>
+            <div class="db-stripe"></div>
+          </div>
+          <div class="right-face" style="width:40px"></div>
+        </div>
+
+        <!-- CACHE -->
+        <div class="box-3d cache" title="Cache">
+          <div class="top"><span class="bolt">&#9889;</span></div>
+          <div class="front" style="height:30px">
+            <div style="padding:4px;font-size:10px;color:var(--gd);text-align:center">CACHE</div>
+          </div>
+          <div class="right-face" style="width:30px"></div>
+        </div>
+
+      </div><!-- /iso-board -->
+    </div><!-- /iso-scene -->
+  </div><!-- /board-container -->
+
+  <!-- ── Right Panel ── -->
+  <div class="right-panel">
+    <h2>-- status --</h2>
+    <div class="info-row"><span class="label">Servers</span><span class="val">2 / 4</span></div>
+    <div class="info-row"><span class="label">Traffic</span><span class="val">1.2k rps</span></div>
+    <div class="info-row"><span class="label">Errors</span><span class="val" style="color:#ff4444">0.3%</span></div>
+    <div class="info-row"><span class="label">CPU avg</span><span class="val">62%</span></div>
+    <div class="info-row"><span class="label">Memory</span><span class="val">4.1 GB</span></div>
+    <div class="info-row"><span class="label">Cache Hit</span><span class="val">87%</span></div>
+    <div class="info-row"><span class="label">DB Conns</span><span class="val">18 / 50</span></div>
+
+    <div class="log-area">
+      <h2 style="margin-top:12px;margin-bottom:6px">-- event log --</h2>
+      <div class="log-line">09:42:01 cache warmed</div>
+      <div class="log-line highlight">09:42:03 wave 3 starting</div>
+      <div class="log-line">09:42:05 lb routing OK</div>
+      <div class="log-line">09:42:08 srv-1 cpu 58%</div>
+      <div class="log-line">09:42:11 srv-2 cpu 66%</div>
+      <div class="log-line highlight">09:42:14 traffic spike +40%</div>
+      <div class="log-line">09:42:17 db pool 18/50</div>
+    </div>
+  </div>
+
+  <!-- ── Bottom Charts ── -->
+  <div class="charts">
+    <div class="chart">
+      <h3>// throughput (rps)</h3>
+      <canvas id="throughputChart" height="120"></canvas>
+    </div>
+    <div class="chart">
+      <h3>// latency (ms)</h3>
+      <canvas id="latencyChart" height="120"></canvas>
+    </div>
+    <div class="gauge">
+      <div class="gauge-val">95.2<span style="font-size:24px">%</span></div>
+      <div class="gauge-label">Reliability</div>
+      <div class="gauge-bar"><div class="gauge-bar-fill"></div></div>
+      <div class="gauge-sub">SLA Target: 99.9%</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Chart Drawing ──
+function drawChart(canvasId, data, color, fillAlpha, label) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = { t: 8, b: 20, l: 36, r: 8 };
+  const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+  const max = Math.max(...data) * 1.15;
+  const min = Math.min(...data) * 0.85;
+  const range = max - min || 1;
+
+  // Grid lines
+  ctx.strokeStyle = '#1a6b1a';
+  ctx.lineWidth = 0.5;
+  ctx.setLineDash([2, 4]);
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (plotH / 4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+    ctx.fillStyle = '#1a6b1a';
+    ctx.font = '11px VT323, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(Math.round(max - (range / 4) * i), pad.l - 4, y + 4);
+  }
+  ctx.setLineDash([]);
+
+  // Data line
+  ctx.beginPath();
+  const step = plotW / (data.length - 1);
+  for (let i = 0; i < data.length; i++) {
+    const x = pad.l + step * i;
+    const y = pad.t + plotH - ((data[i] - min) / range) * plotH;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 6;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Fill
+  ctx.lineTo(pad.l + step * (data.length - 1), pad.t + plotH);
+  ctx.lineTo(pad.l, pad.t + plotH);
+  ctx.closePath();
+  ctx.fillStyle = fillAlpha;
+  ctx.fill();
+
+  // Axis line
+  ctx.strokeStyle = '#1a8a1a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t);
+  ctx.lineTo(pad.l, pad.t + plotH);
+  ctx.lineTo(W - pad.r, pad.t + plotH);
+  ctx.stroke();
+}
+
+// Generate sample data
+function genData(base, variance, len) {
+  const d = [];
+  let v = base;
+  for (let i = 0; i < len; i++) {
+    v += (Math.random() - 0.48) * variance;
+    v = Math.max(base * 0.5, Math.min(base * 1.6, v));
+    d.push(Math.round(v));
+  }
+  return d;
+}
+
+const throughputData = genData(1200, 80, 40);
+const latencyData = genData(32, 6, 40);
+
+function renderCharts() {
+  drawChart('throughputChart', throughputData, '#33ff33', 'rgba(51,255,51,0.06)', 'rps');
+  drawChart('latencyChart', latencyData, '#33ff33', 'rgba(51,255,51,0.06)', 'ms');
+}
+
+renderCharts();
+window.addEventListener('resize', renderCharts);
+
+// ── Live data animation ──
+setInterval(() => {
+  throughputData.shift();
+  throughputData.push(throughputData[throughputData.length - 1] + Math.round((Math.random() - 0.48) * 80));
+  latencyData.shift();
+  latencyData.push(Math.max(10, latencyData[latencyData.length - 1] + Math.round((Math.random() - 0.48) * 6)));
+  renderCharts();
+}, 1500);
+</script>
+</body>
+</html>
