@@ -14,7 +14,7 @@ Legend: ⬜ Planned · 🟡 In Progress · ✅ Shipped
 | 5 | The Authentication Wall | 3d (paired w/ 4) | ✅ Shipped | 2026-04-14 |
 | 6 | Async Workloads | 3e | ✅ Shipped | 2026-04-14 (augmented) |
 | 7 | The Outage      | 3e | ✅ Shipped | 2026-04-14 (augmented) |
-| 8 | Video Launch | 4a | ⬜ Planned | — |
+| 8 | Video Launch | 4a | ✅ Shipped | 2026-04-14 |
 | 9 | Going Global | 4b | ⬜ Planned | — |
 | 10 | The Viral Moment | 4c | ⬜ Planned | — |
 
