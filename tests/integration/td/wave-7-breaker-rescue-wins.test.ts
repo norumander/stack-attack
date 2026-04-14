@@ -1,81 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { SimulationState } from "@core/state/simulation-state";
-import { Component } from "@core/component/component";
 import { bootTDRegistry } from "@harness/td-fixtures";
-import { makePort } from "@harness/fixtures";
 import type { CapabilityId } from "@core/types/ids";
-import type { Capability } from "@core/capability/capability";
 import { WAVE_7 } from "@modes/td/td-waves";
-import { CircuitBreakerCapability } from "@capabilities/circuit-breaker/circuit-breaker-capability";
 import { QueueCapability } from "@capabilities/queue/queue-capability";
-import { BatchProcessingCapability } from "@capabilities/batch-processing/batch-processing-capability";
-import { ForwardingCapability } from "@capabilities/forwarding/forwarding-capability";
-import { MonitoringCapability } from "@capabilities/monitoring/monitoring-capability";
-import { runWave, buildServer, buildDatabase, buildCache, buildCDN, buildAPIGateway, buildLoadBalancer, buildQueue, buildCircuitBreaker, wire } from "./helpers";
-
-/**
- * Build a custom Worker component that processes batch requests AND forwards
- * non-batch traffic onward. The registry Worker only has BatchProcessing +
- * Monitoring (no forwarding), so non-batch traffic dies there. This custom
- * Worker adds a ForwardingCapability for non-batch types, allowing it to sit
- * in the main pipeline: Queue → Worker → LB → Servers.
- *
- * Batch: BatchProcessingCapability (PROCESS, canHandle("batch")) → RESPOND
- * Non-batch: ForwardingCapability (PROCESS, all non-batch types) → FORWARD
- */
-function buildWorkerWithForwarding(): {
-  component: Component;
-  ingressPortId: string;
-  egressPortId: string;
-} {
-  const ingressPortId = "worker-in";
-  const egressPortId = "worker-out";
-  const ingress = makePort(ingressPortId, "ingress");
-  const egress = makePort(egressPortId, "egress");
-
-  const batchCap = new BatchProcessingCapability("batch-processing" as CapabilityId);
-  const forwardCap = new ForwardingCapability("forwarding-pipe" as CapabilityId, {
-    handledTypes: ["api_read", "api_write", "static_asset", "auth_required"],
-    throughputPerTier: 500,
-    emitForwardedEvent: true,
-  });
-  const monCap = new MonitoringCapability("monitoring" as CapabilityId);
-
-  const capabilities = new Map<CapabilityId, Capability>([
-    ["batch-processing" as CapabilityId, batchCap],
-    ["forwarding-pipe" as CapabilityId, forwardCap],
-    ["monitoring" as CapabilityId, monCap],
-  ]);
-  const tiers = new Map<CapabilityId, number>([
-    ["batch-processing" as CapabilityId, 1],
-    ["forwarding-pipe" as CapabilityId, 1],
-    ["monitoring" as CapabilityId, 1],
-  ]);
-
-  const component = new Component({
-    id: "custom-worker" as any,
-    type: "worker",
-    name: "Worker (batch + forward)",
-    description: "Processes batch, forwards the rest",
-    capabilities,
-    initialTiers: tiers,
-    ports: [ingress, egress],
-    placementCost: 125,
-    position: { x: 0, y: 0 },
-    zone: null,
-    placementTick: 0,
-    conditionProfile: {
-      degradedThreshold: 0.7,
-      criticalThreshold: 0.3,
-      decayRate: 0.05,
-      recoveryRate: 0.02,
-      degradedEffects: [{ kind: "latency_multiplier", factor: 1.5 }],
-      criticalEffects: [{ kind: "drop_probability", p: 0.2 }],
-    },
-  });
-
-  return { component, ingressPortId, egressPortId };
-}
+import { runWave, buildServer, buildDatabase, buildCache, buildCDN, buildAPIGateway, buildLoadBalancer, buildQueue, buildCircuitBreaker, buildWorkerWithForwarding, wire } from "./helpers";
 
 describe("Wave 7 — CircuitBreaker rescue wins", () => {
   it("adding CircuitBreaker to the topology rescues Wave 7 from chaos-induced failure", () => {
