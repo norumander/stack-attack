@@ -82,6 +82,14 @@ export interface SpawnRequestDotArgs {
   requestId: RequestId;    // used to correlate with queued flashes
   requestType: string;     // 'api_read' | 'api_write' | 'stream_init' | ...
   durationMs: number;      // travel time from source to target
+  /**
+   * Delay (ms) before the dot starts moving. The dot is added immediately
+   * but pinned at the source position until `startMs + spawnOffsetMs`
+   * elapses. Used by the adapter to stagger dots that spawn on the same
+   * connection in the same tick so they form a visible train instead of
+   * stacking into one composite sprite.
+   */
+  spawnOffsetMs?: number;
 }
 
 export interface RendererPointerEvent {

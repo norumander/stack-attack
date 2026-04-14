@@ -48,6 +48,15 @@ export function applyTickToRenderer(
     }
   }
 
+  // Stagger dots spawning on the same connection in the same tick so they
+  // form a visible train instead of stacking into one composite sprite.
+  // Without this, a Wave-2 tick with 17 reads + 8 writes spawns 25 dots at
+  // the exact same (x,y) at t=0 on Client→Server, and the larger orange
+  // write squares render directly around the smaller cyan read circles —
+  // looking like "orange-edged cyan dots." Per-connection counter resets
+  // every call (every tick), so stagger is bounded to this tick's events.
+  const STAGGER_MS_PER_SLOT = 10;
+  const staggerCounter = new Map<string, number>();
   for (const ev of state.lastTickEvents) {
     if (ev.type !== "FORWARDED") continue;
     if (ev.connectionId === null) continue;
@@ -56,11 +65,14 @@ export function applyTickToRenderer(
       "default";
     const latencyTicks = getEffectiveLatency(state, ev.connectionId);
     const durationMs = Math.max(50, latencyTicks * tickIntervalMs);
+    const slot = staggerCounter.get(ev.connectionId) ?? 0;
+    staggerCounter.set(ev.connectionId, slot + 1);
     renderer.spawnRequestDot({
       connectionId: ev.connectionId,
       requestId: ev.requestId,
       requestType,
       durationMs,
+      spawnOffsetMs: slot * STAGGER_MS_PER_SLOT,
     });
   }
 

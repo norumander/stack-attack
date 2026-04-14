@@ -356,7 +356,7 @@ export class PixiTopologyRenderer implements TopologyRenderer {
       connectionId: args.connectionId,
       requestId: args.requestId,
       targetComponentId: conn.targetId,
-      startMs: performance.now(),
+      startMs: performance.now() + Math.max(0, args.spawnOffsetMs ?? 0),
       durationMs: Math.max(50, args.durationMs),
       startX,
       startY,
@@ -530,6 +530,10 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     for (let i = this.activeDots.length - 1; i >= 0; i--) {
       const dot = this.activeDots[i]!;
       const t = (now - dot.startMs) / dot.durationMs;
+      // Dot is still in its stagger-delay window (spawnOffsetMs): keep it
+      // pinned at source position. graphic.x/y were set to startX/startY
+      // in spawnDotImmediate, so skipping this frame leaves them in place.
+      if (t < 0) continue;
       if (t >= 1) {
         this.dotsLayer?.removeChild(dot.graphic);
         dot.graphic.destroy();
