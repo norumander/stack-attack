@@ -99,4 +99,35 @@ describe("deliverStaged — RESPOND", () => {
     }, mc);
     expect(moved).toBe(true);
   });
+
+  it("emits SERVED at sourceComponentId in addition to RESPONDED at origin", () => {
+    // Stage 3c: SERVED is the "work was done here" signal used by the
+    // renderer. It fires at the component that produced the RESPOND
+    // outcome, not at the origin. RESPONDED continues to fire at origin
+    // for metrics and return-path purposes. Both events must exist in the
+    // same tick for a RESPOND outcome.
+    const state = new SimulationState(topo);
+    const req = {
+      id: "r1" as RequestId,
+      createdAt: 0,
+      ttl: 10,
+      origin: "c-client" as ComponentId,
+    } as Request;
+    state.requestLog.set("r1" as RequestId, []);
+
+    deliverStaged(state, {
+      sourceComponentId: "c-server" as ComponentId,
+      request: req,
+      result: { outcome: { kind: "RESPOND" }, sideEffects: [], events: [] },
+    }, mc);
+
+    const evs = state.requestLog.get("r1" as RequestId)!;
+    const served = evs.find((e) => e.type === "SERVED");
+    const responded = evs.find((e) => e.type === "RESPONDED");
+
+    expect(served).toBeDefined();
+    expect(served?.componentId).toBe("c-server"); // where work happened
+    expect(responded).toBeDefined();
+    expect(responded?.componentId).toBe("c-client"); // request origin
+  });
 });

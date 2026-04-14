@@ -19,6 +19,14 @@ export interface StorageCapabilityOptions {
    * does not emit PROCESSED events — capabilities do. Default: false.
    */
   emitProcessedEvent?: boolean;
+  /**
+   * Which request types this storage accepts. Default: both `api_read` and
+   * `api_write` (sandbox/legacy). TD mode passes `["api_write"]` so a naked
+   * Database wired directly under a Client cannot bypass the Server tier
+   * and trivially win Wave 1 — the Server is the sole api_read primitive in
+   * the TD learning arc.
+   */
+  handledTypes?: readonly string[];
 }
 
 /**
@@ -33,6 +41,7 @@ export class StorageCapability implements Capability {
   private readsProcessed = 0;
   private readonly throughputPerTier: number;
   private readonly emitProcessedEvent: boolean;
+  private readonly handledTypes: ReadonlySet<string>;
 
   constructor(
     readonly id: CapabilityId,
@@ -40,10 +49,13 @@ export class StorageCapability implements Capability {
   ) {
     this.throughputPerTier = options.throughputPerTier ?? 5;
     this.emitProcessedEvent = options.emitProcessedEvent ?? false;
+    this.handledTypes = new Set(
+      options.handledTypes ?? ["api_write", "api_read"],
+    );
   }
 
   canHandle(requestType: string): boolean {
-    return requestType === "api_write" || requestType === "api_read";
+    return this.handledTypes.has(requestType);
   }
 
   process(request: Request, context: ProcessContext): ProcessResult {

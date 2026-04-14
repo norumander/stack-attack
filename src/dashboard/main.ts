@@ -16,6 +16,7 @@ import { SimulationState } from "@core/state/simulation-state";
 import { Engine } from "@core/engine/engine";
 import { createTDDashboard, type TDDashboard } from "./td-mode";
 import type { OutcomeReport } from "@core/types/outcome";
+import { diagnoseWave } from "./td/diagnose-wave";
 
 declare const Chart: any;
 
@@ -377,6 +378,34 @@ $fileInput.addEventListener("change", () => {
 // Module-level TD state so boot/teardown/onTick can share references.
 const TD_WAVES = [WAVE_1, WAVE_2, WAVE_3] as const;
 
+/**
+ * Test-mode affordance: parse `#mode=td&wave=N` (1-indexed) and return
+ * the matching wave index (0-based), clamped to the valid range. Defaults
+ * to 0 when no `wave` param is present.
+ */
+function parseTDStartingWaveFromHash(): number {
+  const raw = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+  const params = new URLSearchParams(raw);
+  const waveParam = params.get("wave");
+  if (!waveParam) return 0;
+  const n = parseInt(waveParam, 10);
+  if (Number.isNaN(n) || n < 1) return 0;
+  return Math.min(n - 1, TD_WAVES.length - 1);
+}
+
+/**
+ * Cumulative starting budget through wave index (inclusive). Used when
+ * jump-starting at a later wave so the player has a budget reflecting
+ * "you would have earned this by finishing the prior waves."
+ */
+function cumulativeStartingBudget(waveIndex: number): number {
+  let sum = 0;
+  for (let i = 0; i <= waveIndex; i++) {
+    sum += TD_WAVES[i]?.startingBudget ?? 0;
+  }
+  return sum;
+}
+
 let tdDashboard: TDDashboard | null = null;
 let tdLoop: SimLoop<TDModeController> | null = null;
 let tdEngine: Engine | null = null;
@@ -448,7 +477,18 @@ function showWaveResultToast(outcome: OutcomeReport): void {
   toast.style.zIndex = "1000";
   toast.style.boxShadow = "0 8px 24px rgba(0,0,0,0.5)";
   const noteText = outcome.notes.join(" · ");
-  toast.textContent = `Wave ${outcome.verdict.toUpperCase()} — ${noteText}`;
+  if (outcome.verdict === "win" && tdController && tdState) {
+    const metrics = tdController.getCurrentWaveMetrics(tdState);
+    const totalResolved = metrics.reduce((s, m) => s + m.requestsResolved, 0);
+    const totalDropped = metrics.reduce((s, m) => s + m.requestsDropped, 0);
+    const totalRev = metrics.reduce((s, m) => s + m.revenueEarned, 0);
+    const totalUpkeep = metrics.reduce((s, m) => s + m.upkeepPaid, 0);
+    const denom = totalResolved + totalDropped;
+    const servedPct = denom > 0 ? Math.round((totalResolved / denom) * 100) : 0;
+    toast.textContent = `Wave WIN — ${servedPct}% served · $${totalRev} revenue · $${totalUpkeep} upkeep`;
+  } else {
+    toast.textContent = `Wave ${outcome.verdict.toUpperCase()} — ${noteText}`;
+  }
   document.body.appendChild(toast);
   // 10-second timeout so the player has time to read it
   setTimeout(() => toast.remove(), 10000);
@@ -469,6 +509,7 @@ function tdOnTick(controller: TDModeController, state: SimulationState): void {
     .getCurrentWaveMetrics(state)
     .reduce((sum, m) => sum + m.requestsResolved, 0);
   tdDashboard?.updateRunningStatus(tickInWave, wave.duration, resolvedThisWave);
+  tdDashboard?.applyTick(state, tdLoop?.tickInterval ?? 200);
 
   if (!controller.isWaveDrained(state)) return;
 
@@ -538,11 +579,47 @@ function showLossModal(outcome: OutcomeReport): void {
   const modal = document.getElementById("td-loss-modal");
   const title = document.getElementById("td-loss-modal-title");
   const detail = document.getElementById("td-loss-modal-detail");
-  if (!modal || !title || !detail || !tdController) return;
+  if (!modal || !title || !detail || !tdController || !tdState) return;
   const waveNum = tdController.getCurrentWaveIndex() + 1;
   title.textContent = `Wave ${waveNum} LOST`;
-  detail.textContent = outcome.notes.join(" · ");
-  // Update Retry button label so the player knows which wave they'll retry.
+
+  const metrics = tdController.getCurrentWaveMetrics(tdState);
+  const diagnosis = diagnoseWave({
+    wave: tdController.getCurrentWave(),
+    metrics,
+    components: tdState.components,
+    connections: tdState.connections,
+  });
+
+  while (detail.firstChild) detail.removeChild(detail.firstChild);
+
+  const headlineEl = document.createElement("div");
+  headlineEl.textContent = diagnosis.headline;
+  headlineEl.style.fontWeight = "600";
+  headlineEl.style.color = "#ef4444";
+  headlineEl.style.marginBottom = "8px";
+  detail.appendChild(headlineEl);
+
+  const symptomEl = document.createElement("div");
+  symptomEl.textContent = diagnosis.symptom;
+  symptomEl.style.marginBottom = "8px";
+  detail.appendChild(symptomEl);
+
+  if (diagnosis.hint) {
+    const hintEl = document.createElement("div");
+    hintEl.textContent = diagnosis.hint;
+    hintEl.style.color = "#8b8fa3";
+    hintEl.style.fontStyle = "italic";
+    detail.appendChild(hintEl);
+  }
+
+  const notesEl = document.createElement("div");
+  notesEl.textContent = outcome.notes.join(" · ");
+  notesEl.style.marginTop = "12px";
+  notesEl.style.color = "#8b8fa3";
+  notesEl.style.fontSize = "11px";
+  detail.appendChild(notesEl);
+
   const retryBtn = document.getElementById("td-retry-btn");
   if (retryBtn) retryBtn.textContent = `Retry Wave ${waveNum}`;
   modal.hidden = false;
@@ -660,7 +737,7 @@ function resetTDCampaign(): void {
   bootTDMode();
 }
 
-function bootTDMode(): void {
+async function bootTDMode(): Promise<void> {
   // eslint-disable-next-line no-console
   console.warn("[td-boot] bootTDMode start");
   // Reset action log on a fresh boot. (Retry uses bootTDMode then re-restores
@@ -695,9 +772,18 @@ function bootTDMode(): void {
   state.placeComponent(client);
   tdClientId = client.id;
 
+  // Test-mode: the hash may say `#mode=td&wave=N` to jump-start at a
+  // later wave with a cumulative starting budget. Omitted param → wave 1.
+  const startingWaveIndex = parseTDStartingWaveFromHash();
+  const startingWave = TD_WAVES[startingWaveIndex]!;
+  const startingBudget = cumulativeStartingBudget(startingWaveIndex);
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[td-boot] starting at wave ${startingWaveIndex + 1} of ${TD_WAVES.length} with $${startingBudget}`,
+  );
   const economy = new TDEconomy({
-    startingBudget: WAVE_1.startingBudget,
-    revenuePerRequestType: WAVE_1.revenuePerRequestType,
+    startingBudget,
+    revenuePerRequestType: startingWave.revenuePerRequestType,
   });
   const controller = new TDModeController({
     waves: TD_WAVES,
@@ -705,6 +791,7 @@ function bootTDMode(): void {
     entryPointId: client.id,
     rng: Math.random,
     componentRegistry: compRegistry,
+    ...(startingWaveIndex > 0 ? { startingWaveIndex } : {}),
   });
 
   // visitOrder is refreshed via state.recomputeVisitOrder() on each
@@ -715,7 +802,7 @@ function bootTDMode(): void {
   tdState = state;
   tdController = controller;
 
-  tdDashboard = createTDDashboard({
+  tdDashboard = await createTDDashboard({
     state,
     controller,
     topologyContainer: $topoVisual,
@@ -815,11 +902,15 @@ function activateTdButton(): void {
   $modeSandbox.classList.remove("active");
 }
 
+function isTDHash(hash: string): boolean {
+  return hash.startsWith("#mode=td");
+}
+
 $modeTd.addEventListener("click", () => {
   if (tdDashboard) return; // already in TD mode
-  if (location.hash !== "#mode=td") location.hash = "#mode=td";
+  if (!isTDHash(location.hash)) location.hash = "#mode=td";
   activateTdButton();
-  bootTDMode();
+  void bootTDMode();
 });
 
 $modeSandbox.addEventListener("click", () => {
@@ -830,6 +921,28 @@ $modeSandbox.addEventListener("click", () => {
   // Rebuild sandbox topology from the currently-selected preset.
   initTopology();
 });
+
+/**
+ * Dev-only: wire the "Start at Wave N" buttons in the HUD. Updates the
+ * URL hash to `#mode=td&wave=N` and reboots TD mode so the new hash is
+ * picked up by parseTDStartingWaveFromHash. One click = fresh topology
+ * at the target wave with a cumulative starting budget.
+ */
+const $tdWaveStartButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>(".td-dev-wave-btn"),
+);
+for (const btn of $tdWaveStartButtons) {
+  btn.addEventListener("click", () => {
+    const waveNum = btn.dataset["wave"];
+    if (!waveNum) return;
+    location.hash = `#mode=td&wave=${waveNum}`;
+    if (tdDashboard) {
+      teardownTDMode();
+    }
+    activateTdButton();
+    void bootTDMode();
+  });
+}
 
 // Keep the TD sim loop responsive to the shared speed slider.
 $speedSlider.addEventListener("input", () => {
@@ -844,9 +957,10 @@ $tdResetBtn?.addEventListener("click", () => resetTDCampaign());
 
 // ─── Boot ─────────────────────────────────────────────────────────────
 populateSelects();
-if (location.hash === "#mode=td") {
+if (isTDHash(location.hash)) {
   activateTdButton();
-  bootTDMode();
+  // Fire-and-forget at module load; Pixi v8 init is async.
+  void bootTDMode();
 } else {
   activateSandboxButton();
   initTopology();

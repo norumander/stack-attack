@@ -81,7 +81,7 @@ export class ForwardingCapability implements Capability {
     return this.handledTypes.has(requestType);
   }
 
-  process(_request: Request, context: ProcessContext): ProcessResult {
+  process(request: Request, context: ProcessContext): ProcessResult {
     this.forwardedCount += 1;
     const events = this.emitForwardedEvent
       ? [
@@ -92,6 +92,7 @@ export class ForwardingCapability implements Capability {
             connectionId: null,
             type: "FORWARDED" as const,
             latencyAdded: 0,
+            metadata: { requestType: request.type },
           },
         ]
       : [];

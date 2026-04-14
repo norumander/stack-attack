@@ -62,6 +62,7 @@ export class Engine {
   }
 
   tick(modeController: ModeController): void {
+    this.state.lastTickEvents.length = 0;                        // clear per-tick view
     this.steps.injectTraffic(this.state, modeController);        // step 1
     this.steps.reEmitQueued(this.state);                         // step 2
     this.steps.runFixedPointLoop(this.state, modeController);    // step 3 (fixed-point)

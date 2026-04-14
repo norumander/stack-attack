@@ -29,6 +29,10 @@ export type RequestEventType =
   | "QUEUED"
   | "DEQUEUED"
   | "SPAWNED_SUB"
+  /** Emitted at the component that PRODUCED a RESPOND outcome. Paired with
+   *  RESPONDED, which fires at the request's origin. Used for visual
+   *  "work was done here" feedback. */
+  | "SERVED"
   | "RESPONDED"
   | "DROPPED"
   | "TIMED_OUT"
@@ -50,4 +54,16 @@ export interface RequestEvent {
   readonly type: RequestEventType;
   readonly latencyAdded: number;
   readonly metadata?: Record<string, unknown>;
+}
+
+/**
+ * Per-tick event view stored in `SimulationState.lastTickEvents`. Carries
+ * the owning `RequestId` alongside the event fields so the Stage 3c
+ * renderer adapter can correlate FORWARDED dots with their later
+ * SERVED/DROPPED/OVERLOADED flashes. The per-request `requestLog` does
+ * not carry requestId on each event because the map key already provides
+ * it — this view exists specifically for flat-list consumers.
+ */
+export interface PerTickEventView extends RequestEvent {
+  readonly requestId: RequestId;
 }

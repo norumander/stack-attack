@@ -31,7 +31,15 @@ export function registerTDDefaults(
     factory: () =>
       new ProcessingCapability("processing" as CapabilityId, {
         handledTypes: ["api_read"],
-        throughputPerTier: 20,
+        // Stage 3c one-type-per-tick re-tune (Processing + Forwarding
+        // contributions sum into a pooled component budget — see
+        // `src/core/engine/throughput.ts:componentThroughputPerTick`,
+        // they are NOT type-segmented per-cap limits). Server total
+        // budget = 15 + 15 = 30. Wave 2 (25/tick either all-reads or
+        // all-writes) fits under 30 comfortably. Wave 3 (50/tick) blows
+        // through 30 → lone Server loses on either tick type, which is
+        // the intended "needs horizontal scale" teaching moment.
+        throughputPerTier: 15,
         emitProcessedEvent: true,
       }),
   });
@@ -40,7 +48,10 @@ export function registerTDDefaults(
     factory: () =>
       new ForwardingCapability("forwarding" as CapabilityId, {
         handledTypes: ["api_write"],
-        throughputPerTier: 12,
+        // See note above — this is a budget contribution, not a write
+        // cap. Combined with Processing's 15 it gives Server a 30/tick
+        // total pooled budget.
+        throughputPerTier: 15,
         emitForwardedEvent: true,
       }),
   });
@@ -59,8 +70,16 @@ export function registerTDDefaults(
     id: "storage" as CapabilityId,
     factory: () =>
       new StorageCapability("storage" as CapabilityId, {
-        throughputPerTier: 25,
+        // Stage 3c one-type-per-tick re-tune: Wave 3 writes-ticks drive
+        // up to 50 writes/tick into Database (via single Server with
+        // 50/tick forwarding, or via LB with two Servers each at 25).
+        // Bumped from 25 so Database isn't the Wave 3 bottleneck.
+        throughputPerTier: 50,
         emitProcessedEvent: true,
+        // TD-tuned: Database is a write sink only. A naked Client→Database
+        // must NOT trivially win Wave 1 (100% reads) — the Server tier is
+        // the only api_read primitive in the TD learning arc.
+        handledTypes: ["api_write"],
       }),
   });
   capRegistry.register({

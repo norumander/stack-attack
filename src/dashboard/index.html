@@ -54,7 +54,38 @@
     </div>
 
     <button id="td-ready-btn" class="td-ready-btn">READY</button>
+
+    <div class="td-hud__dev">
+      <h4>Dev: Start at Wave</h4>
+      <div class="td-dev-wave-row">
+        <button class="td-dev-wave-btn" data-wave="1">1</button>
+        <button class="td-dev-wave-btn" data-wave="2">2</button>
+        <button class="td-dev-wave-btn" data-wave="3">3</button>
+      </div>
+    </div>
   </aside>
+
+  <!-- TD pre-wave briefing card -->
+  <div id="td-briefing" class="td-briefing" hidden>
+    <div class="td-briefing__title" id="td-briefing-title">Wave</div>
+    <div class="td-briefing__body">
+      <div class="td-briefing__row"><span class="k">Traffic:</span> <span id="td-briefing-traffic"></span></div>
+      <div class="td-briefing__row"><span class="k">Budget:</span> <span id="td-briefing-budget"></span></div>
+      <div class="td-briefing__row"><span class="k">Threshold:</span> <span id="td-briefing-threshold"></span></div>
+      <div class="td-briefing__row"><span class="k">Components:</span> <span id="td-briefing-components"></span></div>
+    </div>
+  </div>
+
+  <!-- TD component info panel -->
+  <div id="td-info-panel" class="td-info-panel" hidden>
+    <button type="button" class="td-info-panel__close" id="td-info-panel-close">×</button>
+    <div class="td-info-panel__header" id="td-info-panel-header"></div>
+    <div class="td-info-panel__description" id="td-info-panel-description"></div>
+    <div class="td-info-panel__section-title">Capabilities</div>
+    <ul class="td-info-panel__caps" id="td-info-panel-caps"></ul>
+    <div class="td-info-panel__section-title">Live stats</div>
+    <div class="td-info-panel__stats" id="td-info-panel-stats"></div>
+  </div>
 
   <!-- TD loss modal — shown when a wave is lost -->
   <div id="td-loss-modal" class="td-loss-modal" hidden>

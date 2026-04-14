@@ -60,11 +60,15 @@ describe("SLA gate — evaluateSLA", () => {
     const tdc = makeTDC(wave);
     tdc.advancePhase(); // build → simulate
 
-    const metrics = [makeMetrics({ requestsResolved: 100, requestsDropped: 5, avgLatency: 3 })];
+    // Wave scheduled: 10 req/tick * 30 ticks = 300 requests.
+    // 290 resolved + 10 dropped sum to the full scheduled count, so the
+    // scheduled-generated denominator (max(accounted, 300) = 300) matches
+    // the accounted total — availability = 290/300 ≈ 96.7%.
+    const metrics = [makeMetrics({ requestsResolved: 290, requestsDropped: 10, avgLatency: 3 })];
     const sla = tdc.evaluateSLA(metrics);
 
     expect(sla.availability.passed).toBe(true);
-    expect(sla.availability.actual).toBeCloseTo(100 / 105, 3);
+    expect(sla.availability.actual).toBeCloseTo(290 / 300, 3);
     expect(sla.latency.passed).toBe(true);
     expect(sla.latency.actual).toBeCloseTo(3, 3);
     expect(sla.budget.passed).toBe(true);
@@ -76,7 +80,8 @@ describe("SLA gate — evaluateSLA", () => {
     const tdc = makeTDC(wave);
     tdc.advancePhase();
 
-    const metrics = [makeMetrics({ requestsResolved: 80, requestsDropped: 20 })];
+    // 240 resolved + 60 dropped = 300 scheduled → availability = 240/300 = 0.8
+    const metrics = [makeMetrics({ requestsResolved: 240, requestsDropped: 60 })];
     const sla = tdc.evaluateSLA(metrics);
 
     expect(sla.availability.actual).toBeCloseTo(0.8, 3);
@@ -129,7 +134,8 @@ describe("SLA gate — evaluateOutcome integration", () => {
     const tdc = makeTDC(wave);
     tdc.advancePhase();
 
-    const metrics = [makeMetrics({ requestsResolved: 100, requestsDropped: 5, avgLatency: 2 })];
+    // 290 resolved + 10 dropped = 300 scheduled; availability 96.7% > 90%.
+    const metrics = [makeMetrics({ requestsResolved: 290, requestsDropped: 10, avgLatency: 2 })];
     const outcome = tdc.evaluateOutcome(metrics);
 
     expect(outcome.verdict).toBe("win");

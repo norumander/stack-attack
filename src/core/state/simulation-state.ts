@@ -1,6 +1,6 @@
 import type { ComponentId, ConnectionId, RequestId } from "../types/ids.js";
 import type { Connection } from "../types/connection.js";
-import type { Request, RequestEvent } from "../types/request.js";
+import type { Request, RequestEvent, PerTickEventView } from "../types/request.js";
 import type { ActiveStream } from "../types/stream.js";
 import type { ActiveChaosEntry } from "../types/chaos.js";
 import type { ZoneTopology } from "../types/zone.js";
@@ -19,6 +19,14 @@ export class SimulationState {
   readonly pending: Map<ComponentId, Request[]> = new Map();
   readonly activeStreams: Map<RequestId, ActiveStream> = new Map();
   readonly requestLog: Map<RequestId, RequestEvent[]> = new Map();
+  /**
+   * Per-tick event view. Cleared at the start of `Engine.tick()`, filled via
+   * `appendEvent`. Each entry carries the owning `requestId` so flat-list
+   * consumers (the Stage 3c renderer adapter) can correlate FORWARDED dots
+   * with their subsequent SERVED/DROPPED/OVERLOADED flashes without rescanning
+   * `requestLog`. Consumers read between ticks.
+   */
+  readonly lastTickEvents: PerTickEventView[] = [];
   readonly activeChaos: Map<string, ActiveChaosEntry> = new Map();
   readonly zoneTopology: ZoneTopology;
   currentTick = 0;
@@ -61,6 +69,10 @@ export class SimulationState {
     const arr = this.requestLog.get(requestId) ?? [];
     arr.push(event);
     this.requestLog.set(requestId, arr);
+    // lastTickEvents stores a stamped copy so consumers see requestId inline.
+    // requestLog still holds the unstamped RequestEvent per its existing
+    // contract (the map key provides the requestId there).
+    this.lastTickEvents.push({ ...event, requestId });
   }
 
   enqueuePending(componentId: ComponentId, request: Request): void {

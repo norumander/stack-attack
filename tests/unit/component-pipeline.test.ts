@@ -177,7 +177,11 @@ describe("Component.process pipeline runner", () => {
     expect(log).toEqual(["proc"]);
   });
 
-  it("defaults to PASS outcome when no capability resolves", () => {
+  it("defaults to DROP with reason 'no_handler' when no PROCESS capability resolves", () => {
+    // Stage 3c change: previously the component returned the default PASS
+    // outcome and the request vanished silently in deliverStaged. Now it
+    // returns an explicit DROP so metrics, diagnose-wave, and the renderer
+    // all see the failure.
     const comp = new Component({
       id: "c-1" as ComponentId,
       type: "server",
@@ -193,6 +197,7 @@ describe("Component.process pipeline runner", () => {
       conditionProfile: profile,
     });
     const r = comp.process(req(), ctx([]));
-    expect(r.outcome.kind).toBe("PASS");
+    expect(r.outcome.kind).toBe("DROP");
+    expect((r.outcome as { kind: "DROP"; reason: string }).reason).toBe("no_handler");
   });
 });

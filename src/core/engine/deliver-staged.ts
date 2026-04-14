@@ -144,6 +144,18 @@ export function deliverStaged(
       }
 
       const path = reconstructReturnPath(state, request.id);
+      // SERVED fires at the component that produced the RESPOND outcome —
+      // this is the "work was done here" signal used by the renderer's
+      // green ring pulse. It is NOT what the metrics layer or tests read;
+      // those still use RESPONDED below.
+      state.appendEvent(request.id, {
+        tick: state.currentTick,
+        componentId: sourceComponentId,
+        capabilityId: null,
+        connectionId: null,
+        type: "SERVED",
+        latencyAdded: 0,
+      });
       state.appendEvent(request.id, {
         tick: state.currentTick,
         componentId: request.origin,
@@ -326,6 +338,7 @@ export function deliverStaged(
         connectionId,
         type: "FORWARDED",
         latencyAdded: 0,
+        metadata: { requestType: request.type },
       });
       return true;
     }
