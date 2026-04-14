@@ -13,6 +13,7 @@ import {
   CACHE_ENTRY,
   LOAD_BALANCER_ENTRY,
   CLIENT_ENTRY,
+  CDN_ENTRY,
 } from "./td-component-entries.js";
 
 /**
@@ -30,7 +31,7 @@ export function registerTDDefaults(
     id: "processing" as CapabilityId,
     factory: () =>
       new ProcessingCapability("processing" as CapabilityId, {
-        handledTypes: ["api_read"],
+        handledTypes: ["api_read", "static_asset"],
         // Stage 3c one-type-per-tick re-tune (Processing + Forwarding
         // contributions sum into a pooled component budget — see
         // `src/core/engine/throughput.ts:componentThroughputPerTick`,
@@ -100,6 +101,7 @@ export function registerTDDefaults(
   compRegistry.register(DATABASE_ENTRY);
   compRegistry.register(CACHE_ENTRY);
   compRegistry.register(LOAD_BALANCER_ENTRY);
+  compRegistry.register(CDN_ENTRY);
 
   compRegistry.validate();
 }
