@@ -184,6 +184,19 @@ export function buildCDN(compRegistry: ComponentRegistry): {
 }
 
 /**
+ * Build an API Gateway component from the TD registry (Auth + forwarding-pipe + Monitoring).
+ * The auth capability is configured with terminateAuthRequired: true via registerTDDefaults.
+ */
+export function buildAPIGateway(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("api_gateway", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
  * Build a LoadBalancer component with Routing (INTERCEPT) + Forwarding (all traffic) + Monitoring.
  * egressCount controls how many egress ports (and downstream servers) can be wired.
  */
