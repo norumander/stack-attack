@@ -172,6 +172,18 @@ export function buildCache(compRegistry: ComponentRegistry): {
 }
 
 /**
+ * Build a CDN component from the TD registry (Caching + forwarding-pipe + Monitoring).
+ */
+export function buildCDN(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("cdn", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
  * Build a LoadBalancer component with Routing (INTERCEPT) + Forwarding (all traffic) + Monitoring.
  * egressCount controls how many egress ports (and downstream servers) can be wired.
  */
