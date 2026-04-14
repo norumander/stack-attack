@@ -168,8 +168,17 @@ export class TDModeController implements ModeController {
       weightedLatencySum += m.avgLatency * m.requestsResolved;
     }
 
-    const total = dropped + timedOut + resolved;
-    const actualAvailability = total > 0 ? resolved / total : 1;
+    const accountedTotal = dropped + timedOut + resolved;
+    // Availability is measured against what the traffic source was scheduled
+    // to generate, not against what ended up in the counters. Requests that
+    // vanish via silent PASS (a component's PROCESS phase produces PASS with
+    // no downstream handler) do not increment `dropped` — but they're still
+    // unserved, and the player's architecture is at fault. Max() keeps us
+    // honest if a future variable-intensity wave under-generates the scheduled
+    // count (e.g. rate limiter in front of traffic source).
+    const expectedGenerated = wave.intensity * wave.duration;
+    const denominator = Math.max(accountedTotal, expectedGenerated, 1);
+    const actualAvailability = resolved / denominator;
     const actualLatency = resolved > 0 ? weightedLatencySum / resolved : 0;
     const actualBudget = this.economy.getBudget();
 
@@ -201,8 +210,13 @@ export class TDModeController implements ModeController {
       timedOut += m.requestsTimedOut;
       resolved += m.requestsResolved;
     }
-    const total = dropped + timedOut + resolved;
-    const dropRate = total > 0 ? (dropped + timedOut) / total : 0;
+    const accountedTotal = dropped + timedOut + resolved;
+    // Same denominator discipline as evaluateSLA: measure drop rate against
+    // what was scheduled, not just what was counted. Prevents a silent-PASS
+    // topology from producing dropRate = 0 → WIN under the legacy threshold.
+    const expectedGenerated = wave.intensity * wave.duration;
+    const denominator = Math.max(accountedTotal, expectedGenerated, 1);
+    const dropRate = (dropped + timedOut + (denominator - accountedTotal)) / denominator;
     const budget = this.economy.getBudget();
 
     // SLA gate: if SLAs are defined, they determine the verdict.
@@ -212,7 +226,7 @@ export class TDModeController implements ModeController {
       : (dropRate < wave.dropThreshold ? "win" : "lose");
 
     const performance = 1 - dropRate;
-    const reliability = 1 - (dropped + timedOut) / Math.max(total, 1);
+    const reliability = resolved / denominator;
     const cost = budget;
     const composite =
       0.4 * performance +
@@ -450,10 +464,19 @@ export class TDModeController implements ModeController {
       timedOut += m.requestsTimedOut;
     }
 
-    const total = resolved + dropped + timedOut;
-    if (total === 0) return;
+    // Rolling availability uses the same denominator discipline as the final
+    // verdict: scheduled-generated through this tick, capped at the wave
+    // duration (drain ticks don't generate new requests). This means a
+    // topology that silently drops every request STILL accrues mid-wave
+    // penalty ticks — the old `if (total === 0) return` short-circuit hid
+    // broken architectures from the player's budget.
+    const ticksInWave = metrics.length;
+    const generatingTicks = Math.min(ticksInWave, wave.duration);
+    const expectedGeneratedSoFar = wave.intensity * generatingTicks;
+    const accountedTotal = resolved + dropped + timedOut;
+    const denominator = Math.max(accountedTotal, expectedGeneratedSoFar, 1);
+    const rollingAvailability = resolved / denominator;
 
-    const rollingAvailability = resolved / total;
     if (rollingAvailability < wave.sla.availabilityTarget) {
       this.economy.debitUpkeep(wave.sla.penaltyPerTick);
     }
