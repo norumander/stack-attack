@@ -321,3 +321,56 @@ export const CIRCUIT_BREAKER_ENTRY: ComponentRegistryEntry = {
   visual: { icon: "circuit-breaker", color: "#ef4444", shape: "octagon" },
   conditionProfile: RESILIENT_CONDITION_PROFILE,
 };
+
+export const STREAMING_SERVER_ENTRY: ComponentRegistryEntry = {
+  type: "streaming_media_server",
+  name: "Streaming Server",
+  description: "Handles sustained streaming sessions and forwards non-stream traffic.",
+  longDescription:
+    "A specialized server that processes streaming requests (video, audio) while " +
+    "forwarding all other traffic types downstream. Isolates bandwidth-heavy streams " +
+    "from the API tier so they don't starve regular requests.",
+  capabilitiesHuman: [
+    "Processes stream requests with adaptive delivery",
+    "Forwards non-stream traffic to downstream components",
+    "Monitors throughput and health",
+  ],
+  capabilities: [
+    { id: "streaming" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "forwarding-pipe" as CapabilityId, defaultTier: 1, maxTier: 2 },
+    { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+  ],
+  ports: [
+    { id: "p-in" as PortId, direction: "ingress", dataType: "http", capacity: 2, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "data", capacity: 2, connections: [] },
+  ],
+  placementCost: 300,
+  upgradeCostCurve: [300, 600],
+  visual: { icon: "streaming", color: "#e11d48", shape: "rectangle" },
+  conditionProfile: RESILIENT_CONDITION_PROFILE,
+};
+
+export const BLOB_STORAGE_ENTRY: ComponentRegistryEntry = {
+  type: "blob_storage",
+  name: "Blob Storage",
+  description: "Stores unstructured assets like videos, images, and files.",
+  longDescription:
+    "High-capacity storage for large binary objects. Cheap per-byte but higher latency " +
+    "than in-memory caches. Backs the Streaming Server with video content.",
+  capabilitiesHuman: [
+    "Stores and serves large binary assets",
+    "Monitors throughput and health",
+  ],
+  capabilities: [
+    { id: "blob-storage" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+  ],
+  ports: [
+    { id: "p-in" as PortId, direction: "ingress", dataType: "data", capacity: 2, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "data", capacity: 1, connections: [] },
+  ],
+  placementCost: 250,
+  upgradeCostCurve: [250, 500],
+  visual: { icon: "blob-storage", color: "#64748b", shape: "rectangle" },
+  conditionProfile: RESILIENT_CONDITION_PROFILE,
+};
