@@ -416,12 +416,20 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     graphic.x = startX;
     graphic.y = startY;
 
+    // Hide the sprite during its stagger-delay window so downstream hop dots
+    // don't materialize at their source positions simultaneously with upstream
+    // ones (the engine's fixed-point tick resolves all hops in the same tick;
+    // spawnOffsetMs staggers *motion* but the sprite is already created).
+    // tickFrame flips visibility back on when `t >= 0`.
+    const offset = Math.max(0, args.spawnOffsetMs ?? 0);
+    if (offset > 0) graphic.visible = false;
+
     const dot: ActiveDot = {
       graphic,
       connectionId: args.connectionId,
       requestId: args.requestId,
       targetComponentId: conn.targetId,
-      startMs: performance.now() + Math.max(0, args.spawnOffsetMs ?? 0),
+      startMs: performance.now() + offset,
       durationMs: Math.max(50, args.durationMs),
       startX,
       startY,
@@ -635,9 +643,11 @@ export class PixiTopologyRenderer implements TopologyRenderer {
       const dot = this.activeDots[i]!;
       const t = (now - dot.startMs) / dot.durationMs;
       // Dot is still in its stagger-delay window (spawnOffsetMs): keep it
-      // pinned at source position. graphic.x/y were set to startX/startY
-      // in spawnDotImmediate, so skipping this frame leaves them in place.
+      // pinned at source position AND hidden so downstream hop dots don't
+      // visually co-exist with upstream ones at tick start. Visibility
+      // flips back on as soon as the delay elapses.
       if (t < 0) continue;
+      if (!dot.graphic.visible) dot.graphic.visible = true;
       if (t >= 1) {
         this.dotsLayer?.removeChild(dot.graphic);
         dot.graphic.destroy();
