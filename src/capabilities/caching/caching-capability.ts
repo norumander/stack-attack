@@ -46,6 +46,8 @@ export class CachingCapability implements Capability {
   private cache = new Map<string, number>();
   private hits = 0;
   private misses = 0;
+  private hitsByType = new Map<string, number>();
+  private missesByType = new Map<string, number>();
 
   constructor(readonly id: CapabilityId) {}
 
@@ -64,6 +66,10 @@ export class CachingCapability implements Capability {
       // Cache hit — update access time and RESPOND
       this.cache.set(cacheKey, context.currentTick);
       this.hits += 1;
+      this.hitsByType.set(
+        request.type,
+        (this.hitsByType.get(request.type) ?? 0) + 1,
+      );
       return {
         outcome: { kind: "RESPOND" },
         sideEffects: [],
@@ -84,6 +90,10 @@ export class CachingCapability implements Capability {
     }
     this.cache.set(cacheKey, context.currentTick);
     this.misses += 1;
+    this.missesByType.set(
+      request.type,
+      (this.missesByType.get(request.type) ?? 0) + 1,
+    );
 
     return {
       outcome: { kind: "PASS" },
@@ -119,11 +129,29 @@ export class CachingCapability implements Capability {
 
   getStats(): CapabilityStats {
     const total = this.hits + this.misses;
+    const hitRateByType: Record<
+      string,
+      { hits: number; misses: number; hitRate: number }
+    > = {};
+    const allTypes = new Set<string>([
+      ...this.hitsByType.keys(),
+      ...this.missesByType.keys(),
+    ]);
+    for (const type of allTypes) {
+      const h = this.hitsByType.get(type) ?? 0;
+      const m = this.missesByType.get(type) ?? 0;
+      hitRateByType[type] = {
+        hits: h,
+        misses: m,
+        hitRate: h + m > 0 ? h / (h + m) : 0,
+      };
+    }
     return {
       hitRate: total > 0 ? this.hits / total : 0,
       size: this.cache.size,
       hits: this.hits,
       misses: this.misses,
+      hitRateByType,
     };
   }
 }
