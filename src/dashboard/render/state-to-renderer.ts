@@ -1,4 +1,4 @@
-import type { TopologyRenderer } from "./topology-renderer.js";
+import type { TopologyRenderer, SpawnRequestDotArgs } from "./topology-renderer.js";
 import type { SimulationState } from "@core/state/simulation-state.js";
 import type { TickMetrics } from "@core/types/metrics.js";
 import type { RequestId } from "@core/types/ids.js";
@@ -62,8 +62,14 @@ export function applyTickToRenderer(
   // requestId in that group to the representative so the SERVED/DROPPED/
   // OVERLOADED flashes below can re-key onto the representative and fire
   // when its single dot retires at the target.
+  //
+  // We also count how many engine events mapped to each group and pass
+  // that count to spawnRequestDot so the renderer can show a numeric
+  // label on the dot (e.g. "50" for 50 reads aggregated into one cyan dot).
   const groupRep = new Map<string, RequestId>();
   const idToRep = new Map<RequestId, RequestId>();
+  const pendingDots = new Map<string, { args: SpawnRequestDotArgs; count: number }>();
+
   for (const ev of state.lastTickEvents) {
     if (ev.type !== "FORWARDED") continue;
     if (ev.connectionId === null) continue;
@@ -74,18 +80,27 @@ export function applyTickToRenderer(
     const existingRep = groupRep.get(groupKey);
     if (existingRep !== undefined) {
       idToRep.set(ev.requestId, existingRep);
+      const pending = pendingDots.get(groupKey)!;
+      pending.count += 1;
       continue;
     }
     groupRep.set(groupKey, ev.requestId);
     idToRep.set(ev.requestId, ev.requestId);
     const latencyTicks = getEffectiveLatency(state, ev.connectionId);
     const durationMs = Math.max(50, latencyTicks * tickIntervalMs);
-    renderer.spawnRequestDot({
-      connectionId: ev.connectionId,
-      requestId: ev.requestId,
-      requestType,
-      durationMs,
+    pendingDots.set(groupKey, {
+      count: 1,
+      args: {
+        connectionId: ev.connectionId,
+        requestId: ev.requestId,
+        requestType,
+        durationMs,
+      },
     });
+  }
+
+  for (const { args, count } of pendingDots.values()) {
+    renderer.spawnRequestDot({ ...args, count });
   }
 
   // Queue per-request feedback flashes so they fire when the dot carrying

@@ -119,6 +119,7 @@ export class PixiTopologyRenderer implements TopologyRenderer {
 
   private pointerDownCallbacks: Array<(ev: RendererPointerEvent) => void> = [];
   private pointerMoveCallbacks: Array<(ev: RendererPointerEvent) => void> = [];
+  private connectionPointerDownCallbacks: Array<(id: ConnectionId) => void> = [];
   private mountedContainer: HTMLElement | null = null;
 
   async mount(container: HTMLElement): Promise<void> {
@@ -274,6 +275,14 @@ export class PixiTopologyRenderer implements TopologyRenderer {
   addConnection(id: ConnectionId, sourceId: ComponentId, targetId: ComponentId): void {
     if (!this.connectionsLayer) return;
     const line = new Graphics();
+    line.eventMode = "static";
+    line.cursor = "pointer";
+    line.on("pointerdown", (event) => {
+      event.stopPropagation();
+      for (const cb of this.connectionPointerDownCallbacks) {
+        cb(id);
+      }
+    });
     this.connectionsLayer.addChild(line);
     this.connections.set(id, { id, sourceId, targetId, line, loadUtilization: 0 });
     this.redrawConnection(id);
@@ -311,6 +320,12 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     state.line.moveTo(x1, y1);
     state.line.lineTo(x2, y2);
     state.line.stroke({ color: 0x22c55e, width, alpha });
+    // Invisible fat stroke widens the click/hit area without changing the
+    // visual line. alpha: 0.001 rather than 0 because some Pixi v8 builds
+    // skip hit-testing on fully-transparent geometry.
+    state.line.moveTo(x1, y1);
+    state.line.lineTo(x2, y2);
+    state.line.stroke({ color: 0xffffff, width: 14, alpha: 0.001 });
   }
 
   spawnRequestDot(args: SpawnRequestDotArgs): void {
@@ -342,6 +357,26 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     const graphic = new Graphics();
     const color = REQUEST_TYPE_COLORS[args.requestType] ?? REQUEST_TYPE_COLORS["default"]!;
     this.drawDotShape(graphic, args.requestType, color);
+
+    // Render a numeric count label above the dot when more than one engine
+    // request is aggregated into this single visual dot. Helps players read
+    // the flow weight on each edge (e.g. "50" for 50 reads/tick).
+    if (args.count !== undefined && args.count > 1) {
+      const label = new Text({
+        text: String(args.count),
+        style: {
+          fontFamily: "Inter, system-ui, sans-serif",
+          fontSize: 10,
+          fontWeight: "700",
+          fill: 0xffffff,
+          stroke: { color: 0x000000, width: 2 },
+        },
+      });
+      label.anchor.set(0.5, 0.5);
+      label.position.set(0, -12);
+      graphic.addChild(label);
+    }
+
     this.dotsLayer.addChild(graphic);
 
     const startX = source.gridPosition.x * GRID_CELL_PX;
@@ -522,6 +557,14 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     return () => {
       const i = this.pointerMoveCallbacks.indexOf(cb);
       if (i >= 0) this.pointerMoveCallbacks.splice(i, 1);
+    };
+  }
+
+  onConnectionPointerDown(cb: (id: ConnectionId) => void): () => void {
+    this.connectionPointerDownCallbacks.push(cb);
+    return () => {
+      const i = this.connectionPointerDownCallbacks.indexOf(cb);
+      if (i >= 0) this.connectionPointerDownCallbacks.splice(i, 1);
     };
   }
 

@@ -67,6 +67,7 @@ function recordingRenderer(): {
     worldToScreen: (p) => ({ x: p.x, y: p.y }),
     onPointerDown: () => () => {},
     onPointerMove: () => () => {},
+    onConnectionPointerDown: () => () => {},
   };
   return { renderer, spawns, flashes };
 }
@@ -92,6 +93,8 @@ describe("applyTickToRenderer: dot aggregation per (connection, requestType)", (
     expect(spawns[0]!.connectionId).toBe(connId);
     expect(spawns[0]!.requestType).toBe("api_read");
     expect(spawns[0]!.requestId).toBe("r0");
+    // count should reflect how many engine requests were aggregated
+    expect(spawns[0]!.count).toBe(10);
   });
 
   it("spawns separate dots per requestType on the same connection", () => {
@@ -114,6 +117,8 @@ describe("applyTickToRenderer: dot aggregation per (connection, requestType)", (
     const writeDot = spawns.find((s) => s.requestType === "api_write")!;
     expect(readDot.requestId).toBe("r0");
     expect(writeDot.requestId).toBe("w0");
+    expect(readDot.count).toBe(3);
+    expect(writeDot.count).toBe(2);
   });
 
   it("re-keys SERVED flashes of non-representative requests onto their rep", () => {
