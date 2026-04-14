@@ -423,6 +423,14 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     // ones (the engine's fixed-point tick resolves all hops in the same tick;
     // spawnOffsetMs staggers *motion* but the sprite is already created).
     // tickFrame flips visibility back on when `t >= 0`.
+    //
+    // KNOWN ISSUE (Stage 3d): playtest reports that downstream hop dots
+    // still appear simultaneously with upstream ones at the default tick
+    // speed, despite adapter-level unit tests confirming the stagger offsets
+    // are computed correctly (see
+    // tests/unit/state-to-renderer-aggregation.test.ts). Needs deeper
+    // investigation — possibly a renderer frame-timing issue. Logged in
+    // td-stage-gotchas.md for follow-up.
     const offset = Math.max(0, args.spawnOffsetMs ?? 0);
     if (offset > 0) graphic.visible = false;
 

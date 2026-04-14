@@ -150,6 +150,57 @@ describe("applyTickToRenderer: dot aggregation per (connection, requestType)", (
     expect(flashes.every((f) => f.kind === "served")).toBe(true);
   });
 
+  it("assigns increasing spawnOffsetMs to each new (connection, requestType) group in discovery order", () => {
+    const state = makeState();
+    // Pipeline: 3 hops, each on a different connection. Events are pushed
+    // in pipeline order (A → B → C) to simulate the engine's tick ordering.
+    const connA = "c-a" as ConnectionId;
+    const connB = "c-b" as ConnectionId;
+    const connC = "c-c" as ConnectionId;
+    state.connections.set(connA, {
+      id: connA,
+      source: { componentId: "node1" as ComponentId, portId: "p" as PortId },
+      target: { componentId: "node2" as ComponentId, portId: "p" as PortId },
+      bandwidth: 1000, latency: 1, currentLoad: 0,
+    });
+    state.connections.set(connB, {
+      id: connB,
+      source: { componentId: "node2" as ComponentId, portId: "p" as PortId },
+      target: { componentId: "node3" as ComponentId, portId: "p" as PortId },
+      bandwidth: 1000, latency: 1, currentLoad: 0,
+    });
+    state.connections.set(connC, {
+      id: connC,
+      source: { componentId: "node3" as ComponentId, portId: "p" as PortId },
+      target: { componentId: "node4" as ComponentId, portId: "p" as PortId },
+      bandwidth: 1000, latency: 1, currentLoad: 0,
+    });
+
+    state.lastTickEvents.push(
+      { type: "FORWARDED", tick: 0, componentId: "node2" as ComponentId, capabilityId: null, requestId: "rA" as RequestId, connectionId: connA, latencyAdded: 0, metadata: { requestType: "api_read" } },
+      { type: "FORWARDED", tick: 0, componentId: "node3" as ComponentId, capabilityId: null, requestId: "rB" as RequestId, connectionId: connB, latencyAdded: 0, metadata: { requestType: "api_read" } },
+      { type: "FORWARDED", tick: 0, componentId: "node4" as ComponentId, capabilityId: null, requestId: "rC" as RequestId, connectionId: connC, latencyAdded: 0, metadata: { requestType: "api_read" } },
+    );
+
+    const { renderer, spawns } = recordingRenderer();
+    const tickIntervalMs = 720;
+    applyTickToRenderer(state, renderer, tickIntervalMs);
+
+    expect(spawns).toHaveLength(3);
+    // First group (connA) gets offset 0
+    const spawnA = spawns.find((s) => s.connectionId === connA)!;
+    expect(spawnA.spawnOffsetMs).toBe(0);
+    // Subsequent groups get strictly increasing offsets
+    const spawnB = spawns.find((s) => s.connectionId === connB)!;
+    const spawnC = spawns.find((s) => s.connectionId === connC)!;
+    expect(spawnB.spawnOffsetMs).toBeGreaterThan(0);
+    expect(spawnC.spawnOffsetMs).toBeGreaterThan(spawnB.spawnOffsetMs!);
+    // At tickIntervalMs=720, HOP_STAGGER = max(60, 720*0.13) = 93.6ms
+    // so offsets should be ~0, 93.6, 187.2
+    expect(spawnB.spawnOffsetMs).toBeCloseTo(93.6, 1);
+    expect(spawnC.spawnOffsetMs).toBeCloseTo(187.2, 1);
+  });
+
   it("falls back to own requestId for flashes whose request didn't forward this tick", () => {
     const state = makeState();
     const serverId = "server" as ComponentId;
