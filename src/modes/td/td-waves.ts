@@ -68,7 +68,7 @@ export const WAVE_3: TDWaveDefinition = {
   availableComponents: ["server", "database", "cache", "load_balancer"],
   dropThreshold: 0.05,
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
-  keyPoolSize: 15, // keyPoolSize: 15 vs Cache capacity 10 → ~67% hit rate (steady state)
+  keyPoolSize: 10, // pool ≤ capacity → near-100% hit rate. Wave 3 is the player's first encounter with Cache; the rescue should feel powerful, not marginal. The "imperfect cache" lesson comes in later waves if/when we want to teach it.
   sla: { availabilityTarget: 0.95, maxAvgLatency: 5, minBudget: 0, penaltyPerTick: 5 },
 };
 
