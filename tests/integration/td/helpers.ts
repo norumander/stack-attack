@@ -160,7 +160,7 @@ export function buildDatabase(compRegistry: ComponentRegistry): {
 }
 
 /**
- * Build a Cache component from the TD registry (Caching + forwarding-pipe 55/tick).
+ * Build a Cache component from the TD registry (Caching + forwarding-pipe 200/tick).
  */
 export function buildCache(compRegistry: ComponentRegistry): {
   component: Component;
@@ -208,11 +208,11 @@ export function buildLoadBalancer(
 
   const routingCap = new RoutingCapability("routing" as CapabilityId);
   // LB's Forwarding handles ALL inbound traffic with high throughput
-  // (~55/tick) — pass-through pipe feeding both servers. Emits source-side
+  // (200/tick) — pass-through pipe feeding both servers. Emits source-side
   // FORWARDED events for runWave.
   const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
-    handledTypes: ["api_read", "api_write"],
-    throughputPerTier: 55,
+    handledTypes: ["api_read", "api_write", "static_asset", "auth_required"],
+    throughputPerTier: 200,
     emitForwardedEvent: true,
   });
   const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);

@@ -56,14 +56,19 @@ export function registerTDDefaults(
         emitForwardedEvent: true,
       }),
   });
-  // forwarding-pipe is the Cache/LB/Client variant: handles all traffic at
-  // ~55/tick. Distinct id so it can be registered as a separate factory.
+  // forwarding-pipe is the Cache/CDN/LB/Client variant: handles all traffic at
+  // a high pass-through rate. Tier-1 budget is 200/tick so a single CDN or Cache
+  // can absorb Wave 5's 150/tick intensity without overflowing its queue. Raised
+  // from 55 (Wave 3-era) to 200 when Stage 3d added Wave 4 (80/tick) and Wave 5
+  // (150/tick) — the Stage 3c engine treats dequeued cache-hit requests as
+  // consuming the tick budget, so the cap must be at least the total arrival
+  // rate at any intermediary component.
   capRegistry.register({
     id: "forwarding-pipe" as CapabilityId,
     factory: () =>
       new ForwardingCapability("forwarding-pipe" as CapabilityId, {
-        handledTypes: ["api_read", "api_write"],
-        throughputPerTier: 55,
+        handledTypes: ["api_read", "api_write", "static_asset", "auth_required"],
+        throughputPerTier: 200,
         emitForwardedEvent: true,
       }),
   });
