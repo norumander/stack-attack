@@ -74,7 +74,7 @@ Both modes run on the same simulation engine and component system.
 - **Wave 3 -- Traffic Spikes:** Intensity 5x, 50 rps. Teaches horizontal scaling, caching as a strategy. Lone server *loses*; cache or load balancer *rescues*.
 - **SLA gate mechanic** -- wave pass/fail based on drop threshold
 - **Budget and allowlist constraints** per wave
-- **Waves 4-10 + boss waves** designed, not yet implemented
+- **Waves 4-10 + boss waves** designed, not yet implemented — see [`docs/superpowers/roadmaps/2026-04-14-waves-4-10-roadmap.md`](docs/superpowers/roadmaps/2026-04-14-waves-4-10-roadmap.md) for the per-wave implementation roadmap and live status table
 
 ### Sandbox Dashboard (Vite)
 
@@ -172,7 +172,8 @@ docs/
 | Stage 2c | Done | Bufferable TTL scanning, SCALE side effects, RoutingCapability with tier progression |
 | Stage 3a | Done | 23 production capabilities, 14-component registry, sandbox dashboard, Wave 1-3 TD mode |
 | Stage 3b | Done | TD playable loop: tryPlace/tryConnect, multi-wave controller, TD dashboard with palette/grid/HUD |
-| Stage 3c | In Progress | Playable polish -- Pixi renderer, teaching surfaces, expanded event metadata |
+| Stage 3c | Done | Playable polish -- Pixi renderer, teaching surfaces, expanded event metadata |
+| Waves 4-10 | Planned | Per-wave roadmap with live status at [`docs/superpowers/roadmaps/2026-04-14-waves-4-10-roadmap.md`](docs/superpowers/roadmaps/2026-04-14-waves-4-10-roadmap.md) |
 
 ## Design Principles
 
