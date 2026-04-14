@@ -10,7 +10,7 @@ The game must stand on its own as a strategy game first. The learning is the lon
 
 ## Implementation status
 
-**Current stage:** Phase 1, Stage 3b complete + post-3b cleanup pass. TD mode is interactively playable end-to-end through the dashboard for the existing Wave 1–3 learning arc. 582 tests, typecheck clean.
+**Current stage:** Phase 1, Stage 3c complete. TD mode is playable end-to-end with Pixi v8 topology rendering, per-request dot visualization, pre-wave briefing card, component info panel, and post-wave diagnosis. 620 tests, typecheck clean.
 
 **What ships** (merged into `main`):
 
@@ -103,6 +103,8 @@ CLAUDE.md is a navigation hub. Pull detail from these when the task requires it:
 - **`docs/superpowers/plans/2026-04-12-stage-3a-wave-1-3-playable-slice.md`** — Stage 3a 28-task implementation plan across three slices.
 - **`docs/superpowers/specs/2026-04-12-stage-3b-td-playable-loop-design.md`** — Stage 3b playable loop contracts (TDModeController multi-wave, real tryPlace/tryConnect, registry tuning, dashboard TD mode). Revised across 4 cold-audit rounds.
 - **`docs/superpowers/plans/2026-04-12-stage-3b-td-playable-loop.md`** — Stage 3b implementation plan (16 TDD tasks across slice A controller + slice B dashboard).
+- **`docs/superpowers/specs/2026-04-13-stage-3c-playable-polish-design.md`** — Stage 3c playable polish contracts (Pixi renderer, teaching surfaces, SERVER p-in capacity bump, extended registry entry). Revised across 3 cold-audit rounds.
+- **`docs/superpowers/plans/2026-04-13-stage-3c-playable-polish.md`** — Stage 3c implementation plan (~20 tasks across 7 slices).
 
 ## Simulation tick (10 steps, fixed order for determinism)
 
@@ -197,6 +199,21 @@ git worktree add .worktrees/<branch> -b <branch>   # isolated feature work
 - **Worktree `node_modules` shortcut:** `ln -sf /Users/normanettedgui/development/capstone/node_modules .worktrees/<name>/node_modules` lets a fresh worktree run `pnpm test` / `pnpm typecheck` immediately without a separate install. Remove the symlink before `git worktree remove` (or use `--force`).
 - **Subagents and worktree drift:** when dispatching subagents to work in a specific worktree, include the absolute path in EVERY git command in their prompt (e.g. `git -C /path/to/.worktrees/<branch> commit ...`). Subagents have their own shell state and may `cd` away from the worktree mid-task without realizing it, then commit to whatever branch the new cwd is on. Stage 3b's CLAUDE.md update commit landed on `main` instead of `feature/stage-3b-spec` for exactly this reason.
 - **Wave duration ≠ total run ticks.** `WaveDefinition.duration` is the traffic-generation window only. The engine continues ticking after traffic stops until `isWaveDrained` returns true (queue empties or times out via TTL). UI tick counters must compute `tickInWave = state.currentTick - waveStartTick` and either cap at `wave.duration` or show a separate "draining" indicator past that point.
+
+### Stage 3c engine contract gotchas
+
+- **`state.lastTickEvents` is the per-tick event view for the renderer.** `state.appendEvent` writes through to both `requestLog` (existing, unbounded) and `lastTickEvents` (per-tick). `Engine.tick()` clears it as its first statement, before step 1. Consumers running AFTER `engine.tick()` returns see exactly this-tick's events.
+- **`TickMetrics.perConnection` is optional** — existing tests that construct `TickMetrics` literals without it stay compiling. The Stage 3c Pixi adapter reads it; non-dashboard consumers ignore it.
+- **FORWARDED events carry `metadata.requestType`.** Both the engine's target-side emit (`deliver-staged.ts`) and `ForwardingCapability`'s source-side emit (when `emitForwardedEvent: true`) tag their events with `{ requestType: request.type }`. Used by the renderer adapter to color per-request dots without maintaining a separate id→type map.
+- **`SERVER_ENTRY.p-in.capacity` is 2** (bumped from 1 in Task 1.4). Designed to enable single-Server Wave 3 cache-rescue — but the `campaign-headless.test.ts` test still uses the Stage-3b two-server rescue because the SLA gate (95% availability on Wave 3) rejects the single-server topology at ~92.5% availability. Single-server rewrite deferred: needs wave tuning (pool/intensity/SLA) in a follow-up pass before the test can flip.
+- **`ComponentRegistryEntry` has optional `longDescription` + `capabilitiesHuman`.** TD entries populate them; the 14 sandbox entries in `src/core/registry/component-entries.ts` don't. Consumed by the TD info panel and briefing card.
+- **Dashboard topology rendering is Pixi v8, not DOM.** `src/dashboard/render/pixi-topology-renderer.ts` owns the canvas. The dashboard depends on the `TopologyRenderer` interface in `src/dashboard/render/topology-renderer.ts`, not on `pixi.js` directly. `src/dashboard/render/state-to-renderer.ts` is the per-tick adapter that reads `TickMetrics` + `state.lastTickEvents` and drives component/connection/dot updates. `createTDDashboard` is now async because Pixi v8's `Application.init()` is async — `bootTDMode` awaits it, top-level call sites fire-and-forget via `void bootTDMode()`.
+- **Engine-pixi isolation is a tested invariant.** `tests/unit/engine-pixi-isolation.test.ts` scans `src/core/**` and `src/capabilities/**` for `pixi.js` import specifiers. The test must stay green — the engine is framework-agnostic per the Phase 1 scope.
+- **`rerenderTopology` on the Pixi dashboard is a diff-style re-seed.** It walks `state.components`/`state.connections` and adds/removes whatever doesn't match the renderer's tracked id sets. Called after the retry flow in `main.ts` replays actions against state directly (bypassing the renderer's pointerdown handler).
+- **Info panel click vs connect flow:** clicking a component in TD build phase both opens the info panel AND initiates a connect (the component becomes the connect source). Click another component to complete the connection; click empty space to cancel.
+- **Post-wave diagnosis lives in `src/dashboard/td/diagnose-wave.ts`.** Pure function, 4 branches ordered by specificity: write routing gap → process throughput → TTL timeouts → default. Hints point at symptoms, never at solutions. Five-case unit test pins the branch order.
+- **All dashboard DOM construction with dynamic content uses `textContent` + `createElement`, never `innerHTML`.** XSS defense; enforced culturally.
+- **Pixi v8 API differences from v7 (for future renderer edits):** `await app.init({...})` is async; `Graphics` uses `g.rect(x,y,w,h).fill(color)` not `beginFill/drawRect`; `Text` is `new Text({ text, style })`.
 
 ### Post-3b cleanup pass gotchas
 
