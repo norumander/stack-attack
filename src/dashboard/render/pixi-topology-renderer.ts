@@ -97,7 +97,6 @@ export class PixiTopologyRenderer implements TopologyRenderer {
   private readonly components = new Map<ComponentId, ComponentRenderState>();
   private readonly connections = new Map<ConnectionId, ConnectionRenderState>();
 
-  private readonly dotPool: Graphics[] = [];
   private readonly activeDots: ActiveDot[] = [];
   private readonly pendingFlashes: PendingFlash[] = [];
   /**
@@ -111,7 +110,6 @@ export class PixiTopologyRenderer implements TopologyRenderer {
    * On retirement, the first queued dot for that request spawns immediately.
    */
   private readonly queuedDotsByRequest = new Map<RequestId, SpawnRequestDotArgs[]>();
-  private readonly DOT_POOL_INITIAL = 1000;
 
   private selectedId: ComponentId | null = null;
   private ghostType: string | null = null;
@@ -150,10 +148,6 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     world.addChild(this.selectionLayer);
     world.addChild(this.ghostLayer);
 
-    for (let i = 0; i < this.DOT_POOL_INITIAL; i++) {
-      this.dotPool.push(new Graphics());
-    }
-
     app.ticker.add(() => this.tickFrame());
 
     app.stage.eventMode = "static";
@@ -188,7 +182,6 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     this.pendingFlashes.length = 0;
     this.activeDotByRequest.clear();
     this.queuedDotsByRequest.clear();
-    this.dotPool.length = 0;
   }
 
   resize(width: number, height: number): void {
@@ -341,9 +334,13 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     const target = this.components.get(conn.targetId);
     if (!source || !target) return;
 
-    const graphic = this.dotPool.pop() ?? this.growDotPool();
+    // Fresh Graphics per dot — no pooling. The previous pool-based
+    // approach appeared to leak fill/stroke style across clear() in
+    // Pixi v8, causing cross-request visual bleed (orange edges on
+    // cyan reads that had been drawn into a previously-used graphic).
+    // At current wave rates (≤25 req/tick), GC pressure is trivial.
+    const graphic = new Graphics();
     const color = REQUEST_TYPE_COLORS[args.requestType] ?? REQUEST_TYPE_COLORS["default"]!;
-    graphic.clear();
     this.drawDotShape(graphic, args.requestType, color);
     this.dotsLayer.addChild(graphic);
 
@@ -368,11 +365,6 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     };
     this.activeDots.push(dot);
     this.activeDotByRequest.set(args.requestId, dot);
-  }
-
-  private growDotPool(): Graphics {
-    console.warn("[pixi-renderer] dot pool exhausted, growing dynamically");
-    return new Graphics();
   }
 
   private drawDotShape(g: Graphics, requestType: string, color: number): void {
@@ -540,7 +532,7 @@ export class PixiTopologyRenderer implements TopologyRenderer {
       const t = (now - dot.startMs) / dot.durationMs;
       if (t >= 1) {
         this.dotsLayer?.removeChild(dot.graphic);
-        this.dotPool.push(dot.graphic);
+        dot.graphic.destroy();
         this.activeDots.splice(i, 1);
         this.activeDotByRequest.delete(dot.requestId);
 
