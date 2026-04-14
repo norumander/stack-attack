@@ -15,12 +15,17 @@ const GRID_CELL_PX = 40;
 /** Half-width of a component sprite in pixels. */
 const COMPONENT_HALF = 18;
 
-/** Color palette for request dots by request type. */
+/**
+ * Color palette for request dots by request type. Chosen for high
+ * hue-contrast between read (cool cyan) and write (warm orange) so they
+ * read as clearly different at a glance — previously magenta writes and
+ * cyan reads were too similar in motion at high density.
+ */
 const REQUEST_TYPE_COLORS: Record<string, number> = {
-  api_read: 0x22d3ee,
-  api_write: 0xec4899,
-  stream_init: 0xfde047,
-  default: 0x94a3b8,
+  api_read: 0x22d3ee,    // bright cyan
+  api_write: 0xf97316,   // bright orange
+  stream_init: 0xfde047, // yellow
+  default: 0x94a3b8,     // slate
 };
 
 interface ComponentRenderState {
@@ -371,12 +376,15 @@ export class PixiTopologyRenderer implements TopologyRenderer {
   }
 
   private drawDotShape(g: Graphics, requestType: string, color: number): void {
+    // Writes are larger + orange squares so they read as obviously
+    // different from cyan read-circles in a dense mixed-traffic wave.
     if (requestType === "api_write") {
-      g.rect(-3, -3, 6, 6).fill(color);
+      g.rect(-5, -5, 10, 10).fill(color);
+      g.rect(-5, -5, 10, 10).stroke({ color: 0x000000, width: 1, alpha: 0.4 });
     } else if (requestType === "stream_init") {
-      g.poly([0, -4, 4, 3, -4, 3]).fill(color);
+      g.poly([0, -5, 5, 4, -5, 4]).fill(color);
     } else {
-      g.circle(0, 0, 3).fill(color);
+      g.circle(0, 0, 4).fill(color);
     }
   }
 
