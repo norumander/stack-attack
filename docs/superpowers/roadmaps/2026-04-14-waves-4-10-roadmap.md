@@ -10,8 +10,8 @@ Legend: ⬜ Planned · 🟡 In Progress · ✅ Shipped
 
 | Wave | Name | Stage | Status | Shipped |
 |---|---|---|---|---|
-| 4 | Marketing Adds Images | 3d (paired w/ 5) | ⬜ Planned | — |
-| 5 | The Authentication Wall | 3d (paired w/ 4) | ⬜ Planned | — |
+| 4 | Marketing Adds Images | 3d (paired w/ 5) | ✅ Shipped | 2026-04-14 |
+| 5 | The Authentication Wall | 3d (paired w/ 4) | ✅ Shipped | 2026-04-14 |
 | 6 | Async Workloads | 3e | ⬜ Planned | — |
 | 7 | The Outage | 3f | ⬜ Planned | — |
 | 8 | Video Launch | 4a | ⬜ Planned | — |
