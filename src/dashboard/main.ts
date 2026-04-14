@@ -971,17 +971,25 @@ $modeSandbox.addEventListener("click", () => {
 });
 
 /**
- * Dev-only: wire the "Start at Wave N" buttons in the HUD. Updates the
- * URL hash to `#mode=td&wave=N` and reboots TD mode so the new hash is
- * picked up by parseTDStartingWaveFromHash. One click = fresh topology
- * at the target wave with a cumulative starting budget.
+ * Dev-only: wire the "Start at Wave" dropdown in the HUD. Populates from
+ * `TD_WAVES` at boot (so it auto-updates whenever a new wave is added
+ * to the campaign) and reboots TD mode on selection change.
  */
-const $tdWaveStartButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>(".td-dev-wave-btn"),
-);
-for (const btn of $tdWaveStartButtons) {
-  btn.addEventListener("click", () => {
-    const waveNum = btn.dataset["wave"];
+const $tdWaveStartSelect = document.getElementById(
+  "td-dev-wave-select",
+) as HTMLSelectElement | null;
+if ($tdWaveStartSelect) {
+  for (let i = 0; i < TD_WAVES.length; i++) {
+    const wave = TD_WAVES[i]!;
+    const opt = document.createElement("option");
+    opt.value = String(i + 1);
+    opt.textContent = `Wave ${wave.id} — ${wave.name}`;
+    $tdWaveStartSelect.appendChild(opt);
+  }
+  const initialWaveIndex = parseTDStartingWaveFromHash();
+  $tdWaveStartSelect.value = String(initialWaveIndex + 1);
+  $tdWaveStartSelect.addEventListener("change", () => {
+    const waveNum = $tdWaveStartSelect.value;
     if (!waveNum) return;
     location.hash = `#mode=td&wave=${waveNum}`;
     if (tdDashboard) {
