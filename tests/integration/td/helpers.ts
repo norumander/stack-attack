@@ -309,6 +309,34 @@ export function buildWorkerWithForwarding(): {
 }
 
 /**
+ * Build a Streaming Media Server from the TD registry (StreamingCapability +
+ * forwarding-pipe + Monitoring). Handles "stream" requests inline (RESPOND) and
+ * forwards all other traffic types downstream. Inline filter pattern.
+ */
+export function buildStreamingServer(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("streaming_media_server", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
+ * Build a Blob Storage component from the TD registry (BlobStorageCapability + Monitoring).
+ * Handles "static_asset" requests. Decorative in the streaming path — Streaming Server
+ * does the actual stream processing.
+ */
+export function buildBlobStorage(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("blob_storage", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
  * Build a LoadBalancer component with Routing (INTERCEPT) + Forwarding (all traffic) + Monitoring.
  * egressCount controls how many egress ports (and downstream servers) can be wired.
  */
