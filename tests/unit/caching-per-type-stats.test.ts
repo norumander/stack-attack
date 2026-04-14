@@ -20,6 +20,21 @@ function req(type: string, id: string): Request {
   };
 }
 
+function reqWithPayload(type: string, id: string, payload: string): Request {
+  return {
+    id: id as RequestId,
+    parentId: null,
+    type,
+    payload,
+    origin: "c-a" as ComponentId,
+    createdAt: 0,
+    ttl: 10,
+    originZone: null,
+    streamDuration: null,
+    streamBandwidth: null,
+  };
+}
+
 function ctx(tier = 1): ProcessContext {
   return {
     state: { currentTick: 0 } as any,
@@ -72,5 +87,21 @@ describe("CachingCapability per-type stats", () => {
     const cap = new CachingCapability("caching" as CapabilityId);
     const stats = cap.getStats();
     expect(stats.hitRateByType).toEqual({});
+  });
+
+  it("uses request.payload as the cache key when payload is present", () => {
+    const cap = new CachingCapability("caching" as CapabilityId);
+
+    // Two different ids but same payload → second should hit.
+    const r1 = reqWithPayload("api_read", "r-1", "hot-key");
+    const r2 = reqWithPayload("api_read", "r-2", "hot-key");
+    cap.process(r1, ctx());
+    const result = cap.process(r2, ctx());
+    expect(result.outcome.kind).toBe("RESPOND"); // hit on the shared payload
+
+    // Different payload → miss.
+    const r3 = reqWithPayload("api_read", "r-3", "cold-key");
+    const result3 = cap.process(r3, ctx());
+    expect(result3.outcome.kind).toBe("PASS"); // miss on new payload
   });
 });
