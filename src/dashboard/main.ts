@@ -421,21 +421,30 @@ let tdClientId: ComponentId | null = null;
 // component ids change.
 type TDPlaceAction = { kind: "place"; type: string; position: { x: number; y: number } };
 type TDConnectAction = { kind: "connect"; sourceRef: number; targetRef: number };
-type TDAction = TDPlaceAction | TDConnectAction;
+type TDDisconnectAction = { kind: "disconnect"; sourceRef: number; targetRef: number };
+type TDRemoveAction = { kind: "remove"; placeRef: number };
+type TDAction = TDPlaceAction | TDConnectAction | TDDisconnectAction | TDRemoveAction;
 
 let tdActionLog: TDAction[] = [];
 /** Index into tdActionLog marking the end of the most recent successful wave. */
 let tdSnapshotIndex = 0;
-/** Parallel array: index N → ComponentId minted by the Nth place action. */
-let tdPlaceActionIds: ComponentId[] = [];
+/**
+ * Parallel array: index N → ComponentId minted by the Nth place action.
+ * Slots are set to null when the component is removed so future refs to
+ * that index fail loudly instead of silently reusing a stale id.
+ */
+let tdPlaceActionIds: (ComponentId | null)[] = [];
 
 function refForId(id: ComponentId): number {
   if (id === tdClientId) return -1;
+  // indexOf is safe — null slots won't match a real ComponentId string
   return tdPlaceActionIds.indexOf(id);
 }
 
 function idForRef(ref: number): ComponentId | null {
   if (ref === -1) return tdClientId;
+  // null means the slot was dead-marked by a remove action — return null
+  // so callers fail loudly rather than silently reusing a stale id.
   return tdPlaceActionIds[ref] ?? null;
 }
 
@@ -699,8 +708,10 @@ function replayActions(actions: readonly TDAction[]): void {
       } else {
         // eslint-disable-next-line no-console
         console.warn(`[td-replay] place failed: ${result.reason}`);
+        // Push null so subsequent place-ref indices remain correct
+        tdPlaceActionIds.push(null);
       }
-    } else {
+    } else if (action.kind === "connect") {
       const sourceId = idForRef(action.sourceRef);
       const targetId = idForRef(action.targetRef);
       if (!sourceId || !targetId) {
@@ -712,6 +723,50 @@ function replayActions(actions: readonly TDAction[]): void {
       if (!result.ok) {
         // eslint-disable-next-line no-console
         console.warn(`[td-replay] connect failed: ${result.reason}`);
+      }
+    } else if (action.kind === "disconnect") {
+      const sourceId = idForRef(action.sourceRef);
+      const targetId = idForRef(action.targetRef);
+      if (!sourceId || !targetId) {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] disconnect failed: missing ref`);
+        continue;
+      }
+      // Find the connection matching source→target
+      let connIdToRemove: ConnectionId | null = null;
+      for (const conn of tdState.connections.values()) {
+        if (
+          conn.source.componentId === sourceId &&
+          conn.target.componentId === targetId
+        ) {
+          connIdToRemove = conn.id;
+          break;
+        }
+      }
+      if (!connIdToRemove) {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] disconnect failed: connection not found`);
+        continue;
+      }
+      const result = tdController.tryDisconnect(tdState, connIdToRemove);
+      if (!result.ok) {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] disconnect failed: ${result.reason}`);
+      }
+    } else if (action.kind === "remove") {
+      const componentId = idForRef(action.placeRef);
+      if (!componentId) {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] remove failed: missing placeRef ${action.placeRef}`);
+        continue;
+      }
+      const result = tdController.tryRemove(tdState, componentId);
+      if (result.ok) {
+        // Dead-mark the place-ref slot so future refs to it fail loudly
+        tdPlaceActionIds[action.placeRef] = null;
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] remove failed: ${result.reason}`);
       }
     }
   }
@@ -883,6 +938,23 @@ async function bootTDMode(): Promise<void> {
         console.warn(
           `[td-action] connect ${sourceRef}→${targetRef}; log=${tdActionLog.length}`,
         );
+      }
+      tdDashboard?.refreshHud();
+    },
+    onRemove: (id) => {
+      // Find the place-ref for the removed component and dead-mark the slot.
+      const placeRef = tdPlaceActionIds.indexOf(id);
+      if (placeRef >= 0) {
+        tdActionLog.push({ kind: "remove", placeRef });
+        // Dead-mark the slot so future actions referencing this index fail loudly
+        tdPlaceActionIds[placeRef] = null;
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[td-action] remove placeRef=${placeRef}; log=${tdActionLog.length}`,
+        );
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-action] remove: id ${id} not found in tdPlaceActionIds (entry point removal blocked?)`);
       }
       tdDashboard?.refreshHud();
     },

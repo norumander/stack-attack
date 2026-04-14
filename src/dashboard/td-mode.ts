@@ -61,6 +61,8 @@ export async function createTDDashboard(args: {
   topologyContainer: HTMLElement;
   onPlace?: (id: ComponentId) => void;
   onConnect?: (connectionId: ConnectionId) => void;
+  onDisconnect?: (connectionId: ConnectionId) => void;
+  onRemove?: (componentId: ComponentId) => void;
   onPhaseChange?: () => void;
 }): Promise<TDDashboard> {
   const { state, controller, topologyContainer } = args;
@@ -294,6 +296,43 @@ export async function createTDDashboard(args: {
   });
 
   /**
+   * Keyboard affordance: Delete / Backspace removes the currently selected
+   * component during the build phase. Cascades to all connected wires.
+   */
+  function onKeyDown(ev: KeyboardEvent): void {
+    if (ev.key !== "Delete" && ev.key !== "Backspace") return;
+    if (controller.getPhase() !== "build") return;
+    if (dash.cursor !== "connecting" || dash.connectingFromId === null) return;
+
+    const removedId = dash.connectingFromId;
+    const result = controller.tryRemove(state, removedId);
+    if (!result.ok) {
+      // eslint-disable-next-line no-console
+      console.warn("[td] tryRemove failed:", result.reason);
+      return;
+    }
+
+    // Diff-sync renderer to state (cascaded connections already gone from state)
+    seedRendererFromState();
+
+    // Reset selection state
+    dash.cursor = "idle";
+    dash.connectingFromId = null;
+    renderer.setSelected(null);
+    hideComponentInfoPanel();
+
+    // Refresh HUD so budget shows the refund
+    refreshHud();
+
+    // Fire callback so main.ts can log the action
+    args.onRemove?.(removedId);
+
+    // eslint-disable-next-line no-console
+    console.warn("[td] deleted component", removedId, "refund=$" + result.refund, "disconnected=" + result.disconnectedCount);
+  }
+  document.addEventListener("keydown", onKeyDown);
+
+  /**
    * Sync the renderer to engine state. Called after retry (main.ts replays
    * actions against state directly, bypassing the pointerdown handler).
    */
@@ -351,6 +390,7 @@ export async function createTDDashboard(args: {
       hideBriefingCard();
       hideComponentInfoPanel();
       infoCloseBtn?.removeEventListener("click", onInfoClose);
+      document.removeEventListener("keydown", onKeyDown);
       unsubPointerDown();
       unsubPointerMove();
       renderer.destroy();
