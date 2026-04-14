@@ -16,6 +16,12 @@ import type {
 } from "./render/topology-renderer.js";
 import { applyTickToRenderer } from "./render/state-to-renderer.js";
 import { renderBriefingCard, hideBriefingCard } from "./td/briefing-card.js";
+import {
+  showComponentInfoPanel,
+  hideComponentInfoPanel,
+  updateComponentInfoPanelStats,
+  getOpenInfoPanelComponentId,
+} from "./td/component-info-panel.js";
 
 const ENTRY_BY_TYPE: Record<string, ComponentRegistryEntry> = {
   client: CLIENT_ENTRY,
@@ -230,6 +236,7 @@ export async function createTDDashboard(args: {
         dash.cursor = "connecting";
         dash.connectingFromId = id;
         renderer.setSelected(id);
+        showComponentInfoPanel(id, state);
         setStatusText();
         // eslint-disable-next-line no-console
         console.warn("[td] connecting from", id);
@@ -318,7 +325,17 @@ export async function createTDDashboard(args: {
 
   function applyTick(stateArg: SimulationState, tickIntervalMs: number): void {
     applyTickToRenderer(stateArg, renderer, tickIntervalMs);
+    const openId = getOpenInfoPanelComponentId();
+    if (openId) {
+      const metrics = stateArg.metricsHistory[stateArg.metricsHistory.length - 1] ?? null;
+      updateComponentInfoPanelStats(openId, stateArg, metrics);
+    }
   }
+
+  // Info panel close button — wire once per dashboard instance.
+  const infoCloseBtn = document.getElementById("td-info-panel-close");
+  const onInfoClose = () => hideComponentInfoPanel();
+  infoCloseBtn?.addEventListener("click", onInfoClose);
 
   // Initial render
   refreshHud();
@@ -332,6 +349,8 @@ export async function createTDDashboard(args: {
       hudEl.hidden = true;
       topologyContainer.classList.remove("td-mode");
       hideBriefingCard();
+      hideComponentInfoPanel();
+      infoCloseBtn?.removeEventListener("click", onInfoClose);
       unsubPointerDown();
       unsubPointerMove();
       renderer.destroy();
