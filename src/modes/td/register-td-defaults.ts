@@ -61,6 +61,10 @@ export function registerTDDefaults(
       new StorageCapability("storage" as CapabilityId, {
         throughputPerTier: 25,
         emitProcessedEvent: true,
+        // TD-tuned: Database is a write sink only. A naked Client→Database
+        // must NOT trivially win Wave 1 (100% reads) — the Server tier is
+        // the only api_read primitive in the TD learning arc.
+        handledTypes: ["api_write"],
       }),
   });
   capRegistry.register({
