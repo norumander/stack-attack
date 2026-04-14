@@ -9,7 +9,7 @@ import type { ComponentId, ConnectionId } from "@core/types/ids.js";
  */
 export interface TopologyRenderer {
   // ─ Lifecycle ──────────────────────────────────────────────────────────
-  mount(container: HTMLElement): void;
+  mount(container: HTMLElement): Promise<void>;
   destroy(): void;
   resize(width: number, height: number): void;
 

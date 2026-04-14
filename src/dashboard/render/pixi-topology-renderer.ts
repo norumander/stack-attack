@@ -1,0 +1,453 @@
+import { Application, Container, Graphics, Text } from "pixi.js";
+import type {
+  TopologyRenderer,
+  ComponentVisual,
+  ComponentUpdate,
+  ConnectionUpdate,
+  SpawnRequestDotArgs,
+  RendererPointerEvent,
+} from "./topology-renderer.js";
+import { utilizationColor } from "./utilization-color.js";
+import type { ComponentId, ConnectionId } from "@core/types/ids.js";
+
+/** Pixels per grid cell. Matches the old DOM renderer's 40px scale. */
+const GRID_CELL_PX = 40;
+/** Half-width of a component sprite in pixels. */
+const COMPONENT_HALF = 18;
+
+/** Color palette for request dots by request type. */
+const REQUEST_TYPE_COLORS: Record<string, number> = {
+  api_read: 0x22d3ee,
+  api_write: 0xec4899,
+  stream_init: 0xfde047,
+  default: 0x94a3b8,
+};
+
+interface ComponentRenderState {
+  id: ComponentId;
+  gridPosition: { x: number; y: number };
+  displayName: string;
+  sprite: Graphics;
+  label: Text;
+  ring: Graphics;
+  container: Container;
+  utilization: number;
+  condition: number;
+  pendingCount: number;
+}
+
+interface ConnectionRenderState {
+  id: ConnectionId;
+  sourceId: ComponentId;
+  targetId: ComponentId;
+  line: Graphics;
+  loadUtilization: number;
+}
+
+interface ActiveDot {
+  graphic: Graphics;
+  connectionId: ConnectionId;
+  startMs: number;
+  durationMs: number;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+}
+
+export class PixiTopologyRenderer implements TopologyRenderer {
+  private app: Application | null = null;
+  private world: Container | null = null;
+  private connectionsLayer: Container | null = null;
+  private dotsLayer: Container | null = null;
+  private componentsLayer: Container | null = null;
+  private selectionLayer: Container | null = null;
+  private ghostLayer: Container | null = null;
+
+  private readonly components = new Map<ComponentId, ComponentRenderState>();
+  private readonly connections = new Map<ConnectionId, ConnectionRenderState>();
+
+  private readonly dotPool: Graphics[] = [];
+  private readonly activeDots: ActiveDot[] = [];
+  private readonly DOT_POOL_INITIAL = 1000;
+
+  private selectedId: ComponentId | null = null;
+  private ghostType: string | null = null;
+  private ghostScreenPos: { x: number; y: number } | null = null;
+  private selectionRing: Graphics | null = null;
+  private ghostSprite: Graphics | null = null;
+
+  private pointerDownCallbacks: Array<(ev: RendererPointerEvent) => void> = [];
+  private pointerMoveCallbacks: Array<(ev: RendererPointerEvent) => void> = [];
+  private mountedContainer: HTMLElement | null = null;
+
+  async mount(container: HTMLElement): Promise<void> {
+    this.mountedContainer = container;
+    const app = new Application();
+    await app.init({
+      resizeTo: container,
+      background: 0x1a1d29,
+      antialias: true,
+    });
+    container.appendChild(app.canvas);
+    this.app = app;
+
+    const world = new Container();
+    app.stage.addChild(world);
+    this.world = world;
+
+    this.connectionsLayer = new Container();
+    this.dotsLayer = new Container();
+    this.componentsLayer = new Container();
+    this.selectionLayer = new Container();
+    this.ghostLayer = new Container();
+
+    world.addChild(this.connectionsLayer);
+    world.addChild(this.dotsLayer);
+    world.addChild(this.componentsLayer);
+    world.addChild(this.selectionLayer);
+    world.addChild(this.ghostLayer);
+
+    for (let i = 0; i < this.DOT_POOL_INITIAL; i++) {
+      this.dotPool.push(new Graphics());
+    }
+
+    app.ticker.add(() => this.tickFrame());
+
+    app.stage.eventMode = "static";
+    app.stage.hitArea = app.screen;
+    app.stage.on("pointerdown", (ev) => {
+      const hit = this.hitTest(ev.global.x, ev.global.y);
+      const pe: RendererPointerEvent = {
+        screenX: ev.global.x,
+        screenY: ev.global.y,
+        hit,
+      };
+      for (const cb of this.pointerDownCallbacks) cb(pe);
+    });
+    app.stage.on("pointermove", (ev) => {
+      const hit = this.hitTest(ev.global.x, ev.global.y);
+      const pe: RendererPointerEvent = {
+        screenX: ev.global.x,
+        screenY: ev.global.y,
+        hit,
+      };
+      for (const cb of this.pointerMoveCallbacks) cb(pe);
+    });
+  }
+
+  destroy(): void {
+    this.app?.destroy(true, { children: true, texture: true });
+    this.app = null;
+    this.mountedContainer = null;
+    this.components.clear();
+    this.connections.clear();
+    this.activeDots.length = 0;
+    this.dotPool.length = 0;
+  }
+
+  resize(width: number, height: number): void {
+    this.app?.renderer.resize(width, height);
+  }
+
+  addComponent(id: ComponentId, visual: ComponentVisual): void {
+    if (!this.componentsLayer) return;
+    const container = new Container();
+    const sprite = new Graphics();
+    sprite.roundRect(-COMPONENT_HALF, -COMPONENT_HALF, COMPONENT_HALF * 2, COMPONENT_HALF * 2, 6);
+    sprite.fill(0x22c55e);
+    container.addChild(sprite);
+
+    const label = new Text({
+      text: visual.displayName,
+      style: {
+        fill: 0xffffff,
+        fontSize: 11,
+        fontFamily: "system-ui, sans-serif",
+      },
+    });
+    label.anchor.set(0.5, 0.5);
+    label.x = 0;
+    label.y = COMPONENT_HALF + 8;
+    container.addChild(label);
+
+    const ring = new Graphics();
+    container.addChild(ring);
+
+    container.x = visual.gridPosition.x * GRID_CELL_PX;
+    container.y = visual.gridPosition.y * GRID_CELL_PX;
+    this.componentsLayer.addChild(container);
+
+    this.components.set(id, {
+      id,
+      gridPosition: visual.gridPosition,
+      displayName: visual.displayName,
+      sprite,
+      label,
+      ring,
+      container,
+      utilization: 0,
+      condition: 1,
+      pendingCount: 0,
+    });
+  }
+
+  removeComponent(id: ComponentId): void {
+    const state = this.components.get(id);
+    if (!state) return;
+    state.container.destroy({ children: true });
+    this.components.delete(id);
+  }
+
+  updateComponent(id: ComponentId, update: ComponentUpdate): void {
+    const state = this.components.get(id);
+    if (!state) return;
+    if (update.gridPosition) {
+      state.gridPosition = update.gridPosition;
+      state.container.x = update.gridPosition.x * GRID_CELL_PX;
+      state.container.y = update.gridPosition.y * GRID_CELL_PX;
+    }
+    if (update.utilization !== undefined) {
+      state.utilization = update.utilization;
+      const color = utilizationColor(update.utilization);
+      state.sprite.clear();
+      state.sprite.roundRect(
+        -COMPONENT_HALF, -COMPONENT_HALF, COMPONENT_HALF * 2, COMPONENT_HALF * 2, 6,
+      );
+      state.sprite.fill(color);
+    }
+    if (update.condition !== undefined) {
+      state.condition = update.condition;
+      state.ring.clear();
+      const arcSpan = Math.max(0, Math.min(1, update.condition)) * Math.PI * 2;
+      state.ring.arc(0, 0, COMPONENT_HALF + 4, -Math.PI / 2, -Math.PI / 2 + arcSpan);
+      state.ring.stroke({ color: 0xffffff, width: 2, alpha: 0.8 });
+    }
+    if (update.pendingCount !== undefined) {
+      state.pendingCount = update.pendingCount;
+      if (update.pendingCount > 0) {
+        state.label.text = `${state.displayName} · ${update.pendingCount}`;
+      } else {
+        state.label.text = state.displayName;
+      }
+    }
+  }
+
+  addConnection(id: ConnectionId, sourceId: ComponentId, targetId: ComponentId): void {
+    if (!this.connectionsLayer) return;
+    const line = new Graphics();
+    this.connectionsLayer.addChild(line);
+    this.connections.set(id, { id, sourceId, targetId, line, loadUtilization: 0 });
+    this.redrawConnection(id);
+  }
+
+  removeConnection(id: ConnectionId): void {
+    const state = this.connections.get(id);
+    if (!state) return;
+    state.line.destroy();
+    this.connections.delete(id);
+  }
+
+  updateConnection(id: ConnectionId, update: ConnectionUpdate): void {
+    const state = this.connections.get(id);
+    if (!state) return;
+    if (update.loadUtilization !== undefined) {
+      state.loadUtilization = Math.max(0, Math.min(1, update.loadUtilization));
+      this.redrawConnection(id);
+    }
+  }
+
+  private redrawConnection(id: ConnectionId): void {
+    const state = this.connections.get(id);
+    if (!state) return;
+    const source = this.components.get(state.sourceId);
+    const target = this.components.get(state.targetId);
+    if (!source || !target) return;
+    const x1 = source.gridPosition.x * GRID_CELL_PX;
+    const y1 = source.gridPosition.y * GRID_CELL_PX;
+    const x2 = target.gridPosition.x * GRID_CELL_PX;
+    const y2 = target.gridPosition.y * GRID_CELL_PX;
+    const alpha = 0.3 + 0.7 * state.loadUtilization;
+    const width = 2 + 2 * state.loadUtilization;
+    state.line.clear();
+    state.line.moveTo(x1, y1);
+    state.line.lineTo(x2, y2);
+    state.line.stroke({ color: 0x22c55e, width, alpha });
+  }
+
+  spawnRequestDot(args: SpawnRequestDotArgs): void {
+    const conn = this.connections.get(args.connectionId);
+    if (!conn || !this.dotsLayer) return;
+    const source = this.components.get(conn.sourceId);
+    const target = this.components.get(conn.targetId);
+    if (!source || !target) return;
+
+    const graphic = this.dotPool.pop() ?? this.growDotPool();
+    const color = REQUEST_TYPE_COLORS[args.requestType] ?? REQUEST_TYPE_COLORS["default"]!;
+    graphic.clear();
+    this.drawDotShape(graphic, args.requestType, color);
+    this.dotsLayer.addChild(graphic);
+
+    const startX = source.gridPosition.x * GRID_CELL_PX;
+    const startY = source.gridPosition.y * GRID_CELL_PX;
+    const endX = target.gridPosition.x * GRID_CELL_PX;
+    const endY = target.gridPosition.y * GRID_CELL_PX;
+    graphic.x = startX;
+    graphic.y = startY;
+
+    this.activeDots.push({
+      graphic,
+      connectionId: args.connectionId,
+      startMs: performance.now(),
+      durationMs: Math.max(50, args.durationMs),
+      startX,
+      startY,
+      endX,
+      endY,
+    });
+  }
+
+  private growDotPool(): Graphics {
+    console.warn("[pixi-renderer] dot pool exhausted, growing dynamically");
+    return new Graphics();
+  }
+
+  private drawDotShape(g: Graphics, requestType: string, color: number): void {
+    if (requestType === "api_write") {
+      g.rect(-3, -3, 6, 6).fill(color);
+    } else if (requestType === "stream_init") {
+      g.poly([0, -4, 4, 3, -4, 3]).fill(color);
+    } else {
+      g.circle(0, 0, 3).fill(color);
+    }
+  }
+
+  flashDrop(id: ComponentId): void {
+    this.flashComponent(id, 0xef4444);
+  }
+
+  flashOverload(id: ComponentId): void {
+    this.flashComponent(id, 0xfbbf24);
+  }
+
+  private flashComponent(id: ComponentId, color: number): void {
+    const state = this.components.get(id);
+    if (!state) return;
+    const flash = new Graphics();
+    flash.roundRect(
+      -COMPONENT_HALF - 2, -COMPONENT_HALF - 2, (COMPONENT_HALF + 2) * 2, (COMPONENT_HALF + 2) * 2, 8,
+    );
+    flash.fill({ color, alpha: 0.7 });
+    state.container.addChild(flash);
+    const startMs = performance.now();
+    const FLASH_MS = 180;
+    const step = () => {
+      const elapsed = performance.now() - startMs;
+      if (elapsed >= FLASH_MS) {
+        flash.destroy();
+        this.app?.ticker.remove(step);
+        return;
+      }
+      flash.alpha = 0.7 * (1 - elapsed / FLASH_MS);
+    };
+    this.app?.ticker.add(step);
+  }
+
+  setSelected(id: ComponentId | null): void {
+    this.selectedId = id;
+    if (this.selectionRing) {
+      this.selectionRing.destroy();
+      this.selectionRing = null;
+    }
+    if (id === null || !this.selectionLayer) return;
+    const state = this.components.get(id);
+    if (!state) return;
+    const ring = new Graphics();
+    ring.circle(0, 0, COMPONENT_HALF + 8);
+    ring.stroke({ color: 0x60a5fa, width: 3, alpha: 0.9 });
+    ring.x = state.container.x;
+    ring.y = state.container.y;
+    this.selectionLayer.addChild(ring);
+    this.selectionRing = ring;
+  }
+
+  setPlacementGhost(type: string | null, screenPos: { x: number; y: number } | null): void {
+    this.ghostType = type;
+    this.ghostScreenPos = screenPos;
+    if (this.ghostSprite) {
+      this.ghostSprite.destroy();
+      this.ghostSprite = null;
+    }
+    if (!type || !screenPos || !this.ghostLayer) return;
+    const ghost = new Graphics();
+    ghost.roundRect(-COMPONENT_HALF, -COMPONENT_HALF, COMPONENT_HALF * 2, COMPONENT_HALF * 2, 6);
+    ghost.fill({ color: 0x60a5fa, alpha: 0.35 });
+    const grid = this.screenToGrid(screenPos.x, screenPos.y);
+    ghost.x = grid.x * GRID_CELL_PX;
+    ghost.y = grid.y * GRID_CELL_PX;
+    this.ghostLayer.addChild(ghost);
+    this.ghostSprite = ghost;
+  }
+
+  hitTest(screenX: number, screenY: number): { componentId: ComponentId } | null {
+    for (const [id, state] of this.components) {
+      const cx = state.container.x;
+      const cy = state.container.y;
+      if (
+        screenX >= cx - COMPONENT_HALF &&
+        screenX <= cx + COMPONENT_HALF &&
+        screenY >= cy - COMPONENT_HALF &&
+        screenY <= cy + COMPONENT_HALF
+      ) {
+        return { componentId: id };
+      }
+    }
+    return null;
+  }
+
+  screenToGrid(screenX: number, screenY: number): { x: number; y: number } {
+    return {
+      x: Math.round(screenX / GRID_CELL_PX),
+      y: Math.round(screenY / GRID_CELL_PX),
+    };
+  }
+
+  worldToScreen(gridPos: { x: number; y: number }): { x: number; y: number } {
+    return {
+      x: gridPos.x * GRID_CELL_PX,
+      y: gridPos.y * GRID_CELL_PX,
+    };
+  }
+
+  onPointerDown(cb: (ev: RendererPointerEvent) => void): () => void {
+    this.pointerDownCallbacks.push(cb);
+    return () => {
+      const i = this.pointerDownCallbacks.indexOf(cb);
+      if (i >= 0) this.pointerDownCallbacks.splice(i, 1);
+    };
+  }
+
+  onPointerMove(cb: (ev: RendererPointerEvent) => void): () => void {
+    this.pointerMoveCallbacks.push(cb);
+    return () => {
+      const i = this.pointerMoveCallbacks.indexOf(cb);
+      if (i >= 0) this.pointerMoveCallbacks.splice(i, 1);
+    };
+  }
+
+  private tickFrame(): void {
+    const now = performance.now();
+    for (let i = this.activeDots.length - 1; i >= 0; i--) {
+      const dot = this.activeDots[i]!;
+      const t = (now - dot.startMs) / dot.durationMs;
+      if (t >= 1) {
+        this.dotsLayer?.removeChild(dot.graphic);
+        this.dotPool.push(dot.graphic);
+        this.activeDots.splice(i, 1);
+        continue;
+      }
+      dot.graphic.x = dot.startX + (dot.endX - dot.startX) * t;
+      dot.graphic.y = dot.startY + (dot.endY - dot.startY) * t;
+    }
+  }
+}
