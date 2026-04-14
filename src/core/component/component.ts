@@ -166,6 +166,18 @@ export class Component implements ComponentReader {
       }
     }
 
+    // If PROCESS produced no concrete outcome, the component did not handle
+    // this request at all (either no PROCESS capability matched canHandle,
+    // or the matching cap explicitly returned PASS). Convert to an explicit
+    // DROP so `deliverStaged` emits a visible DROPPED event, increments the
+    // per-component drops counter, and the renderer/diagnose-wave can see
+    // the failure. Before this fix, such requests vanished silently — a
+    // Client wired directly to a write-only Database (Wave 1 reads) would
+    // drop every request with no feedback anywhere.
+    if (outcome.kind === "PASS") {
+      outcome = { kind: "DROP", reason: "no_handler" };
+    }
+
     // REPLICATE — additive; all matching capabilities run; outcome not overridden.
     {
       const caps = this.getCapabilitiesByPhase("REPLICATE");
