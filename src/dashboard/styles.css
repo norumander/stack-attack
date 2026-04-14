@@ -559,3 +559,40 @@ textarea {
 .td-info-panel__stat-row { display: flex; justify-content: space-between; padding: 2px 0; }
 .td-info-panel__stat-row .k { color: #8b8fa3; }
 .td-info-panel__stat-row .v { color: #e1e4ed; }
+
+/* === TD dev-only wave jump buttons === */
+.td-hud__dev {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed #2e3344;
+}
+.td-hud__dev h4 {
+  margin: 0 0 8px 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #8b8fa3;
+  font-weight: 600;
+}
+.td-dev-wave-row {
+  display: flex;
+  gap: 4px;
+}
+.td-dev-wave-btn {
+  flex: 1;
+  padding: 6px 0;
+  background: #2a2e3d;
+  color: #d1d5db;
+  border: 1px solid #3a3f52;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.td-dev-wave-btn:hover {
+  background: #363b4f;
+  color: #ffffff;
+}
+.td-dev-wave-btn:active {
+  background: #1f2330;
+}

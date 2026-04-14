@@ -31,6 +31,14 @@ export interface TDModeControllerOptions {
   readonly entryPointId: ComponentId;
   readonly rng: () => number;
   readonly componentRegistry: ComponentRegistry;
+  /**
+   * Jump-start the campaign at this wave index instead of 0. Test-mode
+   * affordance for the dashboard's "Start at Wave N" dev buttons so
+   * iteration on wave 2 / wave 3 doesn't require completing wave 1 each
+   * time. The traffic source is seeded to `waves[startingWaveIndex]` and
+   * `getCurrentWaveIndex()` begins there. Must be in `[0, waves.length)`.
+   */
+  readonly startingWaveIndex?: number;
 }
 
 export type ConnectResult =
@@ -66,13 +74,20 @@ export class TDModeController implements ModeController {
     if (options.waves.length === 0) {
       throw new Error("TDModeController: waves array must be non-empty");
     }
+    const startingIndex = options.startingWaveIndex ?? 0;
+    if (startingIndex < 0 || startingIndex >= options.waves.length) {
+      throw new Error(
+        `TDModeController: startingWaveIndex ${startingIndex} out of range [0, ${options.waves.length})`,
+      );
+    }
     this.waves = options.waves;
     this.componentRegistry = options.componentRegistry;
     this.economy = options.economy;
     this.entryPointId = options.entryPointId;
     this.rng = options.rng;
+    this.currentWaveIndex = startingIndex;
     this.trafficSource = new TDTrafficSource({
-      wave: this.waves[0]!,
+      wave: this.waves[startingIndex]!,
       targetEntryPointId: options.entryPointId,
       rng: options.rng,
     });

@@ -378,6 +378,34 @@ $fileInput.addEventListener("change", () => {
 // Module-level TD state so boot/teardown/onTick can share references.
 const TD_WAVES = [WAVE_1, WAVE_2, WAVE_3] as const;
 
+/**
+ * Test-mode affordance: parse `#mode=td&wave=N` (1-indexed) and return
+ * the matching wave index (0-based), clamped to the valid range. Defaults
+ * to 0 when no `wave` param is present.
+ */
+function parseTDStartingWaveFromHash(): number {
+  const raw = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+  const params = new URLSearchParams(raw);
+  const waveParam = params.get("wave");
+  if (!waveParam) return 0;
+  const n = parseInt(waveParam, 10);
+  if (Number.isNaN(n) || n < 1) return 0;
+  return Math.min(n - 1, TD_WAVES.length - 1);
+}
+
+/**
+ * Cumulative starting budget through wave index (inclusive). Used when
+ * jump-starting at a later wave so the player has a budget reflecting
+ * "you would have earned this by finishing the prior waves."
+ */
+function cumulativeStartingBudget(waveIndex: number): number {
+  let sum = 0;
+  for (let i = 0; i <= waveIndex; i++) {
+    sum += TD_WAVES[i]?.startingBudget ?? 0;
+  }
+  return sum;
+}
+
 let tdDashboard: TDDashboard | null = null;
 let tdLoop: SimLoop<TDModeController> | null = null;
 let tdEngine: Engine | null = null;
@@ -744,9 +772,18 @@ async function bootTDMode(): Promise<void> {
   state.placeComponent(client);
   tdClientId = client.id;
 
+  // Test-mode: the hash may say `#mode=td&wave=N` to jump-start at a
+  // later wave with a cumulative starting budget. Omitted param → wave 1.
+  const startingWaveIndex = parseTDStartingWaveFromHash();
+  const startingWave = TD_WAVES[startingWaveIndex]!;
+  const startingBudget = cumulativeStartingBudget(startingWaveIndex);
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[td-boot] starting at wave ${startingWaveIndex + 1} of ${TD_WAVES.length} with $${startingBudget}`,
+  );
   const economy = new TDEconomy({
-    startingBudget: WAVE_1.startingBudget,
-    revenuePerRequestType: WAVE_1.revenuePerRequestType,
+    startingBudget,
+    revenuePerRequestType: startingWave.revenuePerRequestType,
   });
   const controller = new TDModeController({
     waves: TD_WAVES,
@@ -754,6 +791,7 @@ async function bootTDMode(): Promise<void> {
     entryPointId: client.id,
     rng: Math.random,
     componentRegistry: compRegistry,
+    ...(startingWaveIndex > 0 ? { startingWaveIndex } : {}),
   });
 
   // visitOrder is refreshed via state.recomputeVisitOrder() on each
@@ -864,9 +902,13 @@ function activateTdButton(): void {
   $modeSandbox.classList.remove("active");
 }
 
+function isTDHash(hash: string): boolean {
+  return hash.startsWith("#mode=td");
+}
+
 $modeTd.addEventListener("click", () => {
   if (tdDashboard) return; // already in TD mode
-  if (location.hash !== "#mode=td") location.hash = "#mode=td";
+  if (!isTDHash(location.hash)) location.hash = "#mode=td";
   activateTdButton();
   void bootTDMode();
 });
@@ -879,6 +921,28 @@ $modeSandbox.addEventListener("click", () => {
   // Rebuild sandbox topology from the currently-selected preset.
   initTopology();
 });
+
+/**
+ * Dev-only: wire the "Start at Wave N" buttons in the HUD. Updates the
+ * URL hash to `#mode=td&wave=N` and reboots TD mode so the new hash is
+ * picked up by parseTDStartingWaveFromHash. One click = fresh topology
+ * at the target wave with a cumulative starting budget.
+ */
+const $tdWaveStartButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>(".td-dev-wave-btn"),
+);
+for (const btn of $tdWaveStartButtons) {
+  btn.addEventListener("click", () => {
+    const waveNum = btn.dataset["wave"];
+    if (!waveNum) return;
+    location.hash = `#mode=td&wave=${waveNum}`;
+    if (tdDashboard) {
+      teardownTDMode();
+    }
+    activateTdButton();
+    void bootTDMode();
+  });
+}
 
 // Keep the TD sim loop responsive to the shared speed slider.
 $speedSlider.addEventListener("input", () => {
@@ -893,7 +957,7 @@ $tdResetBtn?.addEventListener("click", () => resetTDCampaign());
 
 // ─── Boot ─────────────────────────────────────────────────────────────
 populateSelects();
-if (location.hash === "#mode=td") {
+if (isTDHash(location.hash)) {
   activateTdButton();
   // Fire-and-forget at module load; Pixi v8 init is async.
   void bootTDMode();
