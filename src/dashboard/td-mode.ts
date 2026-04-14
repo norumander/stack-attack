@@ -120,28 +120,34 @@ export async function createTDDashboard(args: {
     }
   }
 
-  /** Seed or re-sync the renderer from current state. Idempotent. */
+  /**
+   * Seed or re-sync the renderer from current state. Idempotent.
+   *
+   * True diff: only removes orphaned renderer elements and only adds
+   * missing ones. Leaves existing elements alone. Previously this cleared
+   * the tracking sets and re-added everything, which duplicated Pixi
+   * containers because the renderer's `addComponent` isn't idempotent —
+   * a second call with the same id creates a new container without
+   * destroying the old one, orphaning it on the layer.
+   */
   function seedRendererFromState(): void {
-    // Walk the render's components aren't exposed; we track via our own set.
-    // Simplest correct: destroy+recreate every tick. Instead, we keep a set of
-    // ids currently in the renderer and diff.
-    const desiredComponents = new Set<ComponentId>(state.components.keys());
-    const desiredConnections = new Set<ConnectionId>(state.connections.keys());
-
+    // Remove orphans (tracked but no longer in state).
     for (const id of seededComponentIds) {
-      if (!desiredComponents.has(id)) {
+      if (!state.components.has(id)) {
         renderer.removeComponent(id);
+        seededComponentIds.delete(id);
       }
     }
     for (const id of seededConnectionIds) {
-      if (!desiredConnections.has(id)) {
+      if (!state.connections.has(id)) {
         renderer.removeConnection(id);
+        seededConnectionIds.delete(id);
       }
     }
-    seededComponentIds.clear();
-    seededConnectionIds.clear();
 
+    // Add missing (in state but not yet tracked).
     for (const [id, comp] of state.components) {
+      if (seededComponentIds.has(id)) continue;
       renderer.addComponent(id, {
         type: comp.type,
         displayName: displayNameFor(comp.type),
@@ -150,6 +156,7 @@ export async function createTDDashboard(args: {
       seededComponentIds.add(id);
     }
     for (const [id, conn] of state.connections) {
+      if (seededConnectionIds.has(id)) continue;
       renderer.addConnection(id, conn.source.componentId, conn.target.componentId);
       seededConnectionIds.add(id);
     }
