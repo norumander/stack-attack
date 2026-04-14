@@ -11,6 +11,8 @@ import { AuthCapability } from "@capabilities/auth/auth-capability.js";
 import { QueueCapability } from "@capabilities/queue/queue-capability.js";
 import { BatchProcessingCapability } from "@capabilities/batch-processing/batch-processing-capability.js";
 import { CircuitBreakerCapability } from "@capabilities/circuit-breaker/circuit-breaker-capability.js";
+import { StreamingCapability } from "@capabilities/streaming/streaming-capability.js";
+import { BlobStorageCapability } from "@capabilities/blob-storage/blob-storage-capability.js";
 import {
   SERVER_ENTRY,
   DATABASE_ENTRY,
@@ -22,6 +24,8 @@ import {
   QUEUE_ENTRY,
   WORKER_ENTRY,
   CIRCUIT_BREAKER_ENTRY,
+  STREAMING_SERVER_ENTRY,
+  BLOB_STORAGE_ENTRY,
 } from "./td-component-entries.js";
 
 /**
@@ -135,6 +139,14 @@ export function registerTDDefaults(
     factory: () => new CircuitBreakerCapability("circuit-breaker" as CapabilityId),
     documentsSubInterfaces: ["EngineConsultable"],
   });
+  capRegistry.register({
+    id: "streaming" as CapabilityId,
+    factory: () => new StreamingCapability("streaming" as CapabilityId),
+  });
+  capRegistry.register({
+    id: "blob-storage" as CapabilityId,
+    factory: () => new BlobStorageCapability("blob-storage" as CapabilityId),
+  });
 
   compRegistry.register(CLIENT_ENTRY);
   compRegistry.register(SERVER_ENTRY);
@@ -146,6 +158,8 @@ export function registerTDDefaults(
   compRegistry.register(QUEUE_ENTRY);
   compRegistry.register(WORKER_ENTRY);
   compRegistry.register(CIRCUIT_BREAKER_ENTRY);
+  compRegistry.register(STREAMING_SERVER_ENTRY);
+  compRegistry.register(BLOB_STORAGE_ENTRY);
 
   compRegistry.validate();
 }
