@@ -80,7 +80,9 @@ export class TDModeController implements ModeController {
   private trafficSource: TDTrafficSource;
   private phase: "build" | "simulate" | "assess" = "build";
   private waveStartMetricsIndex = 0;
+  private waveStartTick = 0;
   private placementSerial = 0;
+  private cachedState: SimulationState | null = null;
   private readonly componentRegistry: ComponentRegistry;
   private readonly entryPointId: ComponentId;
   private readonly rng: () => number;
@@ -313,6 +315,8 @@ export class TDModeController implements ModeController {
       case "build":
         if (state !== undefined) {
           this.waveStartMetricsIndex = state.metricsHistory.length;
+          this.waveStartTick = state.currentTick;
+          this.cachedState = state;
         }
         this.phase = "simulate";
         break;
@@ -548,8 +552,69 @@ export class TDModeController implements ModeController {
     );
   }
 
-  getScheduledChaos(_currentTick: number): readonly ChaosEvent[] {
-    return [];
+  /**
+   * Returns chaos events scheduled for the current tick.
+   * Chaos ticks in the wave definition are wave-relative (0 = first simulate tick).
+   * Symbolic targets (targetType + targetIndex) are resolved against the live
+   * topology by finding the Nth component of the given type in visit order.
+   */
+  getScheduledChaos(currentTick: number): readonly ChaosEvent[] {
+    const wave = this.getCurrentWave();
+    if (!wave.chaosSchedule || wave.chaosSchedule.length === 0) return [];
+
+    const waveTick = currentTick - this.waveStartTick;
+    const matching = wave.chaosSchedule.filter((entry) => entry.tick === waveTick);
+    if (matching.length === 0) return [];
+
+    return matching.map((entry): ChaosEvent => {
+      if (entry.chaosKind === "zone_outage") {
+        return {
+          kind: "zone_outage",
+          zone: entry.zone ?? "default",
+          durationTicks: entry.durationTicks ?? 5,
+        };
+      }
+
+      // Resolve symbolic target: find the Nth component of the given type
+      if (entry.chaosKind === "component_failure" && entry.targetType) {
+        const componentId = this.resolveTargetByType(
+          entry.targetType,
+          entry.targetIndex ?? 0,
+        );
+        if (componentId) {
+          return { kind: "component_failure", componentId };
+        }
+      }
+
+      // Fallback: return a no-op (component failure on nonexistent ID)
+      return {
+        kind: "component_failure",
+        componentId: "chaos-unresolved" as ComponentId,
+      };
+    });
+  }
+
+  /**
+   * Find the Nth component of a given type in the current topology.
+   * Used by chaos target resolution to map symbolic references
+   * (e.g., "server" index 0) to actual component IDs.
+   */
+  private resolveTargetByType(
+    type: string,
+    index: number,
+  ): ComponentId | null {
+    // We need access to the state's components map. Since getScheduledChaos
+    // doesn't receive state, we use the state cached at advancePhase(build→simulate).
+    if (!this.cachedState) return null;
+    const components = this.cachedState.components;
+    let count = 0;
+    for (const [id, comp] of components) {
+      if (comp.type === type) {
+        if (count === index) return id;
+        count += 1;
+      }
+    }
+    return null;
   }
 
   /**

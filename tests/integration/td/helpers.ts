@@ -75,7 +75,7 @@ export function runWave(
     rng: makeRng(1),
     componentRegistry: bootTDRegistry(),
   });
-  mode.advancePhase(); // build → simulate
+  mode.advancePhase(state); // build → simulate (passes state for chaos resolution + metrics index)
 
   const engine = new Engine(state);
   for (let i = 0; i < wave.duration; i++) {
