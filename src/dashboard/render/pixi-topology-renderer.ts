@@ -85,6 +85,37 @@ const FLASH_COLORS = {
  */
 const PENDING_FLASH_TIMEOUT_MS = 1000;
 
+/**
+ * Shortest distance from point (px, py) to the line segment defined by
+ * (x1, y1) → (x2, y2). Used for connection click hit-testing.
+ */
+function pointToSegmentDistance(
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) {
+    const rx = px - x1;
+    const ry = py - y1;
+    return Math.sqrt(rx * rx + ry * ry);
+  }
+  // Clamp t to [0, 1] so we measure to the segment, not the infinite line.
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+  const closestX = x1 + t * dx;
+  const closestY = y1 + t * dy;
+  const rx = px - closestX;
+  const ry = py - closestY;
+  return Math.sqrt(rx * rx + ry * ry);
+}
+
 export class PixiTopologyRenderer implements TopologyRenderer {
   private app: Application | null = null;
   private world: Container | null = null;
@@ -155,6 +186,19 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     app.stage.hitArea = app.screen;
     app.stage.on("pointerdown", (ev) => {
       const hit = this.hitTest(ev.global.x, ev.global.y);
+      if (hit === null) {
+        // Component miss — check connections before falling through to the
+        // empty-space callback. Stage.hitArea short-circuits child hit-testing
+        // in Pixi v8, so per-line `eventMode = "static"` doesn't fire. Manual
+        // distance check against each connection is the workaround.
+        const hitConnectionId = this.hitTestConnection(ev.global.x, ev.global.y);
+        if (hitConnectionId !== null) {
+          for (const cb of this.connectionPointerDownCallbacks) {
+            cb(hitConnectionId);
+          }
+          return;
+        }
+      }
       const pe: RendererPointerEvent = {
         screenX: ev.global.x,
         screenY: ev.global.y,
@@ -275,14 +319,6 @@ export class PixiTopologyRenderer implements TopologyRenderer {
   addConnection(id: ConnectionId, sourceId: ComponentId, targetId: ComponentId): void {
     if (!this.connectionsLayer) return;
     const line = new Graphics();
-    line.eventMode = "static";
-    line.cursor = "pointer";
-    line.on("pointerdown", (event) => {
-      event.stopPropagation();
-      for (const cb of this.connectionPointerDownCallbacks) {
-        cb(id);
-      }
-    });
     this.connectionsLayer.addChild(line);
     this.connections.set(id, { id, sourceId, targetId, line, loadUtilization: 0 });
     this.redrawConnection(id);
@@ -320,12 +356,6 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     state.line.moveTo(x1, y1);
     state.line.lineTo(x2, y2);
     state.line.stroke({ color: 0x22c55e, width, alpha });
-    // Invisible fat stroke widens the click/hit area without changing the
-    // visual line. alpha: 0.001 rather than 0 because some Pixi v8 builds
-    // skip hit-testing on fully-transparent geometry.
-    state.line.moveTo(x1, y1);
-    state.line.lineTo(x2, y2);
-    state.line.stroke({ color: 0xffffff, width: 14, alpha: 0.001 });
   }
 
   spawnRequestDot(args: SpawnRequestDotArgs): void {
@@ -528,6 +558,37 @@ export class PixiTopologyRenderer implements TopologyRenderer {
       }
     }
     return null;
+  }
+
+  /**
+   * Returns the id of the connection whose line segment is within 8px of
+   * (screenX, screenY), or null. Iterates all connections and picks the
+   * closest match. Used by the stage `pointerdown` handler to dispatch
+   * click-to-disconnect after `hitTest` returns null for components.
+   *
+   * Pixi v8 hit-testing on Graphics children is short-circuited by the
+   * stage's `hitArea = app.screen`, so per-line interactivity doesn't
+   * fire — this manual check is the workaround.
+   */
+  private hitTestConnection(screenX: number, screenY: number): ConnectionId | null {
+    const tolerance = 8;
+    let bestId: ConnectionId | null = null;
+    let bestDist = tolerance;
+    for (const [id, state] of this.connections) {
+      const source = this.components.get(state.sourceId);
+      const target = this.components.get(state.targetId);
+      if (!source || !target) continue;
+      const x1 = source.container.x;
+      const y1 = source.container.y;
+      const x2 = target.container.x;
+      const y2 = target.container.y;
+      const dist = pointToSegmentDistance(screenX, screenY, x1, y1, x2, y2);
+      if (dist <= bestDist) {
+        bestDist = dist;
+        bestId = id;
+      }
+    }
+    return bestId;
   }
 
   screenToGrid(screenX: number, screenY: number): { x: number; y: number } {
