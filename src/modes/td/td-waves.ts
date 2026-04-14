@@ -17,7 +17,7 @@ export interface TDWaveDefinition {
   readonly dropThreshold: number;
   readonly revenuePerRequestType: ReadonlyMap<string, number>;
   readonly maxPlacements?: number;
-  readonly readKeyPoolSize?: number;
+  readonly keyPoolSize?: number;
   /** SLA gate — if present, all three targets must be met to pass the wave. */
   readonly sla?: {
     readonly availabilityTarget: number;
@@ -38,7 +38,7 @@ export const WAVE_1: TDWaveDefinition = {
   availableComponents: ["server", "database"],
   dropThreshold: 0.05,
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
-  readKeyPoolSize: 20,
+  keyPoolSize: 20,
   sla: { availabilityTarget: 0.90, maxAvgLatency: 10, minBudget: 0, penaltyPerTick: 2 },
 };
 
@@ -53,7 +53,7 @@ export const WAVE_2: TDWaveDefinition = {
   availableComponents: ["server", "database"],
   dropThreshold: 0.05,
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
-  readKeyPoolSize: 20,
+  keyPoolSize: 20,
   sla: { availabilityTarget: 0.92, maxAvgLatency: 8, minBudget: 0, penaltyPerTick: 3 },
 };
 
@@ -68,7 +68,7 @@ export const WAVE_3: TDWaveDefinition = {
   availableComponents: ["server", "database", "cache", "load_balancer"],
   dropThreshold: 0.05,
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
-  readKeyPoolSize: 15, // Pool=15 vs Cache capacity=10 → ~67% hit rate target
+  keyPoolSize: 15, // keyPoolSize: 15 vs Cache capacity 10 → ~67% hit rate (steady state)
   sla: { availabilityTarget: 0.95, maxAvgLatency: 5, minBudget: 0, penaltyPerTick: 5 },
 };
 
@@ -91,7 +91,7 @@ export const WAVE_4: TDWaveDefinition = {
     ["api_write", 2],
     ["static_asset", 0.3],
   ]),
-  readKeyPoolSize: 15,
+  keyPoolSize: 10, // keyPoolSize: 10 ≤ Cache capacity 10 → ~100% CDN hit rate (static assets + reads absorbed)
   sla: {
     availabilityTarget: 0.92,
     maxAvgLatency: 6,
@@ -128,7 +128,7 @@ export const WAVE_5: TDWaveDefinition = {
     ["static_asset", 0.3],
     ["auth_required", 1.5],
   ]),
-  readKeyPoolSize: 15,
+  keyPoolSize: 15,
   sla: {
     availabilityTarget: 0.92,
     maxAvgLatency: 7,

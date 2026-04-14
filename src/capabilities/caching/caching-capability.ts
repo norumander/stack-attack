@@ -6,33 +6,17 @@ import type { CapabilityId } from "../../core/types/ids.js";
 
 const CACHEABLE_TYPES = new Set(["api_read", "static_asset"]);
 
-const BASE_KEYS_PER_TYPE: Record<string, number> = {
-  api_read: 10,
-  static_asset: 15,
-  api_write: 5,
-  auth_required: 8,
-  batch: 3,
-  stream: 5,
-  event: 5,
-};
-
 const CAPACITY_PER_TIER = [0, 10, 50, 100] as const;
-
-function simpleHash(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (h * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
 
 /**
  * INTERCEPT-phase capability implementing an LRU cache.
  *
- * Cache keys are scoped by request type — an api_read to slot 5 and a
- * static_asset to slot 5 are different entries. Key space is determined
- * by per-type base keys, so more diverse traffic = larger key space =
- * harder to cache effectively.
+ * Cache keys are derived from the request's payload (the working-set
+ * identifier) scoped by request type — two requests with the same type
+ * and payload share a cache entry regardless of their request id. When
+ * payload is null, the request id is used as the key, which makes each
+ * unique-id request behave as a unique cache entry (preserves unit test
+ * semantics).
  *
  * Hit → RESPOND (short-circuit, request never reaches server).
  * Miss → PASS (request continues downstream, key is cached for future hits).
@@ -58,9 +42,15 @@ export class CachingCapability implements Capability {
   process(request: Request, context: ProcessContext): ProcessResult {
     const tier = context.effectiveTiers.get(this.id) ?? 1;
     const capacity = CAPACITY_PER_TIER[tier] ?? CAPACITY_PER_TIER[1]!;
-    const baseKeys = BASE_KEYS_PER_TYPE[request.type] ?? 10;
-    const slot = simpleHash(request.type + request.id) % baseKeys;
-    const cacheKey = `${request.type}:${slot}`;
+    // Cache key is the request's payload (the working set identifier) scoped
+    // by type. Falls back to request.id when payload is null — this makes
+    // unique-id requests behave like unique keys, which is what unit tests
+    // assume when they pass `payload: null` and use distinct ids.
+    const keyPart =
+      request.payload !== null && request.payload !== undefined
+        ? String(request.payload)
+        : (request.id as string);
+    const cacheKey = `${request.type}:${keyPart}`;
 
     if (this.cache.has(cacheKey)) {
       // Cache hit — update access time and RESPOND
