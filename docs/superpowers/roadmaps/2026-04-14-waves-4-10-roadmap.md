@@ -10,8 +10,8 @@ Legend: ⬜ Planned · 🟡 In Progress · ✅ Shipped
 
 | Wave | Name | Stage | Status | Shipped |
 |---|---|---|---|---|
-| 4 | Marketing Adds Images | 3d (paired w/ 5) | ⬜ Planned | — |
-| 5 | The Authentication Wall | 3d (paired w/ 4) | ⬜ Planned | — |
+| 4 | Marketing Adds Images | 3d (paired w/ 5) | ✅ Shipped | 2026-04-14 |
+| 5 | The Authentication Wall | 3d (paired w/ 4) | ✅ Shipped | 2026-04-14 |
 | 6 | Async Workloads | 3e | ⬜ Planned | — |
 | 7 | The Outage | 3f | ⬜ Planned | — |
 | 8 | Video Launch | 4a | ⬜ Planned | — |
@@ -295,12 +295,19 @@ My lean is **C** for Wave 5 — it's consistent with the "brute force tax" teach
 
 ## Cross-wave open questions
 
-These are not wave-specific but need to be decided before Wave 4 ships:
+These are not wave-specific but need to be decided as future waves ship:
 
 1. **Revenue-per-type table ownership.** Today `TDWaveDefinition.revenuePerRequestType` is per-wave. Do we duplicate `static_asset: 0.3` across every wave from 4 onward, or hoist to a default table and let waves override?
 2. **Request-type registry.** Today request types are strings (`"api_read"`, `"api_write"`). Static metadata like `processingCost`, `cacheable`, `async`, `fanout` lives scattered in `wave-progression-strategy.md` narrative but nowhere in code. Wave 4 is the first place this hurts — decide at brainstorm whether to add a `RequestTypeDef` map in `src/core/types/request-types.ts` or keep it implicit via capability behavior.
 3. **Palette grouping.** Five entries is fine in a row. Ten+ (Wave 8's state) probably needs categorization. Design decision deferred to the first wave that makes the palette ugly — probably Wave 6.
 4. **Briefing card reuse.** Today the briefing card is a static panel. Waves 5–10 each introduce a new request type; the card needs to show "new for this wave" vs. "carried over from earlier waves" so the player isn't re-reading everything. Low-priority polish; defer until it's obviously needed.
+5. **Drag-to-rearrange component positions.** Stage 3d added disconnect + delete affordances (commits TBD on the Stage 3d branch) so players can fix mis-wired topologies by removing and re-placing. Drag-to-move is the missing piece: `Component.position` is `readonly Position` today, set once at construction, and any "move" flow needs either (a) making position mutable on the `Component` contract or (b) storing position in a side-channel map on `SimulationState`. Plus Pixi drag interaction in `pixi-topology-renderer.ts`, plus an action-log `move` variant for retry replay. Scope: ~3-4 hours, mostly contract plumbing. Low-priority — delete+re-place covers the functional use case. Schedule for Stage 3e polish or later when topology size makes visual cleanup genuinely painful.
+
+6. **Silent round-robin egress is a routing footgun.** `src/core/engine/egress-selection.ts` round-robins across all outgoing connections from a component when that component has no `EngineConsultable` capability (e.g. `RoutingCapability`). Stage 3d playtest showed this is invisible to players: they connect `Client → Server` AND `Client → Cache` thinking they're creating alternative paths, and the engine silently splits traffic 50/50 — half the reads never reach the cache, Server sees double the intended load, the rescue topology underperforms, and there is no visual or diagnostic signal to explain why. Real systems don't have clients load-balancing themselves — that's a Load Balancer's job. Three design options: **(A)** `tryConnect` rejects multi-egress on components without a routing cap (loud fail, but blocks legitimate fan-out like CDN → Server & CDN → Cache misses); **(B)** build-time warning badge on any component with ≥2 egress and no routing capability (non-blocking, teaches via UI); **(C)** add a `RoutingPolicy` field to `ComponentRegistryEntry` with values `single-path` (fail on 2nd egress), `round-robin` (current LB behavior), `routed` (requires a routing cap) — Client/Server default to single-path, LB to round-robin, explicit contract. Option C is the cleanest long-term but needs a spec pass. Medium scope. **Queue for the same Stage 3e brainstorm as the architecture rubric system** — both are about making topology correctness legible to the player.
+
+7. **Per-dot count label visibility.** Stage 3d ships a version of this as a small renderer tweak (numeric label on aggregated request dots showing the count they represent). If that fix turns out to be insufficient — e.g. labels get cluttered at Wave 8+'s 500/tick intensities — revisit with a more structured visualization (heatmap on connections, thickness scaling, or a dedicated flow-monitor panel).
+
+8. **Architecture rubric / grade system.** Stage 3d playtest surfaced that brute-force topologies (e.g. 4 Servers + 2 Databases on Wave 4) currently pass the SLA gate without any penalty, undermining the "specialized edge component beats brute-force Server" teaching intent. Rather than hard-punish brute-force (progressive pricing, upkeep taxes, `maxPlacements` caps), the better fit for "strategy game first, teaching is the surprise" is a rubric-based grading system: each wave defines a small list of weighted architectural criteria (`edge-cache-placed`, `server-count-leq-2`, `total-cost-leq-500`), `evaluateOutcome` grades the final topology against them, and the loss/win modal shows a letter grade + the first unmet criterion's hint ("For a higher grade, try: …"). Players still pass with ugly solutions; players who care about the grade get targeted, progressive hints on replay. Scope is larger than a tuning knob — new `TDWaveDefinition.architectureRubric` shape, a scoring evaluator, a grade badge UI surface, per-wave rubric authoring. Natural Stage 3e opener, bundled with the Wave 6 brainstorm since both will touch the wave-definition shape. **Don't bolt onto Stage 3d as an afterthought.** See Stage 3d retro for context on why this came up.
 
 ---
 

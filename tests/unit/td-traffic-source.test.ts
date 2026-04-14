@@ -64,7 +64,8 @@ describe("TDTrafficSource", () => {
     expect(payloads.size).toBeGreaterThan(1);
     for (const p of payloads) {
       expect(typeof p).toBe("string");
-      expect(String(p)).toMatch(/^read-\d+$/);
+      // Payload format is "<type>-<index>", e.g. "api_read-6"
+      expect(String(p)).toMatch(/^api_read-\d+$/);
     }
   });
 

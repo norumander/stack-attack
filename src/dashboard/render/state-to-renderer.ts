@@ -1,4 +1,4 @@
-import type { TopologyRenderer } from "./topology-renderer.js";
+import type { TopologyRenderer, SpawnRequestDotArgs } from "./topology-renderer.js";
 import type { SimulationState } from "@core/state/simulation-state.js";
 import type { TickMetrics } from "@core/types/metrics.js";
 import type { RequestId } from "@core/types/ids.js";
@@ -62,8 +62,34 @@ export function applyTickToRenderer(
   // requestId in that group to the representative so the SERVED/DROPPED/
   // OVERLOADED flashes below can re-key onto the representative and fire
   // when its single dot retires at the target.
+  //
+  // We also count how many engine events mapped to each group and pass
+  // that count to spawnRequestDot so the renderer can show a numeric
+  // label on the dot (e.g. "50" for 50 reads aggregated into one cyan dot).
+  //
+  // Each new group gets a sequential `spawnOffsetMs` so downstream hops
+  // visually lag upstream ones. The engine's tick loop is a fixed-point
+  // resolver — a request can hop Client → CDN → Gateway → Cache → LB →
+  // Server → DB all within a single tick when capacity allows, which
+  // means every FORWARDED event carries the same tick number. Without
+  // staggering, all hop dots spawn at the same animation frame and the
+  // visual reads as "LB is emitting at the same moment as Client." The
+  // events in `state.lastTickEvents` are already ordered by engine
+  // processing sequence (upstream first), so incrementing a per-tick
+  // counter as we encounter each new group produces pipeline-order
+  // animation offsets for free.
   const groupRep = new Map<string, RequestId>();
   const idToRep = new Map<RequestId, RequestId>();
+  const pendingDots = new Map<string, { args: SpawnRequestDotArgs; count: number }>();
+  // Stagger scales with tick interval so the pipeline flow is always visible
+  // regardless of playback speed. At the default 720ms tick (slider=300), each
+  // hop is delayed ~95ms from the previous one, giving a 6-hop pipeline
+  // roughly 570ms of visual spread (79% of the tick). Hard-floored at 60ms so
+  // ultra-fast ticks still produce a perceptible gap.
+  const HOP_STAGGER_MS = Math.max(60, tickIntervalMs * 0.13);
+  const MAX_STAGGER_MS = tickIntervalMs * 0.9;
+  let groupOrdinal = 0;
+
   for (const ev of state.lastTickEvents) {
     if (ev.type !== "FORWARDED") continue;
     if (ev.connectionId === null) continue;
@@ -74,18 +100,30 @@ export function applyTickToRenderer(
     const existingRep = groupRep.get(groupKey);
     if (existingRep !== undefined) {
       idToRep.set(ev.requestId, existingRep);
+      const pending = pendingDots.get(groupKey)!;
+      pending.count += 1;
       continue;
     }
     groupRep.set(groupKey, ev.requestId);
     idToRep.set(ev.requestId, ev.requestId);
     const latencyTicks = getEffectiveLatency(state, ev.connectionId);
     const durationMs = Math.max(50, latencyTicks * tickIntervalMs);
-    renderer.spawnRequestDot({
-      connectionId: ev.connectionId,
-      requestId: ev.requestId,
-      requestType,
-      durationMs,
+    const spawnOffsetMs = Math.min(groupOrdinal * HOP_STAGGER_MS, MAX_STAGGER_MS);
+    groupOrdinal += 1;
+    pendingDots.set(groupKey, {
+      count: 1,
+      args: {
+        connectionId: ev.connectionId,
+        requestId: ev.requestId,
+        requestType,
+        durationMs,
+        spawnOffsetMs,
+      },
     });
+  }
+
+  for (const { args, count } of pendingDots.values()) {
+    renderer.spawnRequestDot({ ...args, count });
   }
 
   // Queue per-request feedback flashes so they fire when the dot carrying

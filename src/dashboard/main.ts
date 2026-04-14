@@ -1,14 +1,15 @@
 import { TOPOLOGIES, type TopologyInfo } from "./topologies";
 import { SimLoop } from "./sim-loop";
 import { exportScenario, applyScenario, serializeScenario, parseScenario } from "@modes/sandbox/sandbox-scenario";
-import type { ComponentId, ConnectionId } from "@core/types/ids";
+import type { ComponentId, ConnectionId, CapabilityId } from "@core/types/ids";
+import type { Component } from "@core/component/component";
 import type { TickMetrics } from "@core/types/metrics";
 import type { SandboxModeController, MetricsSnapshot } from "@modes/sandbox/sandbox-mode-controller";
 
 // TD mode imports
 import { TDModeController } from "@modes/td/td-mode-controller";
 import { TDEconomy } from "@modes/td/td-economy";
-import { WAVE_1, WAVE_2, WAVE_3 } from "@modes/td/td-waves";
+import { WAVE_1, WAVE_2, WAVE_3, WAVE_4, WAVE_5 } from "@modes/td/td-waves";
 import { registerTDDefaults } from "@modes/td/register-td-defaults";
 import { ComponentRegistry } from "@core/registry/component-registry";
 import { CapabilityRegistry } from "@core/registry/capability-registry";
@@ -376,7 +377,7 @@ $fileInput.addEventListener("change", () => {
 
 // ─── TD Mode ──────────────────────────────────────────────────────────
 // Module-level TD state so boot/teardown/onTick can share references.
-const TD_WAVES = [WAVE_1, WAVE_2, WAVE_3] as const;
+const TD_WAVES = [WAVE_1, WAVE_2, WAVE_3, WAVE_4, WAVE_5] as const;
 
 /**
  * Test-mode affordance: parse `#mode=td&wave=N` (1-indexed) and return
@@ -420,21 +421,30 @@ let tdClientId: ComponentId | null = null;
 // component ids change.
 type TDPlaceAction = { kind: "place"; type: string; position: { x: number; y: number } };
 type TDConnectAction = { kind: "connect"; sourceRef: number; targetRef: number };
-type TDAction = TDPlaceAction | TDConnectAction;
+type TDDisconnectAction = { kind: "disconnect"; sourceRef: number; targetRef: number };
+type TDRemoveAction = { kind: "remove"; placeRef: number };
+type TDAction = TDPlaceAction | TDConnectAction | TDDisconnectAction | TDRemoveAction;
 
 let tdActionLog: TDAction[] = [];
 /** Index into tdActionLog marking the end of the most recent successful wave. */
 let tdSnapshotIndex = 0;
-/** Parallel array: index N → ComponentId minted by the Nth place action. */
-let tdPlaceActionIds: ComponentId[] = [];
+/**
+ * Parallel array: index N → ComponentId minted by the Nth place action.
+ * Slots are set to null when the component is removed so future refs to
+ * that index fail loudly instead of silently reusing a stale id.
+ */
+let tdPlaceActionIds: (ComponentId | null)[] = [];
 
 function refForId(id: ComponentId): number {
   if (id === tdClientId) return -1;
+  // indexOf is safe — null slots won't match a real ComponentId string
   return tdPlaceActionIds.indexOf(id);
 }
 
 function idForRef(ref: number): ComponentId | null {
   if (ref === -1) return tdClientId;
+  // null means the slot was dead-marked by a remove action — return null
+  // so callers fail loudly rather than silently reusing a stale id.
   return tdPlaceActionIds[ref] ?? null;
 }
 
@@ -575,6 +585,31 @@ function tdOnTick(controller: TDModeController, state: SimulationState): void {
 
 // === Loss modal helpers ===
 
+function gatherPerTypeCacheStats(
+  state: { components: ReadonlyMap<ComponentId, Component> },
+): Array<{
+  componentName: string;
+  hitRateByType: Record<string, { hits: number; misses: number; hitRate: number }>;
+}> {
+  const results: Array<{
+    componentName: string;
+    hitRateByType: Record<string, { hits: number; misses: number; hitRate: number }>;
+  }> = [];
+  for (const comp of state.components.values()) {
+    const caching = comp.capabilities.get("caching" as CapabilityId);
+    if (!caching) continue;
+    const stats = caching.getStats();
+    if (!stats.hitRateByType || Object.keys(stats.hitRateByType).length === 0) {
+      continue;
+    }
+    results.push({
+      componentName: comp.name ?? comp.type,
+      hitRateByType: stats.hitRateByType,
+    });
+  }
+  return results;
+}
+
 function showLossModal(outcome: OutcomeReport): void {
   const modal = document.getElementById("td-loss-modal");
   const title = document.getElementById("td-loss-modal-title");
@@ -620,6 +655,28 @@ function showLossModal(outcome: OutcomeReport): void {
   notesEl.style.fontSize = "11px";
   detail.appendChild(notesEl);
 
+  const cacheStats = gatherPerTypeCacheStats(tdState);
+  if (cacheStats.length > 0) {
+    const cacheHeader = document.createElement("div");
+    cacheHeader.textContent = "Cache hit rates:";
+    cacheHeader.style.marginTop = "12px";
+    cacheHeader.style.fontWeight = "600";
+    cacheHeader.style.fontSize = "11px";
+    detail.appendChild(cacheHeader);
+
+    for (const { componentName, hitRateByType } of cacheStats) {
+      const row = document.createElement("div");
+      const parts: string[] = [];
+      for (const [type, stats] of Object.entries(hitRateByType)) {
+        parts.push(`${type}: ${(stats.hitRate * 100).toFixed(0)}%`);
+      }
+      row.textContent = `  ${componentName} — ${parts.join(", ")}`;
+      row.style.color = "#8b8fa3";
+      row.style.fontSize = "11px";
+      detail.appendChild(row);
+    }
+  }
+
   const retryBtn = document.getElementById("td-retry-btn");
   if (retryBtn) retryBtn.textContent = `Retry Wave ${waveNum}`;
   modal.hidden = false;
@@ -651,8 +708,10 @@ function replayActions(actions: readonly TDAction[]): void {
       } else {
         // eslint-disable-next-line no-console
         console.warn(`[td-replay] place failed: ${result.reason}`);
+        // Push null so subsequent place-ref indices remain correct
+        tdPlaceActionIds.push(null);
       }
-    } else {
+    } else if (action.kind === "connect") {
       const sourceId = idForRef(action.sourceRef);
       const targetId = idForRef(action.targetRef);
       if (!sourceId || !targetId) {
@@ -664,6 +723,50 @@ function replayActions(actions: readonly TDAction[]): void {
       if (!result.ok) {
         // eslint-disable-next-line no-console
         console.warn(`[td-replay] connect failed: ${result.reason}`);
+      }
+    } else if (action.kind === "disconnect") {
+      const sourceId = idForRef(action.sourceRef);
+      const targetId = idForRef(action.targetRef);
+      if (!sourceId || !targetId) {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] disconnect failed: missing ref`);
+        continue;
+      }
+      // Find the connection matching source→target
+      let connIdToRemove: ConnectionId | null = null;
+      for (const conn of tdState.connections.values()) {
+        if (
+          conn.source.componentId === sourceId &&
+          conn.target.componentId === targetId
+        ) {
+          connIdToRemove = conn.id;
+          break;
+        }
+      }
+      if (!connIdToRemove) {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] disconnect failed: connection not found`);
+        continue;
+      }
+      const result = tdController.tryDisconnect(tdState, connIdToRemove);
+      if (!result.ok) {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] disconnect failed: ${result.reason}`);
+      }
+    } else if (action.kind === "remove") {
+      const componentId = idForRef(action.placeRef);
+      if (!componentId) {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] remove failed: missing placeRef ${action.placeRef}`);
+        continue;
+      }
+      const result = tdController.tryRemove(tdState, componentId);
+      if (result.ok) {
+        // Dead-mark the place-ref slot so future refs to it fail loudly
+        tdPlaceActionIds[action.placeRef] = null;
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-replay] remove failed: ${result.reason}`);
       }
     }
   }
@@ -838,6 +941,46 @@ async function bootTDMode(): Promise<void> {
       }
       tdDashboard?.refreshHud();
     },
+    onDisconnect: ({ connectionId: _connectionId, sourceId, targetId }) => {
+      // Look up logical refs for both endpoints and record a disconnect action.
+      // The connection has already been removed from state at this point, so we
+      // rely on the sourceId/targetId passed from td-mode.ts (captured before
+      // tryDisconnect ran).
+      const sourceRef = refForId(sourceId);
+      const targetRef = refForId(targetId);
+      // refForId returns -1 for the entry-point client and a non-negative index
+      // for placed components. A value of -1 for a non-client component means
+      // the id wasn't found — guard against both endpoints returning -1 when
+      // neither is the actual client (shouldn't happen in practice).
+      if (sourceRef < -1 || targetRef < -1) {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-action] disconnect: could not resolve refs for ${sourceId}→${targetId}`);
+        return;
+      }
+      tdActionLog.push({ kind: "disconnect", sourceRef, targetRef });
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[td-action] disconnect ${sourceRef}→${targetRef}; log=${tdActionLog.length}`,
+      );
+      tdDashboard?.refreshHud();
+    },
+    onRemove: (id) => {
+      // Find the place-ref for the removed component and dead-mark the slot.
+      const placeRef = tdPlaceActionIds.indexOf(id);
+      if (placeRef >= 0) {
+        tdActionLog.push({ kind: "remove", placeRef });
+        // Dead-mark the slot so future actions referencing this index fail loudly
+        tdPlaceActionIds[placeRef] = null;
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[td-action] remove placeRef=${placeRef}; log=${tdActionLog.length}`,
+        );
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-action] remove: id ${id} not found in tdPlaceActionIds (entry point removal blocked?)`);
+      }
+      tdDashboard?.refreshHud();
+    },
     onPhaseChange: () => {
       tdDashboard?.refreshHud();
       // eslint-disable-next-line no-console
@@ -923,17 +1066,25 @@ $modeSandbox.addEventListener("click", () => {
 });
 
 /**
- * Dev-only: wire the "Start at Wave N" buttons in the HUD. Updates the
- * URL hash to `#mode=td&wave=N` and reboots TD mode so the new hash is
- * picked up by parseTDStartingWaveFromHash. One click = fresh topology
- * at the target wave with a cumulative starting budget.
+ * Dev-only: wire the "Start at Wave" dropdown in the HUD. Populates from
+ * `TD_WAVES` at boot (so it auto-updates whenever a new wave is added
+ * to the campaign) and reboots TD mode on selection change.
  */
-const $tdWaveStartButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>(".td-dev-wave-btn"),
-);
-for (const btn of $tdWaveStartButtons) {
-  btn.addEventListener("click", () => {
-    const waveNum = btn.dataset["wave"];
+const $tdWaveStartSelect = document.getElementById(
+  "td-dev-wave-select",
+) as HTMLSelectElement | null;
+if ($tdWaveStartSelect) {
+  for (let i = 0; i < TD_WAVES.length; i++) {
+    const wave = TD_WAVES[i]!;
+    const opt = document.createElement("option");
+    opt.value = String(i + 1);
+    opt.textContent = `Wave ${wave.id} — ${wave.name}`;
+    $tdWaveStartSelect.appendChild(opt);
+  }
+  const initialWaveIndex = parseTDStartingWaveFromHash();
+  $tdWaveStartSelect.value = String(initialWaveIndex + 1);
+  $tdWaveStartSelect.addEventListener("change", () => {
+    const waveNum = $tdWaveStartSelect.value;
     if (!waveNum) return;
     location.hash = `#mode=td&wave=${waveNum}`;
     if (tdDashboard) {

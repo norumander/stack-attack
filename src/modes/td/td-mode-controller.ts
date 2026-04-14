@@ -56,6 +56,21 @@ export type ConnectResult =
       detail?: string;
     };
 
+export type DisconnectResult =
+  | { ok: true }
+  | { ok: false; reason: "wrong_phase" | "unknown_connection"; detail?: string };
+
+export type RemoveResult =
+  | { ok: true; refund: number; disconnectedCount: number }
+  | {
+      ok: false;
+      reason:
+        | "wrong_phase"
+        | "unknown_component"
+        | "cannot_remove_entry_point";
+      detail?: string;
+    };
+
 export class TDModeController implements ModeController {
   // economy is mutable so the dashboard can swap in a fresh per-wave economy
   economy: TDEconomy;
@@ -419,11 +434,17 @@ export class TDModeController implements ModeController {
     // 6. Mint connection
     this.placementSerial += 1;
     const connectionId = `td-conn-${this.placementSerial}` as ConnectionId;
+    // Bandwidth sized to carry Wave 5's 150/tick peak edge load (Client → CDN
+    // carries the full wave intensity) with headroom. Pre-Stage-3d this was
+    // 100, which silently dropped ~50/tick on the entry edge of any wave with
+    // intensity > 100. The td-stage-gotchas entry for "Connection.bandwidth
+    // defaults" documented this as a latent footgun; the Wave 5 dashboard
+    // playtest surfaced it as a real bug.
     const conn: Connection = {
       id: connectionId,
       source: { componentId: sourceComponentId, portId: sourcePort.id },
       target: { componentId: targetComponentId, portId: targetPort.id },
-      bandwidth: 100,
+      bandwidth: 300,
       latency: 1,
       currentLoad: 0,
     };
@@ -434,6 +455,83 @@ export class TDModeController implements ModeController {
     targetPort.connections.push(connectionId);
     // 9. Return
     return { ok: true, connectionId };
+  }
+
+  tryDisconnect(
+    state: SimulationState,
+    connectionId: ConnectionId,
+  ): DisconnectResult {
+    // 1. Phase check
+    if (this.phase !== "build") {
+      return { ok: false, reason: "wrong_phase" };
+    }
+    // 2. Look up the connection
+    const conn = state.connections.get(connectionId);
+    if (!conn) {
+      return { ok: false, reason: "unknown_connection" };
+    }
+    // 3. Remove the connection id from both endpoint ports' connections arrays
+    const sourceComp = state.components.get(conn.source.componentId);
+    if (sourceComp) {
+      const sourcePort = sourceComp.ports.find((p) => p.id === conn.source.portId);
+      if (sourcePort) {
+        const idx = sourcePort.connections.indexOf(connectionId);
+        if (idx !== -1) sourcePort.connections.splice(idx, 1);
+      }
+    }
+    const targetComp = state.components.get(conn.target.componentId);
+    if (targetComp) {
+      const targetPort = targetComp.ports.find((p) => p.id === conn.target.portId);
+      if (targetPort) {
+        const idx = targetPort.connections.indexOf(connectionId);
+        if (idx !== -1) targetPort.connections.splice(idx, 1);
+      }
+    }
+    // 4. Remove the connection from state
+    state.removeConnection(connectionId);
+    // 5. Return success
+    return { ok: true };
+  }
+
+  tryRemove(
+    state: SimulationState,
+    componentId: ComponentId,
+  ): RemoveResult {
+    // 1. Phase check
+    if (this.phase !== "build") {
+      return { ok: false, reason: "wrong_phase" };
+    }
+    // 2. Look up the component
+    const component = state.components.get(componentId);
+    if (!component) {
+      return { ok: false, reason: "unknown_component" };
+    }
+    // 3. Entry-point guard — the Client cannot be removed
+    if (
+      componentId === this.entryPointId ||
+      component.type === "client"
+    ) {
+      return { ok: false, reason: "cannot_remove_entry_point" };
+    }
+    // 4. Cascade-disconnect: collect ids first to avoid mutating during iteration
+    const toDisconnect = [...state.connections.values()]
+      .filter(
+        (c) =>
+          c.source.componentId === componentId ||
+          c.target.componentId === componentId,
+      )
+      .map((c) => c.id);
+    for (const connId of toDisconnect) {
+      this.tryDisconnect(state, connId);
+    }
+    const disconnectedCount = toDisconnect.length;
+    // 5. Refund placement cost
+    const refund = component.placementCost;
+    this.economy.creditRefund(refund);
+    // 6. Remove the component
+    state.removeComponent(componentId);
+    // 7. Return success
+    return { ok: true, refund, disconnectedCount };
   }
 
   tryUpgrade(

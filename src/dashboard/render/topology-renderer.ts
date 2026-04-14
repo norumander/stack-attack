@@ -58,6 +58,11 @@ export interface TopologyRenderer {
   // ─ Pointer events ─────────────────────────────────────────────────────
   onPointerDown(cb: (ev: RendererPointerEvent) => void): () => void;
   onPointerMove(cb: (ev: RendererPointerEvent) => void): () => void;
+  /**
+   * Subscribe to pointer-down events on a connection line. Fires when the
+   * user clicks a rendered connection. Returns an unsubscribe function.
+   */
+  onConnectionPointerDown(cb: (connectionId: ConnectionId) => void): () => void;
 }
 
 export interface ComponentVisual {
@@ -90,6 +95,13 @@ export interface SpawnRequestDotArgs {
    * stacking into one composite sprite.
    */
   spawnOffsetMs?: number;
+  /**
+   * How many engine requests this dot represents (per aggregated
+   * `(connection, requestType)` group for the tick). Rendered as a small
+   * numeric label on the dot so players can see flow weights on each edge.
+   * Omitted or <=1 means no label is shown.
+   */
+  count?: number;
 }
 
 export interface RendererPointerEvent {

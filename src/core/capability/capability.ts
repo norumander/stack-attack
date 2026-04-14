@@ -4,11 +4,21 @@ import type { Request } from "../types/request.js";
 import type { ProcessResult } from "../types/result.js";
 import type { ProcessContext } from "./process-context.js";
 
+export interface HitRateByTypeEntry {
+  hits: number;
+  misses: number;
+  hitRate: number;
+}
+
 export interface CapabilityStats {
+  hits?: number;
+  misses?: number;
+  size?: number;
   hitRate?: number;
+  hitRateByType?: Record<string, HitRateByTypeEntry>;
   queueDepth?: number;
   latencyAdded?: number;
-  [key: string]: number | undefined;
+  [key: string]: number | Record<string, HitRateByTypeEntry> | undefined;
 }
 
 export interface Capability {

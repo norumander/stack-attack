@@ -49,6 +49,14 @@ export class TDEconomy implements EconomyStrategy {
     // No-op in Stage 3a. Upgrades are not exercised.
   }
 
+  /**
+   * Refund a placement cost when a component is removed during the build phase.
+   * Additive: budget += amount.
+   */
+  creditRefund(amount: number): void {
+    this.budget += amount;
+  }
+
   resolveInsolvency(_state: SimulationStateReader): ComponentId[] {
     // Stage 3a does not kill components mid-wave. The wave-end assertion
     // checks final budget. Later stages will return components to kill.

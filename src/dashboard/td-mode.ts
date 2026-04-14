@@ -61,6 +61,8 @@ export async function createTDDashboard(args: {
   topologyContainer: HTMLElement;
   onPlace?: (id: ComponentId) => void;
   onConnect?: (connectionId: ConnectionId) => void;
+  onDisconnect?: (info: { connectionId: ConnectionId; sourceId: ComponentId; targetId: ComponentId }) => void;
+  onRemove?: (componentId: ComponentId) => void;
   onPhaseChange?: () => void;
 }): Promise<TDDashboard> {
   const { state, controller, topologyContainer } = args;
@@ -118,28 +120,34 @@ export async function createTDDashboard(args: {
     }
   }
 
-  /** Seed or re-sync the renderer from current state. Idempotent. */
+  /**
+   * Seed or re-sync the renderer from current state. Idempotent.
+   *
+   * True diff: only removes orphaned renderer elements and only adds
+   * missing ones. Leaves existing elements alone. Previously this cleared
+   * the tracking sets and re-added everything, which duplicated Pixi
+   * containers because the renderer's `addComponent` isn't idempotent —
+   * a second call with the same id creates a new container without
+   * destroying the old one, orphaning it on the layer.
+   */
   function seedRendererFromState(): void {
-    // Walk the render's components aren't exposed; we track via our own set.
-    // Simplest correct: destroy+recreate every tick. Instead, we keep a set of
-    // ids currently in the renderer and diff.
-    const desiredComponents = new Set<ComponentId>(state.components.keys());
-    const desiredConnections = new Set<ConnectionId>(state.connections.keys());
-
+    // Remove orphans (tracked but no longer in state).
     for (const id of seededComponentIds) {
-      if (!desiredComponents.has(id)) {
+      if (!state.components.has(id)) {
         renderer.removeComponent(id);
+        seededComponentIds.delete(id);
       }
     }
     for (const id of seededConnectionIds) {
-      if (!desiredConnections.has(id)) {
+      if (!state.connections.has(id)) {
         renderer.removeConnection(id);
+        seededConnectionIds.delete(id);
       }
     }
-    seededComponentIds.clear();
-    seededConnectionIds.clear();
 
+    // Add missing (in state but not yet tracked).
     for (const [id, comp] of state.components) {
+      if (seededComponentIds.has(id)) continue;
       renderer.addComponent(id, {
         type: comp.type,
         displayName: displayNameFor(comp.type),
@@ -148,6 +156,7 @@ export async function createTDDashboard(args: {
       seededComponentIds.add(id);
     }
     for (const [id, conn] of state.connections) {
+      if (seededConnectionIds.has(id)) continue;
       renderer.addConnection(id, conn.source.componentId, conn.target.componentId);
       seededConnectionIds.add(id);
     }
@@ -176,7 +185,20 @@ export async function createTDDashboard(args: {
     }
     budgetEl.textContent = `$${controller.economy.getBudget()}`;
     const actionable = !complete && controller.getPhase() === "build";
-    paletteButtons.forEach((b) => (b.disabled = !actionable));
+    // Filter palette by wave.availableComponents. Buttons for locked types
+    // are hidden entirely so the player doesn't see future waves' components
+    // before they're unlocked. `tryPlace` would reject placement with
+    // `disallowed_by_mode` anyway, but that only surfaces as a console
+    // warning — the button would appear enabled and click-to-no-op.
+    const availableTypes = complete
+      ? new Set<string>()
+      : new Set(controller.getCurrentWave().availableComponents);
+    paletteButtons.forEach((b) => {
+      const type = b.dataset["type"] ?? "";
+      const allowed = availableTypes.has(type);
+      b.hidden = !allowed;
+      b.disabled = !actionable || !allowed;
+    });
     readyBtn.disabled = !actionable;
     setStatusText();
   }
@@ -293,6 +315,62 @@ export async function createTDDashboard(args: {
     }
   });
 
+  const unsubConnectionDown = renderer.onConnectionPointerDown((connectionId: ConnectionId) => {
+    if (controller.getPhase() !== "build") return;
+    // Capture source/target BEFORE tryDisconnect removes the connection from state.
+    const conn = state.connections.get(connectionId);
+    if (!conn) return;
+    const sourceId = conn.source.componentId;
+    const targetId = conn.target.componentId;
+    const result = controller.tryDisconnect(state, connectionId);
+    if (!result.ok) {
+      // eslint-disable-next-line no-console
+      console.warn("[td] tryDisconnect failed:", result.reason);
+      return;
+    }
+    renderer.removeConnection(connectionId);
+    seededConnectionIds.delete(connectionId);
+    args.onDisconnect?.({ connectionId, sourceId, targetId });
+    setStatusText();
+  });
+
+  /**
+   * Keyboard affordance: Delete / Backspace removes the currently selected
+   * component during the build phase. Cascades to all connected wires.
+   */
+  function onKeyDown(ev: KeyboardEvent): void {
+    if (ev.key !== "Delete" && ev.key !== "Backspace") return;
+    if (controller.getPhase() !== "build") return;
+    if (dash.cursor !== "connecting" || dash.connectingFromId === null) return;
+
+    const removedId = dash.connectingFromId;
+    const result = controller.tryRemove(state, removedId);
+    if (!result.ok) {
+      // eslint-disable-next-line no-console
+      console.warn("[td] tryRemove failed:", result.reason);
+      return;
+    }
+
+    // Diff-sync renderer to state (cascaded connections already gone from state)
+    seedRendererFromState();
+
+    // Reset selection state
+    dash.cursor = "idle";
+    dash.connectingFromId = null;
+    renderer.setSelected(null);
+    hideComponentInfoPanel();
+
+    // Refresh HUD so budget shows the refund
+    refreshHud();
+
+    // Fire callback so main.ts can log the action
+    args.onRemove?.(removedId);
+
+    // eslint-disable-next-line no-console
+    console.warn("[td] deleted component", removedId, "refund=$" + result.refund, "disconnected=" + result.disconnectedCount);
+  }
+  document.addEventListener("keydown", onKeyDown);
+
   /**
    * Sync the renderer to engine state. Called after retry (main.ts replays
    * actions against state directly, bypassing the pointerdown handler).
@@ -351,8 +429,10 @@ export async function createTDDashboard(args: {
       hideBriefingCard();
       hideComponentInfoPanel();
       infoCloseBtn?.removeEventListener("click", onInfoClose);
+      document.removeEventListener("keydown", onKeyDown);
       unsubPointerDown();
       unsubPointerMove();
+      unsubConnectionDown();
       renderer.destroy();
       if (statusEl.parentElement === topologyContainer) {
         topologyContainer.removeChild(statusEl);

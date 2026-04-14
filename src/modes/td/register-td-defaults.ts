@@ -7,12 +7,15 @@ import { MonitoringCapability } from "@capabilities/monitoring/monitoring-capabi
 import { StorageCapability } from "@capabilities/storage/storage-capability.js";
 import { CachingCapability } from "@capabilities/caching/caching-capability.js";
 import { RoutingCapability } from "@capabilities/routing/routing-capability.js";
+import { AuthCapability } from "@capabilities/auth/auth-capability.js";
 import {
   SERVER_ENTRY,
   DATABASE_ENTRY,
   CACHE_ENTRY,
   LOAD_BALANCER_ENTRY,
   CLIENT_ENTRY,
+  CDN_ENTRY,
+  API_GATEWAY_ENTRY,
 } from "./td-component-entries.js";
 
 /**
@@ -30,7 +33,7 @@ export function registerTDDefaults(
     id: "processing" as CapabilityId,
     factory: () =>
       new ProcessingCapability("processing" as CapabilityId, {
-        handledTypes: ["api_read"],
+        handledTypes: ["api_read", "static_asset", "auth_required"],
         // Stage 3c one-type-per-tick re-tune (Processing + Forwarding
         // contributions sum into a pooled component budget — see
         // `src/core/engine/throughput.ts:componentThroughputPerTick`,
@@ -41,6 +44,10 @@ export function registerTDDefaults(
         // the intended "needs horizontal scale" teaching moment.
         throughputPerTier: 15,
         emitProcessedEvent: true,
+        // auth_required on Server is expensive: +4 on top of base 1 = 5
+        // ticks latency. Player feels "Server can serve auth, but it's so
+        // slow my SLA fails" → teaches API Gateway rescue for Wave 5.
+        typeLatencyPenalty: { auth_required: 4 },
       }),
   });
   capRegistry.register({
@@ -55,14 +62,19 @@ export function registerTDDefaults(
         emitForwardedEvent: true,
       }),
   });
-  // forwarding-pipe is the Cache/LB/Client variant: handles all traffic at
-  // ~55/tick. Distinct id so it can be registered as a separate factory.
+  // forwarding-pipe is the Cache/CDN/LB/Client variant: handles all traffic at
+  // a high pass-through rate. Tier-1 budget is 200/tick so a single CDN or Cache
+  // can absorb Wave 5's 150/tick intensity without overflowing its queue. Raised
+  // from 55 (Wave 3-era) to 200 when Stage 3d added Wave 4 (80/tick) and Wave 5
+  // (150/tick) — the Stage 3c engine treats dequeued cache-hit requests as
+  // consuming the tick budget, so the cap must be at least the total arrival
+  // rate at any intermediary component.
   capRegistry.register({
     id: "forwarding-pipe" as CapabilityId,
     factory: () =>
       new ForwardingCapability("forwarding-pipe" as CapabilityId, {
-        handledTypes: ["api_read", "api_write"],
-        throughputPerTier: 55,
+        handledTypes: ["api_read", "api_write", "static_asset", "auth_required"],
+        throughputPerTier: 200,
         emitForwardedEvent: true,
       }),
   });
@@ -91,6 +103,13 @@ export function registerTDDefaults(
     factory: () => new RoutingCapability("routing" as CapabilityId),
   });
   capRegistry.register({
+    id: "auth" as CapabilityId,
+    factory: () =>
+      new AuthCapability("auth" as CapabilityId, {
+        terminateAuthRequired: true,
+      }),
+  });
+  capRegistry.register({
     id: "monitoring" as CapabilityId,
     factory: () => new MonitoringCapability("monitoring" as CapabilityId),
   });
@@ -100,6 +119,8 @@ export function registerTDDefaults(
   compRegistry.register(DATABASE_ENTRY);
   compRegistry.register(CACHE_ENTRY);
   compRegistry.register(LOAD_BALANCER_ENTRY);
+  compRegistry.register(CDN_ENTRY);
+  compRegistry.register(API_GATEWAY_ENTRY);
 
   compRegistry.validate();
 }

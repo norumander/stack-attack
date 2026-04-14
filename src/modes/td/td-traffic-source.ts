@@ -23,16 +23,17 @@ export interface TDTrafficSourceOptions {
  * dot unambiguously represent "this tick is a wave of reads" or
  * "this tick is a wave of writes."
  *
- * Also assigns api_read requests a payload key from a small pool
- * (`wave.readKeyPoolSize`) so CachingCapability sees a realistic
- * working set instead of collapsing to a single bucket.
+ * Also assigns cacheable request types (api_read, static_asset) a payload
+ * key drawn from a small pool (`wave.keyPoolSize`) so CachingCapability sees
+ * a realistic working set and produces a meaningful hit rate. Non-cacheable
+ * types get unique-per-request payloads.
  */
 export class TDTrafficSource implements TrafficSource {
   // TrafficSource interface requires readonly public.
   readonly targetEntryPointId: ComponentId;
   private readonly wave: TDWaveDefinition;
   private readonly rng: () => number;
-  private readonly readKeyPoolSize: number;
+  private readonly keyPoolSize: number;
   /**
    * Pre-computed one-type-per-tick schedule. `typeSchedule[i]` is the
    * type all requests generated in the i-th generate() call will use.
@@ -47,7 +48,7 @@ export class TDTrafficSource implements TrafficSource {
     this.wave = options.wave;
     this.targetEntryPointId = options.targetEntryPointId;
     this.rng = options.rng;
-    this.readKeyPoolSize = options.wave.readKeyPoolSize ?? 20;
+    this.keyPoolSize = options.wave.keyPoolSize ?? 20;
     this.typeSchedule = buildTypeSchedule(options.wave, options.rng);
   }
 
@@ -88,11 +89,15 @@ export class TDTrafficSource implements TrafficSource {
   }
 
   private makePayload(type: string): string | null {
-    if (type === "api_read") {
-      const idx = Math.floor(this.rng() * this.readKeyPoolSize);
-      return `read-${idx}`;
+    // Cacheable types draw from a bounded pool so the CachingCapability can
+    // produce a meaningful hit rate. Non-cacheable types (writes, auth) get
+    // unique-per-request ids so they can't accidentally collide on a cached
+    // entry if someone extends CACHEABLE_TYPES in the future.
+    if (type === "api_read" || type === "static_asset") {
+      const idx = Math.floor(this.rng() * this.keyPoolSize);
+      return `${type}-${idx}`;
     }
-    return `write-${this.requestCounter}`;
+    return `${type}-${this.requestCounter}`;
   }
 
   private nextId(): RequestId {

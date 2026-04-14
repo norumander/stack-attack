@@ -160,7 +160,7 @@ export function buildDatabase(compRegistry: ComponentRegistry): {
 }
 
 /**
- * Build a Cache component from the TD registry (Caching + forwarding-pipe 55/tick).
+ * Build a Cache component from the TD registry (Caching + forwarding-pipe 200/tick).
  */
 export function buildCache(compRegistry: ComponentRegistry): {
   component: Component;
@@ -168,6 +168,31 @@ export function buildCache(compRegistry: ComponentRegistry): {
   egressPortId: PortId;
 } {
   const component = compRegistry.create("cache", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
+ * Build a CDN component from the TD registry (Caching + forwarding-pipe + Monitoring).
+ */
+export function buildCDN(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("cdn", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
+ * Build an API Gateway component from the TD registry (Auth + forwarding-pipe + Monitoring).
+ * The auth capability is configured with terminateAuthRequired: true via registerTDDefaults.
+ */
+export function buildAPIGateway(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("api_gateway", { x: 0, y: 0 }, null);
   return { component, ...singlePortIds(component) };
 }
 
@@ -196,11 +221,11 @@ export function buildLoadBalancer(
 
   const routingCap = new RoutingCapability("routing" as CapabilityId);
   // LB's Forwarding handles ALL inbound traffic with high throughput
-  // (~55/tick) — pass-through pipe feeding both servers. Emits source-side
+  // (200/tick) — pass-through pipe feeding both servers. Emits source-side
   // FORWARDED events for runWave.
   const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
-    handledTypes: ["api_read", "api_write"],
-    throughputPerTier: 55,
+    handledTypes: ["api_read", "api_write", "static_asset", "auth_required"],
+    throughputPerTier: 200,
     emitForwardedEvent: true,
   });
   const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
@@ -237,12 +262,17 @@ export function buildLoadBalancer(
 /**
  * Wires a source component's egress port to a target component's ingress port.
  * Returns the created Connection so the caller can add it to state.
+ *
+ * @param opts.bandwidth  Connection bandwidth (requests/tick). Default: 100.
+ *   Pass a higher value when the topology must carry more than 100 req/tick
+ *   on a single link — e.g. Wave 5 injects 150/tick so client→CDN needs ≥ 150.
  */
 export function wire(
   state: SimulationState,
   source: { component: Component; egressPortId: string },
   target: { component: Component; ingressPortId: string },
   connId: string,
+  opts: { bandwidth?: number } = {},
 ): void {
   const sourcePort = source.component.ports.find((p) => p.id === source.egressPortId);
   const targetPort = target.component.ports.find((p) => p.id === target.ingressPortId);
@@ -253,6 +283,7 @@ export function wire(
     connId,
     { componentId: source.component.id, portId: source.egressPortId },
     { componentId: target.component.id, portId: target.ingressPortId },
+    opts,
   );
   sourcePort.connections.push(conn.id);
   targetPort.connections.push(conn.id);

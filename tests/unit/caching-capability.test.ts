@@ -42,41 +42,39 @@ describe("CachingCapability", () => {
     expect(result.events[0]!.type).toBe("CACHED_MISS");
   });
 
-  it("repeated identical cache key produces a hit (RESPOND)", () => {
+  it("same payload produces a cache hit on second request (RESPOND)", () => {
     const cap = new CachingCapability("cache" as CapabilityId);
-    // Generate enough requests that one will hash to the same slot as a previous one
-    // With base keys = 10 for api_read, after 10+ requests we should see collisions
-    const results: string[] = [];
-    for (let i = 0; i < 20; i++) {
-      const r = req("api_read");
-      const result = cap.process(r, ctx(1, 0));
-      results.push(result.outcome.kind);
-    }
-    // At least one should be a RESPOND (cache hit)
-    expect(results.filter(k => k === "RESPOND").length).toBeGreaterThan(0);
+    // First request with a shared payload — miss, entry stored.
+    const r1: Request = { id: "r-a" as RequestId, parentId: null, type: "api_read", payload: "hot-key", origin: "c-a" as ComponentId, createdAt: 0, ttl: 10, originZone: null, streamDuration: null, streamBandwidth: null };
+    const first = cap.process(r1, ctx(1, 0));
+    expect(first.outcome.kind).toBe("PASS");
+
+    // Second request with different id but same payload — should hit.
+    const r2: Request = { id: "r-b" as RequestId, parentId: null, type: "api_read", payload: "hot-key", origin: "c-a" as ComponentId, createdAt: 0, ttl: 10, originZone: null, streamDuration: null, streamBandwidth: null };
+    const second = cap.process(r2, ctx(1, 0));
+    expect(second.outcome.kind).toBe("RESPOND");
   });
 
   it("cache miss and hit events are emitted", () => {
     const cap = new CachingCapability("cache" as CapabilityId);
-    const r1 = cap.process(req("api_read"), ctx());
-    expect(r1.events[0]!.type).toBe("CACHED_MISS");
+    // First request — must emit CACHED_MISS.
+    const r1: Request = { id: "r-miss" as RequestId, parentId: null, type: "api_read", payload: "shared-key", origin: "c-a" as ComponentId, createdAt: 0, ttl: 10, originZone: null, streamDuration: null, streamBandwidth: null };
+    const miss = cap.process(r1, ctx());
+    expect(miss.events[0]!.type).toBe("CACHED_MISS");
 
-    // Generate many requests to get a hit
-    let hitFound = false;
-    for (let i = 0; i < 20; i++) {
-      const result = cap.process(req("api_read"), ctx(1, 0));
-      if (result.events[0]?.type === "CACHED_HIT") {
-        hitFound = true;
-        break;
-      }
-    }
-    expect(hitFound).toBe(true);
+    // Second request with same payload — must emit CACHED_HIT.
+    const r2: Request = { id: "r-hit" as RequestId, parentId: null, type: "api_read", payload: "shared-key", origin: "c-a" as ComponentId, createdAt: 0, ttl: 10, originZone: null, streamDuration: null, streamBandwidth: null };
+    const hit = cap.process(r2, ctx(1, 0));
+    expect(hit.events[0]?.type).toBe("CACHED_HIT");
   });
 
   it("stats track hits and misses", () => {
     const cap = new CachingCapability("cache" as CapabilityId);
+    // Use a small payload pool (5 keys) across 30 requests so hits accumulate.
     for (let i = 0; i < 30; i++) {
-      cap.process(req("api_read"), ctx(1, 0));
+      const payload = `key-${i % 5}`;
+      const r: Request = { id: `r-${i}` as RequestId, parentId: null, type: "api_read", payload, origin: "c-a" as ComponentId, createdAt: 0, ttl: 10, originZone: null, streamDuration: null, streamBandwidth: null };
+      cap.process(r, ctx(1, 0));
     }
     const stats = cap.getStats();
     expect((stats.hits ?? 0) + (stats.misses ?? 0)).toBe(30);

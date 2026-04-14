@@ -22,10 +22,12 @@ const COMPONENT_HALF = 18;
  * cyan reads were too similar in motion at high density.
  */
 const REQUEST_TYPE_COLORS: Record<string, number> = {
-  api_read: 0x22d3ee,    // bright cyan
-  api_write: 0xf97316,   // bright orange
-  stream_init: 0xfde047, // yellow
-  default: 0x94a3b8,     // slate
+  api_read: 0x22d3ee,       // bright cyan
+  api_write: 0xf97316,      // bright orange
+  static_asset: 0xa78bfa,   // lavender — Wave 4 introduces static_asset
+  auth_required: 0xfacc15,  // gold — Wave 5 introduces auth_required
+  stream_init: 0xfde047,    // yellow
+  default: 0x94a3b8,        // slate
 };
 
 interface ComponentRenderState {
@@ -85,6 +87,37 @@ const FLASH_COLORS = {
  */
 const PENDING_FLASH_TIMEOUT_MS = 1000;
 
+/**
+ * Shortest distance from point (px, py) to the line segment defined by
+ * (x1, y1) → (x2, y2). Used for connection click hit-testing.
+ */
+function pointToSegmentDistance(
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) {
+    const rx = px - x1;
+    const ry = py - y1;
+    return Math.sqrt(rx * rx + ry * ry);
+  }
+  // Clamp t to [0, 1] so we measure to the segment, not the infinite line.
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+  const closestX = x1 + t * dx;
+  const closestY = y1 + t * dy;
+  const rx = px - closestX;
+  const ry = py - closestY;
+  return Math.sqrt(rx * rx + ry * ry);
+}
+
 export class PixiTopologyRenderer implements TopologyRenderer {
   private app: Application | null = null;
   private world: Container | null = null;
@@ -119,6 +152,7 @@ export class PixiTopologyRenderer implements TopologyRenderer {
 
   private pointerDownCallbacks: Array<(ev: RendererPointerEvent) => void> = [];
   private pointerMoveCallbacks: Array<(ev: RendererPointerEvent) => void> = [];
+  private connectionPointerDownCallbacks: Array<(id: ConnectionId) => void> = [];
   private mountedContainer: HTMLElement | null = null;
 
   async mount(container: HTMLElement): Promise<void> {
@@ -154,6 +188,19 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     app.stage.hitArea = app.screen;
     app.stage.on("pointerdown", (ev) => {
       const hit = this.hitTest(ev.global.x, ev.global.y);
+      if (hit === null) {
+        // Component miss — check connections before falling through to the
+        // empty-space callback. Stage.hitArea short-circuits child hit-testing
+        // in Pixi v8, so per-line `eventMode = "static"` doesn't fire. Manual
+        // distance check against each connection is the workaround.
+        const hitConnectionId = this.hitTestConnection(ev.global.x, ev.global.y);
+        if (hitConnectionId !== null) {
+          for (const cb of this.connectionPointerDownCallbacks) {
+            cb(hitConnectionId);
+          }
+          return;
+        }
+      }
       const pe: RendererPointerEvent = {
         screenX: ev.global.x,
         screenY: ev.global.y,
@@ -342,6 +389,26 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     const graphic = new Graphics();
     const color = REQUEST_TYPE_COLORS[args.requestType] ?? REQUEST_TYPE_COLORS["default"]!;
     this.drawDotShape(graphic, args.requestType, color);
+
+    // Render a numeric count label above the dot when more than one engine
+    // request is aggregated into this single visual dot. Helps players read
+    // the flow weight on each edge (e.g. "50" for 50 reads/tick).
+    if (args.count !== undefined && args.count > 1) {
+      const label = new Text({
+        text: String(args.count),
+        style: {
+          fontFamily: "Inter, system-ui, sans-serif",
+          fontSize: 10,
+          fontWeight: "700",
+          fill: 0xffffff,
+          stroke: { color: 0x000000, width: 2 },
+        },
+      });
+      label.anchor.set(0.5, 0.5);
+      label.position.set(0, -12);
+      graphic.addChild(label);
+    }
+
     this.dotsLayer.addChild(graphic);
 
     const startX = source.gridPosition.x * GRID_CELL_PX;
@@ -351,12 +418,28 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     graphic.x = startX;
     graphic.y = startY;
 
+    // Hide the sprite during its stagger-delay window so downstream hop dots
+    // don't materialize at their source positions simultaneously with upstream
+    // ones (the engine's fixed-point tick resolves all hops in the same tick;
+    // spawnOffsetMs staggers *motion* but the sprite is already created).
+    // tickFrame flips visibility back on when `t >= 0`.
+    //
+    // KNOWN ISSUE (Stage 3d): playtest reports that downstream hop dots
+    // still appear simultaneously with upstream ones at the default tick
+    // speed, despite adapter-level unit tests confirming the stagger offsets
+    // are computed correctly (see
+    // tests/unit/state-to-renderer-aggregation.test.ts). Needs deeper
+    // investigation — possibly a renderer frame-timing issue. Logged in
+    // td-stage-gotchas.md for follow-up.
+    const offset = Math.max(0, args.spawnOffsetMs ?? 0);
+    if (offset > 0) graphic.visible = false;
+
     const dot: ActiveDot = {
       graphic,
       connectionId: args.connectionId,
       requestId: args.requestId,
       targetComponentId: conn.targetId,
-      startMs: performance.now() + Math.max(0, args.spawnOffsetMs ?? 0),
+      startMs: performance.now() + offset,
       durationMs: Math.max(50, args.durationMs),
       startX,
       startY,
@@ -495,6 +578,37 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     return null;
   }
 
+  /**
+   * Returns the id of the connection whose line segment is within 8px of
+   * (screenX, screenY), or null. Iterates all connections and picks the
+   * closest match. Used by the stage `pointerdown` handler to dispatch
+   * click-to-disconnect after `hitTest` returns null for components.
+   *
+   * Pixi v8 hit-testing on Graphics children is short-circuited by the
+   * stage's `hitArea = app.screen`, so per-line interactivity doesn't
+   * fire — this manual check is the workaround.
+   */
+  private hitTestConnection(screenX: number, screenY: number): ConnectionId | null {
+    const tolerance = 8;
+    let bestId: ConnectionId | null = null;
+    let bestDist = tolerance;
+    for (const [id, state] of this.connections) {
+      const source = this.components.get(state.sourceId);
+      const target = this.components.get(state.targetId);
+      if (!source || !target) continue;
+      const x1 = source.container.x;
+      const y1 = source.container.y;
+      const x2 = target.container.x;
+      const y2 = target.container.y;
+      const dist = pointToSegmentDistance(screenX, screenY, x1, y1, x2, y2);
+      if (dist <= bestDist) {
+        bestDist = dist;
+        bestId = id;
+      }
+    }
+    return bestId;
+  }
+
   screenToGrid(screenX: number, screenY: number): { x: number; y: number } {
     return {
       x: Math.round(screenX / GRID_CELL_PX),
@@ -525,15 +639,25 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     };
   }
 
+  onConnectionPointerDown(cb: (id: ConnectionId) => void): () => void {
+    this.connectionPointerDownCallbacks.push(cb);
+    return () => {
+      const i = this.connectionPointerDownCallbacks.indexOf(cb);
+      if (i >= 0) this.connectionPointerDownCallbacks.splice(i, 1);
+    };
+  }
+
   private tickFrame(): void {
     const now = performance.now();
     for (let i = this.activeDots.length - 1; i >= 0; i--) {
       const dot = this.activeDots[i]!;
       const t = (now - dot.startMs) / dot.durationMs;
       // Dot is still in its stagger-delay window (spawnOffsetMs): keep it
-      // pinned at source position. graphic.x/y were set to startX/startY
-      // in spawnDotImmediate, so skipping this frame leaves them in place.
+      // pinned at source position AND hidden so downstream hop dots don't
+      // visually co-exist with upstream ones at tick start. Visibility
+      // flips back on as soon as the delay elapses.
       if (t < 0) continue;
+      if (!dot.graphic.visible) dot.graphic.visible = true;
       if (t >= 1) {
         this.dotsLayer?.removeChild(dot.graphic);
         dot.graphic.destroy();

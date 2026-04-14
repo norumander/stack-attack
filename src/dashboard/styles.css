@@ -574,25 +574,22 @@ textarea {
   color: #8b8fa3;
   font-weight: 600;
 }
-.td-dev-wave-row {
-  display: flex;
-  gap: 4px;
-}
-.td-dev-wave-btn {
-  flex: 1;
-  padding: 6px 0;
+.td-dev-wave-select {
+  width: 100%;
+  padding: 6px 8px;
   background: #2a2e3d;
   color: #d1d5db;
   border: 1px solid #3a3f52;
   border-radius: 4px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
 }
-.td-dev-wave-btn:hover {
+.td-dev-wave-select:hover {
   background: #363b4f;
   color: #ffffff;
 }
-.td-dev-wave-btn:active {
-  background: #1f2330;
+.td-dev-wave-select:focus {
+  outline: none;
+  border-color: #5a6178;
 }
