@@ -4,6 +4,7 @@ import { CapabilityRegistry } from "@core/registry/capability-registry";
 import { ComponentRegistry } from "@core/registry/component-registry";
 import { registerTDDefaults } from "@modes/td/register-td-defaults";
 import type { CapabilityId } from "@core/types/ids";
+import { AuthCapability } from "@capabilities/auth/auth-capability";
 
 describe("TD_CDN_ENTRY", () => {
   it("has caching, forwarding-pipe, monitoring capabilities", () => {
@@ -83,5 +84,79 @@ describe("registerTDDefaults: CDN registered", () => {
     expect(processing).toBeDefined();
     expect(processing!.canHandle("api_read")).toBe(true);
     expect(processing!.canHandle("static_asset")).toBe(true);
+  });
+});
+
+describe("registerTDDefaults: API Gateway and Server auth wiring", () => {
+  it("registers api_gateway component with terminateAuthRequired auth", () => {
+    const cap = new CapabilityRegistry();
+    const comp = new ComponentRegistry(cap);
+    registerTDDefaults(cap, comp);
+    const gateway = comp.create("api_gateway", { x: 0, y: 0 }, null);
+    expect(gateway).not.toBeNull();
+    const auth = gateway!.capabilities.get("auth" as CapabilityId) as AuthCapability;
+    expect(auth).toBeDefined();
+    // Drive auth_required through the auth cap and verify RESPOND
+    const result = auth.process(
+      {
+        id: "r-1" as any,
+        parentId: null,
+        type: "auth_required",
+        payload: null,
+        origin: "c-a" as any,
+        createdAt: 0,
+        ttl: 10,
+        originZone: null,
+        streamDuration: null,
+        streamBandwidth: null,
+      },
+      {
+        state: { currentTick: 0 } as any,
+        componentId: "c-a" as any,
+        effectiveTier: 1,
+        effectiveTiers: new Map([["auth" as CapabilityId, 1]]),
+        activeCapabilityIds: new Set(),
+        currentTick: 0,
+        rng: () => 0,
+        directories: [],
+        childResponses: new Map(),
+      } as any,
+    );
+    expect(result.outcome.kind).toBe("RESPOND");
+  });
+
+  it("Server processing accepts auth_required with +4 latency penalty", () => {
+    const cap = new CapabilityRegistry();
+    const comp = new ComponentRegistry(cap);
+    registerTDDefaults(cap, comp);
+    const server = comp.create("server", { x: 0, y: 0 }, null);
+    const processing = server!.capabilities.get("processing" as CapabilityId) as any;
+    expect(processing.canHandle("auth_required")).toBe(true);
+    const result = processing.process(
+      {
+        id: "r-1" as any,
+        parentId: null,
+        type: "auth_required",
+        payload: null,
+        origin: "c-a" as any,
+        createdAt: 0,
+        ttl: 10,
+        originZone: null,
+        streamDuration: null,
+        streamBandwidth: null,
+      },
+      {
+        state: { currentTick: 0 } as any,
+        componentId: "c-a" as any,
+        effectiveTier: 1,
+        effectiveTiers: new Map([["processing" as CapabilityId, 1]]),
+        activeCapabilityIds: new Set(),
+        currentTick: 0,
+        rng: () => 0,
+        directories: [],
+        childResponses: new Map(),
+      } as any,
+    );
+    expect(result.events[0].latencyAdded).toBe(5);
   });
 });

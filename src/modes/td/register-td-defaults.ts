@@ -7,6 +7,7 @@ import { MonitoringCapability } from "@capabilities/monitoring/monitoring-capabi
 import { StorageCapability } from "@capabilities/storage/storage-capability.js";
 import { CachingCapability } from "@capabilities/caching/caching-capability.js";
 import { RoutingCapability } from "@capabilities/routing/routing-capability.js";
+import { AuthCapability } from "@capabilities/auth/auth-capability.js";
 import {
   SERVER_ENTRY,
   DATABASE_ENTRY,
@@ -14,6 +15,7 @@ import {
   LOAD_BALANCER_ENTRY,
   CLIENT_ENTRY,
   CDN_ENTRY,
+  API_GATEWAY_ENTRY,
 } from "./td-component-entries.js";
 
 /**
@@ -31,7 +33,7 @@ export function registerTDDefaults(
     id: "processing" as CapabilityId,
     factory: () =>
       new ProcessingCapability("processing" as CapabilityId, {
-        handledTypes: ["api_read", "static_asset"],
+        handledTypes: ["api_read", "static_asset", "auth_required"],
         // Stage 3c one-type-per-tick re-tune (Processing + Forwarding
         // contributions sum into a pooled component budget — see
         // `src/core/engine/throughput.ts:componentThroughputPerTick`,
@@ -42,6 +44,10 @@ export function registerTDDefaults(
         // the intended "needs horizontal scale" teaching moment.
         throughputPerTier: 15,
         emitProcessedEvent: true,
+        // auth_required on Server is expensive: +4 on top of base 1 = 5
+        // ticks latency. Player feels "Server can serve auth, but it's so
+        // slow my SLA fails" → teaches API Gateway rescue for Wave 5.
+        typeLatencyPenalty: { auth_required: 4 },
       }),
   });
   capRegistry.register({
@@ -97,6 +103,13 @@ export function registerTDDefaults(
     factory: () => new RoutingCapability("routing" as CapabilityId),
   });
   capRegistry.register({
+    id: "auth" as CapabilityId,
+    factory: () =>
+      new AuthCapability("auth" as CapabilityId, {
+        terminateAuthRequired: true,
+      }),
+  });
+  capRegistry.register({
     id: "monitoring" as CapabilityId,
     factory: () => new MonitoringCapability("monitoring" as CapabilityId),
   });
@@ -107,6 +120,7 @@ export function registerTDDefaults(
   compRegistry.register(CACHE_ENTRY);
   compRegistry.register(LOAD_BALANCER_ENTRY);
   compRegistry.register(CDN_ENTRY);
+  compRegistry.register(API_GATEWAY_ENTRY);
 
   compRegistry.validate();
 }
