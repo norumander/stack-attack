@@ -323,32 +323,53 @@ export class PixiTopologyRenderer implements TopologyRenderer {
   }
 
   flashDrop(id: ComponentId): void {
-    this.flashComponent(id, 0xef4444);
+    this.flashComponent(id, 0xef4444, { peakAlpha: 0.7, durationMs: 180, padding: 2 });
   }
 
   flashOverload(id: ComponentId): void {
-    this.flashComponent(id, 0xfbbf24);
+    this.flashComponent(id, 0xfbbf24, { peakAlpha: 0.7, durationMs: 180, padding: 2 });
   }
 
-  private flashComponent(id: ComponentId, color: number): void {
+  /**
+   * Soft green pulse when a component successfully responds. Runs shorter
+   * and dimmer than drop/overload because it fires on every served request —
+   * a Server handling 20 req/tick would be strobing at the flash/overload
+   * intensity. This hint is meant to reinforce "working pipeline", not
+   * dominate the frame.
+   */
+  flashResponded(id: ComponentId): void {
+    this.flashComponent(id, 0x22c55e, { peakAlpha: 0.35, durationMs: 120, padding: 0 });
+  }
+
+  private flashComponent(
+    id: ComponentId,
+    color: number,
+    opts: { peakAlpha: number; durationMs: number; padding: number },
+  ): void {
     const state = this.components.get(id);
     if (!state) return;
     const flash = new Graphics();
+    const pad = opts.padding;
     flash.roundRect(
-      -COMPONENT_HALF - 2, -COMPONENT_HALF - 2, (COMPONENT_HALF + 2) * 2, (COMPONENT_HALF + 2) * 2, 8,
+      -COMPONENT_HALF - pad,
+      -COMPONENT_HALF - pad,
+      (COMPONENT_HALF + pad) * 2,
+      (COMPONENT_HALF + pad) * 2,
+      8,
     );
-    flash.fill({ color, alpha: 0.7 });
+    flash.fill({ color, alpha: opts.peakAlpha });
     state.container.addChild(flash);
     const startMs = performance.now();
-    const FLASH_MS = 180;
+    const duration = opts.durationMs;
+    const peak = opts.peakAlpha;
     const step = () => {
       const elapsed = performance.now() - startMs;
-      if (elapsed >= FLASH_MS) {
+      if (elapsed >= duration) {
         flash.destroy();
         this.app?.ticker.remove(step);
         return;
       }
-      flash.alpha = 0.7 * (1 - elapsed / FLASH_MS);
+      flash.alpha = peak * (1 - elapsed / duration);
     };
     this.app?.ticker.add(step);
   }

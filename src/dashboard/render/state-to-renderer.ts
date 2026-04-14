@@ -66,5 +66,6 @@ export function applyTickToRenderer(
   for (const ev of state.lastTickEvents) {
     if (ev.type === "DROPPED") renderer.flashDrop(ev.componentId);
     else if (ev.type === "OVERLOADED") renderer.flashOverload(ev.componentId);
+    else if (ev.type === "RESPONDED") renderer.flashResponded(ev.componentId);
   }
 }

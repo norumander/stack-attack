@@ -29,6 +29,7 @@ export interface TopologyRenderer {
   // ─ One-shot feedback ──────────────────────────────────────────────────
   flashOverload(id: ComponentId): void;
   flashDrop(id: ComponentId): void;
+  flashResponded(id: ComponentId): void;
 
   // ─ Selection + placement preview ──────────────────────────────────────
   setSelected(id: ComponentId | null): void;
