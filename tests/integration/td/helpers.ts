@@ -4,6 +4,7 @@ import { Component } from "@core/component/component";
 import { TDModeController } from "@modes/td/td-mode-controller";
 import { TDEconomy } from "@modes/td/td-economy";
 import type { TDWaveDefinition } from "@modes/td/td-waves";
+import { BatchProcessingCapability } from "@capabilities/batch-processing/batch-processing-capability";
 import { ForwardingCapability } from "@capabilities/forwarding/forwarding-capability";
 import { MonitoringCapability } from "@capabilities/monitoring/monitoring-capability";
 import { RoutingCapability } from "@capabilities/routing/routing-capability";
@@ -197,6 +198,110 @@ export function buildAPIGateway(compRegistry: ComponentRegistry): {
 }
 
 /**
+ * Build a Queue component from the TD registry (QueueCapability + forwarding-pipe + Monitoring).
+ * Tier-1 capacity: 32 slots. Buffers backpressured requests via EngineBufferable.
+ */
+export function buildQueue(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("queue", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
+ * Build a Worker component from the TD registry (BatchProcessingCapability + Monitoring).
+ * Processes "batch" requests at tier×5 per tick via PROCESS phase.
+ */
+export function buildWorker(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("worker", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
+ * Build a CircuitBreaker component from the TD registry (CircuitBreakerCapability + forwarding-pipe + Monitoring).
+ * INTERCEPT phase: CLOSED passes through, OPEN fast-fails (DROP/circuit_open).
+ * Tier-1: threshold 5 failures, cooldown 10 ticks.
+ */
+export function buildCircuitBreaker(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("circuit_breaker", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
+ * Build a custom Worker component that processes batch requests AND forwards
+ * non-batch traffic onward. The registry Worker only has BatchProcessing +
+ * Monitoring (no forwarding), so non-batch traffic dies there. This custom
+ * Worker adds a ForwardingCapability for non-batch types, allowing it to sit
+ * in the main pipeline: Queue → Worker → LB → Servers.
+ *
+ * Batch: BatchProcessingCapability (PROCESS, canHandle("batch")) → RESPOND
+ * Non-batch: ForwardingCapability (PROCESS, all non-batch types) → FORWARD
+ */
+export function buildWorkerWithForwarding(): {
+  component: Component;
+  ingressPortId: string;
+  egressPortId: string;
+} {
+  const ingressPortId = "worker-in";
+  const egressPortId = "worker-out";
+  const ingress = makePort(ingressPortId, "ingress");
+  const egress = makePort(egressPortId, "egress");
+
+  const batchCap = new BatchProcessingCapability("batch-processing" as CapabilityId);
+  const forwardCap = new ForwardingCapability("forwarding-pipe" as CapabilityId, {
+    handledTypes: ["api_read", "api_write", "static_asset", "auth_required"],
+    throughputPerTier: 500,
+    emitForwardedEvent: true,
+  });
+  const monCap = new MonitoringCapability("monitoring" as CapabilityId);
+
+  const capabilities = new Map<CapabilityId, Capability>([
+    ["batch-processing" as CapabilityId, batchCap],
+    ["forwarding-pipe" as CapabilityId, forwardCap],
+    ["monitoring" as CapabilityId, monCap],
+  ]);
+  const tiers = new Map<CapabilityId, number>([
+    ["batch-processing" as CapabilityId, 1],
+    ["forwarding-pipe" as CapabilityId, 1],
+    ["monitoring" as CapabilityId, 1],
+  ]);
+
+  const component = new Component({
+    id: "custom-worker" as any,
+    type: "worker",
+    name: "Worker (batch + forward)",
+    description: "Processes batch, forwards the rest",
+    capabilities,
+    initialTiers: tiers,
+    ports: [ingress, egress],
+    placementCost: 125,
+    position: { x: 0, y: 0 },
+    zone: null,
+    placementTick: 0,
+    conditionProfile: {
+      degradedThreshold: 0.7,
+      criticalThreshold: 0.3,
+      decayRate: 0.05,
+      recoveryRate: 0.02,
+      degradedEffects: [{ kind: "latency_multiplier", factor: 1.5 }],
+      criticalEffects: [{ kind: "drop_probability", p: 0.2 }],
+    },
+  });
+
+  return { component, ingressPortId, egressPortId };
+}
+
+/**
  * Build a LoadBalancer component with Routing (INTERCEPT) + Forwarding (all traffic) + Monitoring.
  * egressCount controls how many egress ports (and downstream servers) can be wired.
  */
@@ -224,8 +329,8 @@ export function buildLoadBalancer(
   // (200/tick) — pass-through pipe feeding both servers. Emits source-side
   // FORWARDED events for runWave.
   const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
-    handledTypes: ["api_read", "api_write", "static_asset", "auth_required"],
-    throughputPerTier: 200,
+    handledTypes: ["api_read", "api_write", "static_asset", "auth_required", "batch", "event", "stream"],
+    throughputPerTier: 500,
     emitForwardedEvent: true,
   });
   const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
