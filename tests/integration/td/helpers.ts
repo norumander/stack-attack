@@ -224,8 +224,8 @@ export function buildLoadBalancer(
   // (200/tick) — pass-through pipe feeding both servers. Emits source-side
   // FORWARDED events for runWave.
   const forwardingCap = new ForwardingCapability("forwarding" as CapabilityId, {
-    handledTypes: ["api_read", "api_write", "static_asset", "auth_required"],
-    throughputPerTier: 200,
+    handledTypes: ["api_read", "api_write", "static_asset", "auth_required", "batch", "event", "stream"],
+    throughputPerTier: 500,
     emitForwardedEvent: true,
   });
   const monitoringCap = new MonitoringCapability("monitoring" as CapabilityId);
