@@ -1,7 +1,8 @@
 import { TOPOLOGIES, type TopologyInfo } from "./topologies";
 import { SimLoop } from "./sim-loop";
 import { exportScenario, applyScenario, serializeScenario, parseScenario } from "@modes/sandbox/sandbox-scenario";
-import type { ComponentId, ConnectionId } from "@core/types/ids";
+import type { ComponentId, ConnectionId, CapabilityId } from "@core/types/ids";
+import type { Component } from "@core/component/component";
 import type { TickMetrics } from "@core/types/metrics";
 import type { SandboxModeController, MetricsSnapshot } from "@modes/sandbox/sandbox-mode-controller";
 
@@ -575,6 +576,31 @@ function tdOnTick(controller: TDModeController, state: SimulationState): void {
 
 // === Loss modal helpers ===
 
+function gatherPerTypeCacheStats(
+  state: { components: ReadonlyMap<ComponentId, Component> },
+): Array<{
+  componentName: string;
+  hitRateByType: Record<string, { hits: number; misses: number; hitRate: number }>;
+}> {
+  const results: Array<{
+    componentName: string;
+    hitRateByType: Record<string, { hits: number; misses: number; hitRate: number }>;
+  }> = [];
+  for (const comp of state.components.values()) {
+    const caching = comp.capabilities.get("caching" as CapabilityId);
+    if (!caching) continue;
+    const stats = caching.getStats();
+    if (!stats.hitRateByType || Object.keys(stats.hitRateByType).length === 0) {
+      continue;
+    }
+    results.push({
+      componentName: comp.name ?? comp.type,
+      hitRateByType: stats.hitRateByType,
+    });
+  }
+  return results;
+}
+
 function showLossModal(outcome: OutcomeReport): void {
   const modal = document.getElementById("td-loss-modal");
   const title = document.getElementById("td-loss-modal-title");
@@ -619,6 +645,28 @@ function showLossModal(outcome: OutcomeReport): void {
   notesEl.style.color = "#8b8fa3";
   notesEl.style.fontSize = "11px";
   detail.appendChild(notesEl);
+
+  const cacheStats = gatherPerTypeCacheStats(tdState);
+  if (cacheStats.length > 0) {
+    const cacheHeader = document.createElement("div");
+    cacheHeader.textContent = "Cache hit rates:";
+    cacheHeader.style.marginTop = "12px";
+    cacheHeader.style.fontWeight = "600";
+    cacheHeader.style.fontSize = "11px";
+    detail.appendChild(cacheHeader);
+
+    for (const { componentName, hitRateByType } of cacheStats) {
+      const row = document.createElement("div");
+      const parts: string[] = [];
+      for (const [type, stats] of Object.entries(hitRateByType)) {
+        parts.push(`${type}: ${(stats.hitRate * 100).toFixed(0)}%`);
+      }
+      row.textContent = `  ${componentName} — ${parts.join(", ")}`;
+      row.style.color = "#8b8fa3";
+      row.style.fontSize = "11px";
+      detail.appendChild(row);
+    }
+  }
 
   const retryBtn = document.getElementById("td-retry-btn");
   if (retryBtn) retryBtn.textContent = `Retry Wave ${waveNum}`;
