@@ -15,6 +15,19 @@ const DEFAULT_CONDITION_PROFILE: ConditionProfile = {
   ],
 };
 
+const RESILIENT_CONDITION_PROFILE: ConditionProfile = {
+  degradedThreshold: 0.5,
+  criticalThreshold: 0.2,
+  decayRate: 0.03,
+  recoveryRate: 0.03,
+  degradedEffects: [
+    { kind: "latency_multiplier", factor: 1.3 },
+  ],
+  criticalEffects: [
+    { kind: "drop_probability", p: 0.15 },
+  ],
+};
+
 export const SERVER_ENTRY: ComponentRegistryEntry = {
   type: "server",
   name: "Server",
@@ -156,4 +169,36 @@ export const CLIENT_ENTRY: ComponentRegistryEntry = {
   upgradeCostCurve: [0],
   visual: { icon: "client", color: "#94a3b8", shape: "circle" },
   conditionProfile: DEFAULT_CONDITION_PROFILE,
+};
+
+export const CDN_ENTRY: ComponentRegistryEntry = {
+  type: "cdn",
+  name: "CDN",
+  description:
+    "Edge cache for static assets. Absorbs static_asset volume so Servers can focus on API work.",
+  longDescription:
+    "A CDN sits at the edge and caches static_asset responses. The first request " +
+    "for an asset misses and forwards downstream; every subsequent request for the " +
+    "same asset is served from the CDN's cache without ever touching your Servers. " +
+    "CDNs help most when traffic has hot static assets; they help least when every " +
+    "static request is unique.",
+  capabilitiesHuman: [
+    "Caches static_asset responses at the edge",
+    "Serves cache hits directly (fast path, no Server load)",
+    "Forwards misses downstream to populate the cache",
+    "Low upkeep — runs cheap once placed",
+  ],
+  capabilities: [
+    { id: "caching" as CapabilityId, defaultTier: 1, maxTier: 2 },
+    { id: "forwarding-pipe" as CapabilityId, defaultTier: 1, maxTier: 2 },
+    { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+  ],
+  ports: [
+    { id: "p-in" as PortId, direction: "ingress", dataType: "http", capacity: 2, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "http", capacity: 2, connections: [] },
+  ],
+  placementCost: 200,
+  upgradeCostCurve: [200, 400],
+  visual: { icon: "cdn", color: "#10b981", shape: "hexagon" },
+  conditionProfile: RESILIENT_CONDITION_PROFILE,
 };
