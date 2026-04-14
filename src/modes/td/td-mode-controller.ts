@@ -434,11 +434,17 @@ export class TDModeController implements ModeController {
     // 6. Mint connection
     this.placementSerial += 1;
     const connectionId = `td-conn-${this.placementSerial}` as ConnectionId;
+    // Bandwidth sized to carry Wave 5's 150/tick peak edge load (Client → CDN
+    // carries the full wave intensity) with headroom. Pre-Stage-3d this was
+    // 100, which silently dropped ~50/tick on the entry edge of any wave with
+    // intensity > 100. The td-stage-gotchas entry for "Connection.bandwidth
+    // defaults" documented this as a latent footgun; the Wave 5 dashboard
+    // playtest surfaced it as a real bug.
     const conn: Connection = {
       id: connectionId,
       source: { componentId: sourceComponentId, portId: sourcePort.id },
       target: { componentId: targetComponentId, portId: targetPort.id },
-      bandwidth: 100,
+      bandwidth: 300,
       latency: 1,
       currentLoad: 0,
     };
