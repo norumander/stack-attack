@@ -82,6 +82,13 @@ export function runWave(
   for (let i = 0; i < wave.duration; i++) {
     engine.tick(mode);
   }
+  // Drain active streams past wave duration. Streams persist for
+  // streamConfig.duration ticks after their creation tick. The engine's
+  // isWaveDrained checks state.activeStreams.size > 0.
+  const maxDrainTicks = (wave.streamConfig?.duration ?? 0) + 10; // safety margin
+  for (let i = 0; i < maxDrainTicks && !mode.isWaveDrained(state); i++) {
+    engine.tick(mode);
+  }
 
   const eventCountsByType = new Map<string, number>();
   const forwardedCountByComponent = new Map<ComponentId, number>();
