@@ -11,10 +11,13 @@ export interface HitRateByTypeEntry {
 }
 
 export interface CapabilityStats {
+  hits?: number;
+  misses?: number;
+  size?: number;
   hitRate?: number;
+  hitRateByType?: Record<string, HitRateByTypeEntry>;
   queueDepth?: number;
   latencyAdded?: number;
-  hitRateByType?: Record<string, HitRateByTypeEntry>;
   [key: string]: number | Record<string, HitRateByTypeEntry> | undefined;
 }
 

@@ -53,8 +53,9 @@ describe("CachingCapability per-type stats", () => {
 
     const stats = cap.getStats();
     expect(stats.hitRateByType).toBeDefined();
-    expect(stats.hitRateByType.api_read).toEqual({ hits: 1, misses: 3, hitRate: 0.25 });
-    expect(stats.hitRateByType.static_asset).toEqual({ hits: 1, misses: 2, hitRate: 1 / 3 });
+    const byType = stats.hitRateByType!;
+    expect(byType.api_read).toEqual({ hits: 1, misses: 3, hitRate: 0.25 });
+    expect(byType.static_asset).toEqual({ hits: 1, misses: 2, hitRate: 1 / 3 });
   });
 
   it("preserves aggregate hitRate", () => {
