@@ -71,3 +71,31 @@ export const WAVE_3: TDWaveDefinition = {
   readKeyPoolSize: 15, // Pool=15 vs Cache capacity=10 → ~67% hit rate target
   sla: { availabilityTarget: 0.95, maxAvgLatency: 5, minBudget: 0, penaltyPerTick: 5 },
 };
+
+export const WAVE_4: TDWaveDefinition = {
+  id: 4,
+  name: "Marketing Adds Images",
+  startingBudget: 700,
+  intensity: 80,
+  composition: new Map([
+    ["api_read", 0.4],
+    ["api_write", 0.2],
+    ["static_asset", 0.4],
+  ]),
+  duration: 30,
+  ttl: 8,
+  availableComponents: ["server", "database", "cache", "load_balancer", "cdn"],
+  dropThreshold: 0.05,
+  revenuePerRequestType: new Map([
+    ["api_read", 1],
+    ["api_write", 2],
+    ["static_asset", 0.3],
+  ]),
+  readKeyPoolSize: 15,
+  sla: {
+    availabilityTarget: 0.92,
+    maxAvgLatency: 6,
+    minBudget: 0,
+    penaltyPerTick: 5,
+  },
+};

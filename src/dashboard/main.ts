@@ -8,7 +8,7 @@ import type { SandboxModeController, MetricsSnapshot } from "@modes/sandbox/sand
 // TD mode imports
 import { TDModeController } from "@modes/td/td-mode-controller";
 import { TDEconomy } from "@modes/td/td-economy";
-import { WAVE_1, WAVE_2, WAVE_3 } from "@modes/td/td-waves";
+import { WAVE_1, WAVE_2, WAVE_3, WAVE_4 } from "@modes/td/td-waves";
 import { registerTDDefaults } from "@modes/td/register-td-defaults";
 import { ComponentRegistry } from "@core/registry/component-registry";
 import { CapabilityRegistry } from "@core/registry/capability-registry";
@@ -376,7 +376,7 @@ $fileInput.addEventListener("change", () => {
 
 // ─── TD Mode ──────────────────────────────────────────────────────────
 // Module-level TD state so boot/teardown/onTick can share references.
-const TD_WAVES = [WAVE_1, WAVE_2, WAVE_3] as const;
+const TD_WAVES = [WAVE_1, WAVE_2, WAVE_3, WAVE_4] as const;
 
 /**
  * Test-mode affordance: parse `#mode=td&wave=N` (1-indexed) and return
