@@ -241,3 +241,45 @@ export const WAVE_7: TDWaveDefinition = {
     penaltyPerTick: 8,
   },
 };
+
+export const WAVE_8: TDWaveDefinition = {
+  id: 8,
+  name: "Video Launch",
+  startingBudget: 1500,
+  intensity: 500,
+  composition: new Map([
+    ["api_read", 0.20],
+    ["api_write", 0.10],
+    ["static_asset", 0.15],
+    ["auth_required", 0.10],
+    ["batch", 0.15],
+    ["stream", 0.30],
+  ]),
+  duration: 40,
+  ttl: 15,
+  availableComponents: [
+    "server", "database", "cache", "load_balancer", "cdn", "api_gateway",
+    "queue", "worker", "circuit_breaker", "streaming_media_server", "blob_storage",
+  ],
+  dropThreshold: 0.05,
+  revenuePerRequestType: new Map([
+    ["api_read", 1],
+    ["api_write", 2],
+    ["static_asset", 0.3],
+    ["auth_required", 1.5],
+    ["batch", 5],
+    ["stream", 8],
+  ]),
+  keyPoolSize: 15,
+  connectionBandwidth: 700,
+  streamConfig: {
+    duration: 20,
+    bandwidth: 3,
+  },
+  sla: {
+    availabilityTarget: 0.92,
+    maxAvgLatency: 8,
+    minBudget: 0,
+    penaltyPerTick: 7,
+  },
+};
