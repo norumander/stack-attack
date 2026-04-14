@@ -202,3 +202,34 @@ export const CDN_ENTRY: ComponentRegistryEntry = {
   visual: { icon: "cdn", color: "#10b981", shape: "pentagon" },
   conditionProfile: RESILIENT_CONDITION_PROFILE,
 };
+
+export const API_GATEWAY_ENTRY: ComponentRegistryEntry = {
+  type: "api_gateway",
+  name: "API Gateway",
+  description:
+    "Edge auth handler. Validates auth_required requests upstream so Servers don't have to.",
+  longDescription:
+    "An API Gateway sits in front of your Servers and handles authentication for " +
+    "auth_required requests at the edge. AuthCapability runs in the INTERCEPT phase " +
+    "and adds only 1 tick of latency, vs. 5 ticks if a Server has to handle it. " +
+    "Once authenticated, the request is terminated at the Gateway.",
+  capabilitiesHuman: [
+    "Validates auth_required requests at the edge",
+    "Adds only 1 tick of auth latency (vs. 5 on a Server)",
+    "Terminates authenticated requests at the Gateway",
+    "Other request types pass through unchanged",
+  ],
+  capabilities: [
+    { id: "auth" as CapabilityId, defaultTier: 1, maxTier: 2 },
+    { id: "forwarding-pipe" as CapabilityId, defaultTier: 1, maxTier: 2 },
+    { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+  ],
+  ports: [
+    { id: "p-in" as PortId, direction: "ingress", dataType: "http", capacity: 2, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "http", capacity: 2, connections: [] },
+  ],
+  placementCost: 250,
+  upgradeCostCurve: [250, 500],
+  visual: { icon: "api-gateway", color: "#ec4899", shape: "trapezoid" },
+  conditionProfile: DEFAULT_CONDITION_PROFILE,
+};

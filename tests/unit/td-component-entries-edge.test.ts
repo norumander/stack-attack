@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CDN_ENTRY } from "@modes/td/td-component-entries";
+import { CDN_ENTRY, API_GATEWAY_ENTRY } from "@modes/td/td-component-entries";
 import { CapabilityRegistry } from "@core/registry/capability-registry";
 import { ComponentRegistry } from "@core/registry/component-registry";
 import { registerTDDefaults } from "@modes/td/register-td-defaults";
@@ -34,6 +34,28 @@ describe("TD_CDN_ENTRY", () => {
 
   it("has type cdn", () => {
     expect(CDN_ENTRY.type).toBe("cdn");
+  });
+});
+
+describe("TD_API_GATEWAY_ENTRY", () => {
+  it("has auth, forwarding-pipe, monitoring capabilities", () => {
+    const ids = API_GATEWAY_ENTRY.capabilities.map((c) => c.id);
+    expect(ids).toContain("auth");
+    expect(ids).toContain("forwarding-pipe");
+    expect(ids).toContain("monitoring");
+  });
+
+  it("has placement cost 250", () => {
+    expect(API_GATEWAY_ENTRY.placementCost).toBe(250);
+  });
+
+  it("has http ingress and egress ports of capacity 2", () => {
+    const ingress = API_GATEWAY_ENTRY.ports.find((p) => p.direction === "ingress");
+    const egress = API_GATEWAY_ENTRY.ports.find((p) => p.direction === "egress");
+    expect(ingress).toBeDefined();
+    expect(egress).toBeDefined();
+    expect(ingress!.capacity).toBe(2);
+    expect(egress!.capacity).toBe(2);
   });
 });
 
