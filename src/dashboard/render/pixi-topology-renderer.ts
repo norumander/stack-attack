@@ -378,9 +378,12 @@ export class PixiTopologyRenderer implements TopologyRenderer {
   private drawDotShape(g: Graphics, requestType: string, color: number): void {
     // Writes are larger + orange squares so they read as obviously
     // different from cyan read-circles in a dense mixed-traffic wave.
+    // NO stroke — in Pixi v8, stroke style state appears to survive a
+    // Graphics.clear() across pool reuses, so a write square's orange
+    // stroke was bleeding onto the next read circle that recycled the
+    // same graphic. Solid-fill shapes avoid the issue entirely.
     if (requestType === "api_write") {
       g.rect(-5, -5, 10, 10).fill(color);
-      g.rect(-5, -5, 10, 10).stroke({ color: 0x000000, width: 1, alpha: 0.4 });
     } else if (requestType === "stream_init") {
       g.poly([0, -5, 5, 4, -5, 4]).fill(color);
     } else {
