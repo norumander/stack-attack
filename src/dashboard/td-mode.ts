@@ -61,7 +61,7 @@ export async function createTDDashboard(args: {
   topologyContainer: HTMLElement;
   onPlace?: (id: ComponentId) => void;
   onConnect?: (connectionId: ConnectionId) => void;
-  onDisconnect?: (connectionId: ConnectionId) => void;
+  onDisconnect?: (info: { connectionId: ConnectionId; sourceId: ComponentId; targetId: ComponentId }) => void;
   onRemove?: (componentId: ComponentId) => void;
   onPhaseChange?: () => void;
 }): Promise<TDDashboard> {
@@ -295,6 +295,25 @@ export async function createTDDashboard(args: {
     }
   });
 
+  const unsubConnectionDown = renderer.onConnectionPointerDown((connectionId: ConnectionId) => {
+    if (controller.getPhase() !== "build") return;
+    // Capture source/target BEFORE tryDisconnect removes the connection from state.
+    const conn = state.connections.get(connectionId);
+    if (!conn) return;
+    const sourceId = conn.source.componentId;
+    const targetId = conn.target.componentId;
+    const result = controller.tryDisconnect(state, connectionId);
+    if (!result.ok) {
+      // eslint-disable-next-line no-console
+      console.warn("[td] tryDisconnect failed:", result.reason);
+      return;
+    }
+    renderer.removeConnection(connectionId);
+    seededConnectionIds.delete(connectionId);
+    args.onDisconnect?.({ connectionId, sourceId, targetId });
+    setStatusText();
+  });
+
   /**
    * Keyboard affordance: Delete / Backspace removes the currently selected
    * component during the build phase. Cascades to all connected wires.
@@ -393,6 +412,7 @@ export async function createTDDashboard(args: {
       document.removeEventListener("keydown", onKeyDown);
       unsubPointerDown();
       unsubPointerMove();
+      unsubConnectionDown();
       renderer.destroy();
       if (statusEl.parentElement === topologyContainer) {
         topologyContainer.removeChild(statusEl);

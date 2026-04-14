@@ -941,6 +941,29 @@ async function bootTDMode(): Promise<void> {
       }
       tdDashboard?.refreshHud();
     },
+    onDisconnect: ({ connectionId: _connectionId, sourceId, targetId }) => {
+      // Look up logical refs for both endpoints and record a disconnect action.
+      // The connection has already been removed from state at this point, so we
+      // rely on the sourceId/targetId passed from td-mode.ts (captured before
+      // tryDisconnect ran).
+      const sourceRef = refForId(sourceId);
+      const targetRef = refForId(targetId);
+      // refForId returns -1 for the entry-point client and a non-negative index
+      // for placed components. A value of -1 for a non-client component means
+      // the id wasn't found — guard against both endpoints returning -1 when
+      // neither is the actual client (shouldn't happen in practice).
+      if (sourceRef < -1 || targetRef < -1) {
+        // eslint-disable-next-line no-console
+        console.warn(`[td-action] disconnect: could not resolve refs for ${sourceId}→${targetId}`);
+        return;
+      }
+      tdActionLog.push({ kind: "disconnect", sourceRef, targetRef });
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[td-action] disconnect ${sourceRef}→${targetRef}; log=${tdActionLog.length}`,
+      );
+      tdDashboard?.refreshHud();
+    },
     onRemove: (id) => {
       // Find the place-ref for the removed component and dead-mark the slot.
       const placeRef = tdPlaceActionIds.indexOf(id);
