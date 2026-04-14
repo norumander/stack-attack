@@ -197,6 +197,46 @@ export function buildAPIGateway(compRegistry: ComponentRegistry): {
 }
 
 /**
+ * Build a Queue component from the TD registry (QueueCapability + forwarding-pipe + Monitoring).
+ * Tier-1 capacity: 32 slots. Buffers backpressured requests via EngineBufferable.
+ */
+export function buildQueue(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("queue", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
+ * Build a Worker component from the TD registry (BatchProcessingCapability + Monitoring).
+ * Processes "batch" requests at tier×5 per tick via PROCESS phase.
+ */
+export function buildWorker(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("worker", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
+ * Build a CircuitBreaker component from the TD registry (CircuitBreakerCapability + forwarding-pipe + Monitoring).
+ * INTERCEPT phase: CLOSED passes through, OPEN fast-fails (DROP/circuit_open).
+ * Tier-1: threshold 5 failures, cooldown 10 ticks.
+ */
+export function buildCircuitBreaker(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("circuit_breaker", { x: 0, y: 0 }, null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
  * Build a LoadBalancer component with Routing (INTERCEPT) + Forwarding (all traffic) + Monitoring.
  * egressCount controls how many egress ports (and downstream servers) can be wired.
  */
