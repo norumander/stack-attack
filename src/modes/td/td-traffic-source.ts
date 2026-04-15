@@ -3,6 +3,22 @@ import type { Request } from "@core/types/request.js";
 import type { ComponentId, RequestId } from "@core/types/ids.js";
 import type { TDWaveDefinition } from "./td-waves.js";
 
+/**
+ * Weighted random zone selection from the distribution map.
+ */
+function pickZone(
+  distribution: ReadonlyMap<string, number>,
+  rng: () => number,
+): string {
+  const r = rng();
+  let cumulative = 0;
+  for (const [zone, weight] of distribution) {
+    cumulative += weight;
+    if (r < cumulative) return zone;
+  }
+  return [...distribution.keys()].pop()!;
+}
+
 export interface TDTrafficSourceOptions {
   readonly wave: TDWaveDefinition;
   readonly targetEntryPointId: ComponentId;
@@ -72,7 +88,9 @@ export class TDTrafficSource implements TrafficSource {
         origin: this.targetEntryPointId,
         createdAt: tick,
         ttl: this.wave.ttl,
-        originZone: null,
+        originZone: this.wave.zoneDistribution
+          ? pickZone(this.wave.zoneDistribution, this.rng)
+          : null,
         streamDuration:
           tickType === "stream" && this.wave.streamConfig
             ? this.wave.streamConfig.duration
