@@ -64,10 +64,8 @@ describe("TDModeController.getRentBill", () => {
     state.placeComponent(server2);
     state.placeComponent(database);
 
-    // T8 will set rentPerWave on entries; for now the registry values are
-    // all 0 (no rentPerWave field), so the bill is 0. T8's step 3 bumps
-    // this assertion to 240.
-    expect(controller.getRentBill(state)).toBe(0);
+    // Server rent=80, Server rent=80, Database rent=80 → total 240
+    expect(controller.getRentBill(state)).toBe(240);
   });
 });
 

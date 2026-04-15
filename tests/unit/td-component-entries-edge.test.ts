@@ -14,8 +14,8 @@ describe("TD_CDN_ENTRY", () => {
     expect(ids).toContain("monitoring");
   });
 
-  it("has placement cost 200", () => {
-    expect(CDN_ENTRY.placementCost).toBe(200);
+  it("has placement cost 0 (free placement; upkeep via rentPerWave)", () => {
+    expect(CDN_ENTRY.placementCost).toBe(0);
   });
 
   it("has http ingress and egress ports of capacity 2", () => {
@@ -46,8 +46,8 @@ describe("TD_API_GATEWAY_ENTRY", () => {
     expect(ids).toContain("monitoring");
   });
 
-  it("has placement cost 250", () => {
-    expect(API_GATEWAY_ENTRY.placementCost).toBe(250);
+  it("has placement cost 0 (free placement; upkeep via rentPerWave)", () => {
+    expect(API_GATEWAY_ENTRY.placementCost).toBe(0);
   });
 
   it("has http ingress and egress ports of capacity 2", () => {
