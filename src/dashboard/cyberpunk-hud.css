@@ -916,3 +916,95 @@ body.renderer-iso .td-toast.td-toast--loss .td-toast__btn:hover {
   from { opacity: 0; transform: translate(-50%, calc(-50% - 10px)); }
   to   { opacity: 1; transform: translate(-50%, -50%); }
 }
+
+/* ─── Dossier modal ─────────────────────────────────────────────── */
+body.renderer-iso .cp-dossier-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+body.renderer-iso .cp-dossier-content {
+  position: relative;
+  min-width: 420px;
+  max-width: 520px;
+  padding: 28px 32px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+body.renderer-iso .cp-dossier-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: var(--cp-text-dim, #8b8fa3);
+  font-size: 20px;
+  cursor: pointer;
+}
+body.renderer-iso .cp-dossier-title {
+  font-family: var(--cp-mono, ui-monospace, monospace);
+  font-size: 20px;
+  letter-spacing: 0.12em;
+  color: var(--cp-text, #e1e4ed);
+  margin: 0;
+}
+body.renderer-iso .cp-dossier-sprite {
+  height: 72px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cp-text-dim, #8b8fa3);
+  font-family: var(--cp-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+body.renderer-iso .cp-dossier-sprite::after {
+  content: attr(data-type);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+body.renderer-iso .cp-dossier-body {
+  color: var(--cp-text, #e1e4ed);
+  line-height: 1.5;
+  margin: 0;
+}
+body.renderer-iso .cp-dossier-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+body.renderer-iso .cp-dossier-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 12px;
+  font-family: var(--cp-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+body.renderer-iso .cp-dossier-row-key {
+  color: var(--cp-text-dim, #8b8fa3);
+  letter-spacing: 0.1em;
+}
+body.renderer-iso .cp-dossier-row-val {
+  color: var(--cp-text, #e1e4ed);
+}
+body.renderer-iso .cp-dossier-cta {
+  align-self: flex-end;
+  margin-top: 8px;
+  padding: 10px 18px;
+  background: var(--cp-accent, #22d3ee);
+  color: #031017;
+  border: none;
+  font-family: var(--cp-mono, ui-monospace, monospace);
+  letter-spacing: 0.15em;
+  cursor: pointer;
+}
+body.renderer-iso .cp-dossier-cta:hover {
+  filter: brightness(1.1);
+}
