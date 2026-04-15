@@ -1,5 +1,6 @@
 import type { Capability, CapabilityStats } from "../../core/capability/capability.js";
 import type { EnginePullable } from "../../core/capability/engine-interfaces.js";
+import { isEngineBufferable } from "../../core/capability/engine-interfaces.js";
 import type { Request } from "../../core/types/request.js";
 import type { ProcessContext } from "../../core/capability/process-context.js";
 import type { PullContext } from "../../core/capability/process-context.js";
@@ -45,10 +46,26 @@ export class BatchProcessingCapability implements Capability, EnginePullable {
 
   // --- EnginePullable ---
 
-  pullPending(_context: PullContext): Request[] {
-    // In a full implementation, this would pull from a connected
-    // queue component. For now, returns empty — the engine routes
-    // requests normally through connections.
-    return [];
+  pullPending(context: PullContext): Request[] {
+    const component = context.state.components.get(context.componentId);
+    if (!component) return [];
+
+    const tier = component.getPlayerTier(this.id);
+    const capacity = this.getThroughputPerTick(tier);
+
+    const pulled: Request[] = [];
+    for (const conn of context.state.connections.values()) {
+      if (conn.target.componentId !== context.componentId) continue;
+      const upstream = context.state.components.get(conn.source.componentId);
+      if (!upstream) continue;
+      const bufferable = upstream.getCapabilityByInterface(isEngineBufferable);
+      if (bufferable) {
+        const batch = bufferable.dequeueBatch(capacity - pulled.length);
+        pulled.push(...batch);
+        if (pulled.length >= capacity) break;
+      }
+    }
+
+    return pulled;
   }
 }
