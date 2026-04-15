@@ -70,3 +70,15 @@ describe("TDModeController.getRentBill", () => {
     expect(controller.getRentBill(state)).toBe(0);
   });
 });
+
+describe("TDModeController.payRent", () => {
+  it("returns ok: true with bill when rent is affordable (empty topology)", () => {
+    const controller = makeController();
+    const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
+    const result = controller.payRent(state);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.bill).toBe(0);
+    }
+  });
+});

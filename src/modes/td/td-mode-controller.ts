@@ -73,6 +73,10 @@ export type RemoveResult =
       detail?: string;
     };
 
+export type PayRentResult =
+  | { readonly ok: true; readonly bill: number }
+  | { readonly ok: false; readonly bill: number; readonly budget: number };
+
 export class TDModeController implements ModeController {
   // economy is mutable so the dashboard can swap in a fresh per-wave economy
   economy: TDEconomy;
@@ -153,6 +157,22 @@ export class TDModeController implements ModeController {
       }
     }
     return bill;
+  }
+
+  /**
+   * Atomic rent check + debit. Returns `{ok: true, bill}` on success and
+   * debits the economy. Returns `{ok: false, bill, budget}` on insufficient
+   * funds without debiting. Callers must invoke this BEFORE advancePhase
+   * on the build→simulate transition.
+   */
+  payRent(state: SimulationState): PayRentResult {
+    const bill = this.getRentBill(state);
+    const budget = this.economy.getBudget();
+    if (bill > budget) {
+      return { ok: false, bill, budget };
+    }
+    this.economy.debitRent(bill);
+    return { ok: true, bill };
   }
 
   // === New multi-wave getters ===

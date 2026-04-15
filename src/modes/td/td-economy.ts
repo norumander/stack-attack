@@ -66,6 +66,11 @@ export class TDEconomy implements EconomyStrategy {
     this.budget += amount;
   }
 
+  /** TD-mode rent debit. Called by TDModeController.payRent at build→simulate. */
+  debitRent(amount: number): void {
+    this.budget -= amount;
+  }
+
   resolveInsolvency(_state: SimulationStateReader): ComponentId[] {
     // Stage 3a does not kill components mid-wave. The wave-end assertion
     // checks final budget. Later stages will return components to kill.
