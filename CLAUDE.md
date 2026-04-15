@@ -2,7 +2,7 @@
 
 A tower defense game that teaches system architecture through gameplay. Traffic is the enemy, infrastructure components are the towers, a live economy makes architecture decisions feel like business decisions. Strategy game first — the learning is the surprise.
 
-**Current stage:** Phase 1, Stage 4a complete. TD mode is playable through Wave 8. Wave 8 teaches streaming traffic isolation (Streaming Server + Blob Storage). 708 tests, typecheck clean.
+**Current stage:** Phase 1, Stage 4b complete. TD mode is playable through Wave 9. Wave 9 teaches geographic latency (multi-zone + DNS/GTM routing). 724 tests, typecheck clean.
 
 ## Context hub
 

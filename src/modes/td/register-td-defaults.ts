@@ -13,6 +13,7 @@ import { BatchProcessingCapability } from "@capabilities/batch-processing/batch-
 import { CircuitBreakerCapability } from "@capabilities/circuit-breaker/circuit-breaker-capability.js";
 import { StreamingCapability } from "@capabilities/streaming/streaming-capability.js";
 import { BlobStorageCapability } from "@capabilities/blob-storage/blob-storage-capability.js";
+import { GeoRoutingCapability } from "@capabilities/geo-routing/geo-routing-capability.js";
 import {
   SERVER_ENTRY,
   DATABASE_ENTRY,
@@ -26,6 +27,7 @@ import {
   CIRCUIT_BREAKER_ENTRY,
   STREAMING_SERVER_ENTRY,
   BLOB_STORAGE_ENTRY,
+  DNS_GTM_ENTRY,
 } from "./td-component-entries.js";
 
 /**
@@ -147,6 +149,11 @@ export function registerTDDefaults(
     id: "blob-storage" as CapabilityId,
     factory: () => new BlobStorageCapability("blob-storage" as CapabilityId),
   });
+  capRegistry.register({
+    id: "geo-routing" as CapabilityId,
+    factory: () => new GeoRoutingCapability("geo-routing" as CapabilityId),
+    documentsSubInterfaces: ["EngineConsultable"],
+  });
 
   compRegistry.register(CLIENT_ENTRY);
   compRegistry.register(SERVER_ENTRY);
@@ -160,6 +167,7 @@ export function registerTDDefaults(
   compRegistry.register(CIRCUIT_BREAKER_ENTRY);
   compRegistry.register(STREAMING_SERVER_ENTRY);
   compRegistry.register(BLOB_STORAGE_ENTRY);
+  compRegistry.register(DNS_GTM_ENTRY);
 
   compRegistry.validate();
 }
