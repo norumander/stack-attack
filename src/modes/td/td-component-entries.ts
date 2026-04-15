@@ -374,3 +374,31 @@ export const BLOB_STORAGE_ENTRY: ComponentRegistryEntry = {
   visual: { icon: "blob-storage", color: "#64748b", shape: "rectangle" },
   conditionProfile: RESILIENT_CONDITION_PROFILE,
 };
+
+export const DNS_GTM_ENTRY: ComponentRegistryEntry = {
+  type: "dns_gtm",
+  name: "DNS / GTM",
+  description: "Routes requests to the nearest healthy zone.",
+  longDescription:
+    "A global traffic manager that inspects request origin zones and routes each " +
+    "request to the nearest datacenter. Eliminates cross-zone latency penalties by " +
+    "ensuring requests are served locally.",
+  capabilitiesHuman: [
+    "Routes requests to nearest zone",
+    "Forwards all traffic types at high throughput",
+    "Monitors throughput and health",
+  ],
+  capabilities: [
+    { id: "geo-routing" as CapabilityId, defaultTier: 1, maxTier: 2 },
+    { id: "forwarding-pipe" as CapabilityId, defaultTier: 1, maxTier: 2 },
+    { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+  ],
+  ports: [
+    { id: "p-in" as PortId, direction: "ingress", dataType: "http", capacity: 4, connections: [] },
+    { id: "p-out" as PortId, direction: "egress", dataType: "http", capacity: 4, connections: [] },
+  ],
+  placementCost: 300,
+  upgradeCostCurve: [300, 600],
+  visual: { icon: "dns", color: "#14b8a6", shape: "globe" },
+  conditionProfile: RESILIENT_CONDITION_PROFILE,
+};
