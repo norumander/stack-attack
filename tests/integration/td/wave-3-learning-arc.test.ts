@@ -37,7 +37,8 @@ describe("Wave 3 — Learning arc", () => {
 
     const result = runWave(state, WAVE_3, cache.component.id);
 
-    expect(result.outcome.verdict).toBe("win");
+    expect(result.terminalState).toBe("wave_passed");
+    expect(result.finalViability).toBeGreaterThan(0);
 
     const dropRate =
       (result.droppedCount + result.timedOutCount) / Math.max(result.totalRequests, 1);
@@ -91,7 +92,8 @@ describe("Wave 3 — Learning arc", () => {
 
     const result = runWave(state, WAVE_3, lb.component.id);
 
-    expect(result.outcome.verdict).toBe("win");
+    expect(result.terminalState).toBe("wave_passed");
+    expect(result.finalViability).toBeGreaterThan(0);
     const dropRate =
       (result.droppedCount + result.timedOutCount) / Math.max(result.totalRequests, 1);
     expect(dropRate).toBeLessThan(0.05);

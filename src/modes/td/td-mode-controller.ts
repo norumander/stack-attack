@@ -22,6 +22,7 @@ import type { Connection } from "@core/types/connection.js";
 import type { ComponentRegistry } from "@core/registry/component-registry.js";
 import { isEngineBufferable } from "@core/capability/engine-interfaces.js";
 import type { TDEconomy } from "./td-economy.js";
+import { TDViability } from "./td-viability.js";
 import type { TDWaveDefinition } from "./td-waves.js";
 import { TDTrafficSource } from "./td-traffic-source.js";
 import { validateTopology, type TopologyError } from "./validate-topology.js";
@@ -72,6 +73,12 @@ export type RemoveResult =
       detail?: string;
     };
 
+export type PayRentResult =
+  | { readonly ok: true; readonly bill: number }
+  | { readonly ok: false; readonly bill: number; readonly budget: number };
+
+export type TDTerminalState = "running" | "wave_passed" | "dead";
+
 export class TDModeController implements ModeController {
   // economy is mutable so the dashboard can swap in a fresh per-wave economy
   economy: TDEconomy;
@@ -85,6 +92,7 @@ export class TDModeController implements ModeController {
   private placementSerial = 0;
   private cachedState: SimulationState | null = null;
   private _topologyErrors: TopologyError[] = [];
+  private readonly viability = new TDViability();
   private readonly componentRegistry: ComponentRegistry;
   private readonly entryPointId: ComponentId;
   private readonly rng: () => number;
@@ -120,6 +128,72 @@ export class TDModeController implements ModeController {
   /** Topology validation errors from the last build→simulate transition. */
   getTopologyErrors(): readonly TopologyError[] {
     return this._topologyErrors;
+  }
+
+  /** Campaign-wide viability pool (0–100). Drains on failures, never refills. */
+  getViability(): Readonly<{
+    value: number;
+    max: number;
+    fraction: number;
+    isDead: boolean;
+  }> {
+    return {
+      value: this.viability.value,
+      max: this.viability.maxValue,
+      fraction: this.viability.fraction,
+      isDead: this.viability.isDead,
+    };
+  }
+
+  /**
+   * High-level outcome state for the dashboard and tests.
+   *
+   * - "running": wave is still in build phase, or in simulate phase but
+   *    neither dead nor drained
+   * - "wave_passed": wave has been fully drained with viability > 0
+   * - "dead": viability hit 0 at any point (campaign is over)
+   *
+   * `wave_passed` requires the caller to pass a drained state. Without
+   * state, we cannot distinguish running from passed, so we return `running`.
+   */
+  getTerminalState(state?: SimulationState): TDTerminalState {
+    if (this.viability.isDead) return "dead";
+    if (state !== undefined && this.phase === "simulate" && this.isWaveDrained(state)) {
+      return "wave_passed";
+    }
+    return "running";
+  }
+
+  /**
+   * Compute the total rent that will be debited at the next READY (build→simulate)
+   * transition. Pure function over the current state and the registry. Sandbox
+   * components with undefined rentPerWave contribute zero — safe default.
+   */
+  getRentBill(state: SimulationState): number {
+    let bill = 0;
+    for (const component of state.components.values()) {
+      const entry = this.componentRegistry.get(component.type);
+      if (entry?.rentPerWave !== undefined) {
+        bill += entry.rentPerWave;
+      }
+    }
+    return bill;
+  }
+
+  /**
+   * Atomic rent check + debit. Returns `{ok: true, bill}` on success and
+   * debits the economy. Returns `{ok: false, bill, budget}` on insufficient
+   * funds without debiting. Callers must invoke this BEFORE advancePhase
+   * on the build→simulate transition.
+   */
+  payRent(state: SimulationState): PayRentResult {
+    const bill = this.getRentBill(state);
+    const budget = this.economy.getBudget();
+    if (bill > budget) {
+      return { ok: false, bill, budget };
+    }
+    this.economy.debitRent(bill);
+    return { ok: true, bill };
   }
 
   // === New multi-wave getters ===
@@ -270,7 +344,7 @@ export class TDModeController implements ModeController {
     const composite =
       0.4 * performance +
       0.4 * reliability +
-      0.2 * (cost / wave.startingBudget);
+      0.2 * (cost / ((wave.startingBudget ?? 0) + 1));
 
     const notes: string[] = [
       `availability: ${(sla.availability.actual * 100).toFixed(1)}% (target: ${(sla.availability.target * 100).toFixed(0)}%)`,
@@ -655,45 +729,42 @@ export class TDModeController implements ModeController {
   }
 
   /**
-   * Mid-wave SLA penalty. Called by the engine at the end of each tick.
-   * If the rolling availability or latency is breaching the SLA target,
-   * deduct a penalty from the budget — creating real economic pressure
-   * during the wave, not just at the end.
+   * Per-tick hook fired by the TD SimLoop after every engine tick.
+   * Applies viability damage for failures THIS tick, and an additional
+   * ramping penalty while the rolling drop rate exceeds the wave's
+   * dropThreshold. Replaces the Stage 3c SLA-budget-penalty mechanism.
    */
   onTick(state: SimulationStateReader): void {
     if (this.phase !== "simulate") return;
     const wave = this.getCurrentWave();
-    if (!wave.sla) return;
 
     const metrics = (state as unknown as SimulationState).metricsHistory.slice(
       this.waveStartMetricsIndex,
     );
     if (metrics.length === 0) return;
 
-    let resolved = 0;
-    let dropped = 0;
-    let timedOut = 0;
-    for (const m of metrics) {
-      resolved += m.requestsResolved;
-      dropped += m.requestsDropped;
-      timedOut += m.requestsTimedOut;
+    // Per-tick damage: latest tick's drops + timeouts × wave.viabilityPerFailure
+    const latest = metrics[metrics.length - 1]!;
+    const latestFailures = latest.requestsDropped + latest.requestsTimedOut;
+    if (latestFailures > 0) {
+      this.viability.damage(latestFailures * wave.viabilityPerFailure);
     }
 
-    // Rolling availability uses the same denominator discipline as the final
-    // verdict: scheduled-generated through this tick, capped at the wave
-    // duration (drain ticks don't generate new requests). This means a
-    // topology that silently drops every request STILL accrues mid-wave
-    // penalty ticks — the old `if (total === 0) return` short-circuit hid
-    // broken architectures from the player's budget.
-    const ticksInWave = metrics.length;
-    const generatingTicks = Math.min(ticksInWave, wave.duration);
-    const expectedGeneratedSoFar = wave.intensity * generatingTicks;
-    const accountedTotal = resolved + dropped + timedOut;
-    const denominator = Math.max(accountedTotal, expectedGeneratedSoFar, 1);
-    const rollingAvailability = resolved / denominator;
-
-    if (rollingAvailability < wave.sla.availabilityTarget) {
-      this.economy.debitUpkeep(wave.sla.penaltyPerTick);
+    // Ramp penalty: if the rolling-3-tick drop rate exceeds dropThreshold,
+    // apply an additional per-tick viability hit.
+    const windowMetrics = metrics.slice(-3);
+    let windowResolved = 0;
+    let windowFailed = 0;
+    for (const m of windowMetrics) {
+      windowResolved += m.requestsResolved;
+      windowFailed += m.requestsDropped + m.requestsTimedOut;
+    }
+    const windowTotal = windowResolved + windowFailed;
+    if (windowTotal > 0) {
+      const dropRate = windowFailed / windowTotal;
+      if (dropRate > wave.dropThreshold) {
+        this.viability.damage(wave.viabilityRampPenalty);
+      }
     }
   }
 }

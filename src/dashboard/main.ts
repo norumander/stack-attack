@@ -655,7 +655,7 @@ function tdOnTick(controller: TDModeController, state: SimulationState): void {
       const nextWave = TD_WAVES[nextIdx]!;
       controller.setEconomy(
         new TDEconomy({
-          startingBudget: nextWave.startingBudget,
+          startingBudget: nextWave.startingBudget ?? 0,
           revenuePerRequestType: nextWave.revenuePerRequestType,
         }),
       );
@@ -890,7 +890,7 @@ function retryTDWave(): void {
   // Save the snapshot slice + the wave we were on before nuking state.
   const snapshotActions = tdActionLog.slice(0, tdSnapshotIndex);
   const failedWaveIndex = tdController.getCurrentWaveIndex();
-  const failedWaveStartingBudget = TD_WAVES[failedWaveIndex]!.startingBudget;
+  const failedWaveStartingBudget = TD_WAVES[failedWaveIndex]!.startingBudget ?? 0;
   const revenueTable = TD_WAVES[failedWaveIndex]!.revenuePerRequestType;
 
   // Full state reboot (preserves the action log; we'll restore it after replay).

@@ -58,8 +58,9 @@ describe("Wave 6 — Queue + Worker rescue wins", () => {
 
     const result = runWave(state, WAVE_6, client.id);
 
-    // 1. SLA passes — verdict is "win"
-    expect(result.outcome.verdict).toBe("win");
+    // 1. SLA passes — wave_passed
+    expect(result.terminalState).toBe("wave_passed");
+    expect(result.finalViability).toBeGreaterThan(0);
 
     // 2. Availability SLA passes
     expect(result.outcome.slaResults?.availability.passed).toBe(true);

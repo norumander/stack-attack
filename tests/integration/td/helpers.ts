@@ -50,6 +50,9 @@ export interface WaveRunResult {
   readonly eventCountsByType: ReadonlyMap<string, number>;
   readonly forwardedCountByComponent: ReadonlyMap<ComponentId, number>;
   readonly processedCountByComponent: ReadonlyMap<ComponentId, number>;
+  readonly terminalState: "running" | "wave_passed" | "dead";
+  readonly finalViability: number;
+  readonly finalBudget: number;
 }
 
 /**
@@ -64,8 +67,15 @@ export function runWave(
   wave: TDWaveDefinition,
   entryPointId: ComponentId,
 ): WaveRunResult {
+  // NOTE: runWave does NOT call mode.onTick() per tick. The engine doesn't
+  // call onTick internally, and runWave deliberately doesn't either.
+  // Viability damage (emitted by TDModeController.onTick) is covered by
+  // unit tests in tests/unit/td-mode-controller-viability-and-rent.test.ts.
+  // Wave integration tests validate request-routing and SLA verdict
+  // contracts — not the viability damage path. Only the dashboard SimLoop
+  // calls onTick during real play.
   const economy = new TDEconomy({
-    startingBudget: wave.startingBudget,
+    startingBudget: 100000, // generous override — integration tests assert on request counts, not budget arithmetic
     revenuePerRequestType: wave.revenuePerRequestType,
   });
   const mode = new TDModeController({
@@ -75,6 +85,13 @@ export function runWave(
     rng: makeRng(1),
     componentRegistry: bootTDRegistry(),
   });
+  // Pay rent before advancing phase (atomic precondition to simulate).
+  const rentResult = mode.payRent(state);
+  if (!rentResult.ok) {
+    throw new Error(
+      `runWave: insufficient budget for rent ($${rentResult.bill} > $${rentResult.budget})`,
+    );
+  }
   mode.advancePhase(state); // build → simulate (passes state for chaos resolution + metrics index)
 
   const engine = new Engine(state);
@@ -124,6 +141,10 @@ export function runWave(
   const totalRequests = state.requestLog.size;
   const outcome = mode.evaluateOutcome(state.metricsHistory);
 
+  const terminalState = mode.getTerminalState(state);
+  const finalViability = mode.getViability().value;
+  const finalBudget = economy.getBudget();
+
   return {
     outcome,
     state,
@@ -134,6 +155,9 @@ export function runWave(
     eventCountsByType,
     forwardedCountByComponent,
     processedCountByComponent,
+    terminalState,
+    finalViability,
+    finalBudget,
   };
 }
 

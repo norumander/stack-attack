@@ -89,8 +89,8 @@ describe("Wave 10 — server-only auto-scale still loses (DB bottleneck)", () =>
 
     const result = runWave(state, WAVE_10, dns.component.id);
 
-    // Diagnostic dump on unexpected win
-    if (result.outcome.verdict !== "lose") {
+    // Diagnostic dump on unexpected pass
+    if (result.finalViability >= 100) {
       console.log("=== Wave 10 Server-Only Autoscale Diagnostic ===");
       console.log("SLA results:", JSON.stringify(result.outcome.slaResults, null, 2));
       console.log("Total:", result.totalRequests, "Dropped:", result.droppedCount, "TimedOut:", result.timedOutCount);
@@ -108,5 +108,8 @@ describe("Wave 10 — server-only auto-scale still loses (DB bottleneck)", () =>
 
     // Server auto-scale alone cannot overcome the DB bottleneck — verdict must be "lose"
     expect(result.outcome.verdict).toBe("lose");
+    // TODO(T16): tune viability to actually fire on this lose path
+    // viability stays at 100 even though SLA verdict is "lose" — migrate once tuned:
+    // expect(result.finalViability).toBeLessThan(100);
   });
 });

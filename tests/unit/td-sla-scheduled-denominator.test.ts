@@ -32,6 +32,8 @@ function makeWave(sla: TDWaveDefinition["sla"]): TDWaveDefinition {
     ttl: 10,
     availableComponents: ["server"],
     dropThreshold: 0.05,
+    viabilityPerFailure: 0.1,
+    viabilityRampPenalty: 0.5,
     revenuePerRequestType: new Map([["api_read", 1]]),
     ...(sla !== undefined ? { sla } : {}),
   };
@@ -58,7 +60,7 @@ function makeTDC(wave: TDWaveDefinition): TDModeController {
   return new TDModeController({
     waves: [wave],
     economy: new TDEconomy({
-      startingBudget: wave.startingBudget,
+      startingBudget: wave.startingBudget ?? 500,
       revenuePerRequestType: wave.revenuePerRequestType,
     }),
     entryPointId: "c-entry" as ComponentId,
@@ -109,29 +111,4 @@ describe("silent-PASS → vacuous WIN regression (SLA gate)", () => {
     expect(outcome.verdict).toBe("lose");
   });
 
-  it("onTick penalty fires when rolling availability is vacuous (all silent drops)", () => {
-    // Old bug: `if (total === 0) return` short-circuited the penalty loop.
-    // Now the denominator falls back to `intensity * ticksInWave` so the
-    // player is penalized mid-wave for a broken topology, not just at the
-    // end.
-    const wave = makeWave({
-      availabilityTarget: 0.90,
-      maxAvgLatency: 10,
-      minBudget: 0,
-      penaltyPerTick: 10,
-    });
-    const tdc = makeTDC(wave);
-    tdc.advancePhase();
-
-    const fakeState = {
-      metricsHistory: [emptyTickMetrics(0)],
-      currentTick: 1,
-    };
-
-    const budgetBefore = tdc.economy.getBudget();
-    tdc.onTick!(fakeState as never);
-    const budgetAfter = tdc.economy.getBudget();
-
-    expect(budgetAfter).toBe(budgetBefore - 10);
-  });
 });

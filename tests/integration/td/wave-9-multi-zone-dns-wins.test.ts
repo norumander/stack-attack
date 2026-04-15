@@ -96,7 +96,7 @@ describe("Wave 9 — multi-zone DNS/GTM rescue wins with latency SLA", () => {
     const result = runWave(state, WAVE_9, dns.component.id);
 
     // --- Diagnostic dump on failure ---
-    if (result.outcome.verdict !== "win") {
+    if (result.terminalState !== "wave_passed") {
       console.log("=== Wave 9 Multi-Zone DNS Rescue Diagnostic ===");
       console.log("SLA results:", JSON.stringify(result.outcome.slaResults, null, 2));
       console.log("Total:", result.totalRequests, "Dropped:", result.droppedCount, "TimedOut:", result.timedOutCount);
@@ -104,8 +104,9 @@ describe("Wave 9 — multi-zone DNS/GTM rescue wins with latency SLA", () => {
       console.log("Events:", Object.fromEntries(result.eventCountsByType));
     }
 
-    // 1. Verdict is "win"
-    expect(result.outcome.verdict).toBe("win");
+    // 1. Verdict is wave_passed
+    expect(result.terminalState).toBe("wave_passed");
+    expect(result.finalViability).toBeGreaterThan(0);
 
     // 2. Latency SLA passes (maxAvgLatency: 4)
     expect(result.outcome.slaResults?.latency.passed).toBe(true);

@@ -86,7 +86,7 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
     const result = runWave(state, WAVE_8, client.id);
 
     // --- Diagnostic dump on failure ---
-    if (result.outcome.verdict !== "win") {
+    if (result.terminalState !== "wave_passed") {
       console.log("=== Wave 8 Rescue Diagnostic ===");
       console.log("SLA results:", JSON.stringify(result.outcome.slaResults, null, 2));
       console.log("Total:", result.totalRequests, "Dropped:", result.droppedCount, "TimedOut:", result.timedOutCount);
@@ -94,8 +94,9 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
       console.log("Events:", Object.fromEntries(result.eventCountsByType));
     }
 
-    // 1. SLA passes — verdict is "win"
-    expect(result.outcome.verdict).toBe("win");
+    // 1. SLA passes — wave_passed
+    expect(result.terminalState).toBe("wave_passed");
+    expect(result.finalViability).toBeGreaterThan(0);
 
     // 2. Availability SLA passes (target: 92%)
     expect(result.outcome.slaResults?.availability.passed).toBe(true);

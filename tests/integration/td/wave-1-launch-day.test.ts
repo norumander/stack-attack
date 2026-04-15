@@ -18,7 +18,8 @@ describe("Wave 1 — Launch Day", () => {
 
     const result = runWave(state, WAVE_1, server.component.id);
 
-    expect(result.outcome.verdict).toBe("win");
+    expect(result.terminalState).toBe("wave_passed");
+    expect(result.finalViability).toBeGreaterThan(0);
     expect(result.droppedCount).toBe(0);
     expect(result.timedOutCount).toBe(0);
     expect(result.totalRequests).toBe(WAVE_1.intensity * WAVE_1.duration);

@@ -17,6 +17,8 @@ function makeWave(sla?: TDWaveDefinition["sla"]): TDWaveDefinition {
     ttl: 10,
     availableComponents: ["server"],
     dropThreshold: 0.05,
+    viabilityPerFailure: 0.1,
+    viabilityRampPenalty: 0.5,
     revenuePerRequestType: new Map([["api_read", 1]]),
   };
   if (sla === undefined) return base;
@@ -182,57 +184,3 @@ describe("SLA gate — evaluateOutcome integration", () => {
   });
 });
 
-describe("SLA gate — onTick penalty", () => {
-  it("deducts penalty when rolling availability is below target", () => {
-    const wave = makeWave({ availabilityTarget: 0.90, maxAvgLatency: 10, minBudget: 0, penaltyPerTick: 10 });
-    const tdc = makeTDC(wave, 500);
-    tdc.advancePhase();
-
-    // Simulate a state with bad metrics history
-    const fakeState = {
-      metricsHistory: [
-        makeMetrics({ requestsResolved: 50, requestsDropped: 50 }), // 50% availability
-      ],
-      currentTick: 1,
-    };
-
-    tdc.onTick!(fakeState as any);
-
-    // Budget should have been reduced by penaltyPerTick (10)
-    expect(tdc.economy.getBudget()).toBe(490);
-  });
-
-  it("does not deduct penalty when availability is healthy", () => {
-    const wave = makeWave({ availabilityTarget: 0.90, maxAvgLatency: 10, minBudget: 0, penaltyPerTick: 10 });
-    const tdc = makeTDC(wave, 500);
-    tdc.advancePhase();
-
-    const fakeState = {
-      metricsHistory: [
-        makeMetrics({ requestsResolved: 95, requestsDropped: 5 }), // 95% > 90% target
-      ],
-      currentTick: 1,
-    };
-
-    tdc.onTick!(fakeState as any);
-
-    expect(tdc.economy.getBudget()).toBe(500); // unchanged
-  });
-
-  it("does not deduct when not in simulate phase", () => {
-    const wave = makeWave({ availabilityTarget: 0.90, maxAvgLatency: 10, minBudget: 0, penaltyPerTick: 10 });
-    const tdc = makeTDC(wave, 500);
-    // Still in build phase
-
-    const fakeState = {
-      metricsHistory: [
-        makeMetrics({ requestsResolved: 50, requestsDropped: 50 }),
-      ],
-      currentTick: 1,
-    };
-
-    tdc.onTick!(fakeState as any);
-
-    expect(tdc.economy.getBudget()).toBe(500); // unchanged — not in simulate
-  });
-});

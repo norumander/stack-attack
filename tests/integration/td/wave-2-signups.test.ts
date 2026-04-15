@@ -22,7 +22,8 @@ describe("Wave 2 — Users Start Signing Up", () => {
 
     const result = runWave(state, WAVE_2, server.component.id);
 
-    expect(result.outcome.verdict).toBe("win");
+    expect(result.terminalState).toBe("wave_passed");
+    expect(result.finalViability).toBeGreaterThan(0);
 
     const total = result.totalRequests;
     const dropRate = (result.droppedCount + result.timedOutCount) / total;

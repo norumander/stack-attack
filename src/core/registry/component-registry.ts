@@ -27,6 +27,8 @@ export interface ComponentRegistryEntry {
   }>;
   ports: Port[];
   placementCost: number;
+  /** TD-mode: per-wave rent debited at READY (build→simulate). Optional. */
+  rentPerWave?: number;
   upgradeCostCurve: number[];
   visual: { icon: string; color: string; shape: string };
   conditionProfile: ConditionProfile;

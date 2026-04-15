@@ -149,7 +149,8 @@ describe("Wave 5 — gateway + scale rescue wins", () => {
 
     const result = runWave(state, WAVE_5, "client" as ComponentId);
 
-    expect(result.outcome.verdict).toBe("win");
+    expect(result.terminalState).toBe("wave_passed");
+    expect(result.finalViability).toBeGreaterThan(0);
 
     // Prove the Gateway terminates auth_required — the Gateway's AuthCapability
     // saw all the auth_required requests (20% of 150/tick × 30 ticks ≈ 900).

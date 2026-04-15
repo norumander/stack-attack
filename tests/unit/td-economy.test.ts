@@ -59,17 +59,6 @@ describe("TDEconomy", () => {
     expect(econ.getBudget()).toBe(100);
   });
 
-  it("debits upkeep, allowing negative budget", () => {
-    const econ = new TDEconomy({
-      startingBudget: 50,
-      revenuePerRequestType: new Map(),
-    });
-    econ.debitUpkeep(30);
-    expect(econ.getBudget()).toBe(20);
-    econ.debitUpkeep(30);
-    expect(econ.getBudget()).toBe(-10);
-  });
-
   it("debits placement cost", () => {
     const econ = new TDEconomy({
       startingBudget: 500,

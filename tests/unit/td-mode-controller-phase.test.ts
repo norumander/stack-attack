@@ -9,7 +9,7 @@ import type { ComponentId } from "@core/types/ids";
 describe("TDModeController constructor", () => {
   it("accepts multi-wave options", () => {
     const economy = new TDEconomy({
-      startingBudget: WAVE_1.startingBudget,
+      startingBudget: WAVE_1.startingBudget ?? 500,
       revenuePerRequestType: WAVE_1.revenuePerRequestType,
     });
     const tdc = new TDModeController({
@@ -46,7 +46,7 @@ describe("TDModeController constructor", () => {
 describe("TDModeController phase machine multi-wave progression", () => {
   it("advancePhase cycles build → simulate → assess → build with wave-index advancement", () => {
     const economy = new TDEconomy({
-      startingBudget: WAVE_1.startingBudget,
+      startingBudget: WAVE_1.startingBudget ?? 500,
       revenuePerRequestType: WAVE_1.revenuePerRequestType,
     });
     const tdc = new TDModeController({
@@ -77,7 +77,7 @@ describe("TDModeController phase machine multi-wave progression", () => {
 
   it("isCampaignComplete becomes true after the final wave's assess transition", () => {
     const economy = new TDEconomy({
-      startingBudget: WAVE_1.startingBudget,
+      startingBudget: WAVE_1.startingBudget ?? 500,
       revenuePerRequestType: WAVE_1.revenuePerRequestType,
     });
     const tdc = new TDModeController({
@@ -103,7 +103,7 @@ describe("TDModeController phase machine multi-wave progression", () => {
     // after the final wave win, triggering getCurrentWave() to throw on the
     // next tick. advancePhase must refuse to advance once complete.
     const economy = new TDEconomy({
-      startingBudget: WAVE_1.startingBudget,
+      startingBudget: WAVE_1.startingBudget ?? 500,
       revenuePerRequestType: WAVE_1.revenuePerRequestType,
     });
     const tdc = new TDModeController({
@@ -123,7 +123,7 @@ describe("TDModeController phase machine multi-wave progression", () => {
 
   it("waveStartMetricsIndex snapshots state.metricsHistory.length on build→simulate", () => {
     const economy = new TDEconomy({
-      startingBudget: WAVE_1.startingBudget,
+      startingBudget: WAVE_1.startingBudget ?? 500,
       revenuePerRequestType: WAVE_1.revenuePerRequestType,
     });
     const tdc = new TDModeController({
@@ -151,7 +151,7 @@ describe("TDModeController.isWaveDrained", () => {
 
   it("returns false when traffic source not exhausted", () => {
     const economy = new TDEconomy({
-      startingBudget: WAVE_1.startingBudget,
+      startingBudget: WAVE_1.startingBudget ?? 500,
       revenuePerRequestType: WAVE_1.revenuePerRequestType,
     });
     const tdc = new TDModeController({
@@ -167,7 +167,7 @@ describe("TDModeController.isWaveDrained", () => {
 
   it("returns false when pending has any requests", () => {
     const economy = new TDEconomy({
-      startingBudget: WAVE_1.startingBudget,
+      startingBudget: WAVE_1.startingBudget ?? 500,
       revenuePerRequestType: WAVE_1.revenuePerRequestType,
     });
     const tdc = new TDModeController({
@@ -185,7 +185,7 @@ describe("TDModeController.isWaveDrained", () => {
 
   it("returns false when blockedParents has entries", () => {
     const economy = new TDEconomy({
-      startingBudget: WAVE_1.startingBudget,
+      startingBudget: WAVE_1.startingBudget ?? 500,
       revenuePerRequestType: WAVE_1.revenuePerRequestType,
     });
     const tdc = new TDModeController({
@@ -203,7 +203,7 @@ describe("TDModeController.isWaveDrained", () => {
 
   it("returns true when traffic exhausted and all stores empty", () => {
     const economy = new TDEconomy({
-      startingBudget: WAVE_1.startingBudget,
+      startingBudget: WAVE_1.startingBudget ?? 500,
       revenuePerRequestType: WAVE_1.revenuePerRequestType,
     });
     const tdc = new TDModeController({
