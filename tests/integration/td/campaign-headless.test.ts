@@ -70,11 +70,21 @@ describe("TD campaign headless — full 3-wave registry path", () => {
     tdc.advancePhase(state); // build → simulate
     const engine = new Engine(state);
     runUntilDrained(state, tdc, engine);
+    // Capture terminal state while still in simulate phase (getTerminalState
+    // checks phase === "simulate" to emit "wave_passed").
+    const w1TerminalState = tdc.getTerminalState(state);
     tdc.advancePhase(state); // simulate → assess
-    const w1Outcome = tdc.evaluateOutcome(tdc.getCurrentWaveMetrics(state));
-    expect(w1Outcome.verdict).toBe("win");
+    expect(w1TerminalState).toBe("wave_passed");
+    expect(tdc.getViability().value).toBeGreaterThan(0);
+    // Under the new economy, budget carries over across waves (no per-wave reset).
+    // This per-wave TDEconomy re-creation is left here to mirror the legacy
+    // dashboard build→simulate handoff pattern exercised by this campaign test.
+    // NOTE: budget carryover assertion is deferred to T16 once payRent is wired.
+    const _w1FinalBudget = economy.getBudget();
 
     // === Per-wave reset (mirrors dashboard behavior) ===
+    // TODO(carryover): in the new economy, startingBudget for Wave 2 would be
+    // _w1FinalBudget rather than a hardcoded WAVE_2.startingBudget.
     economy = new TDEconomy({
       startingBudget: WAVE_2.startingBudget ?? 500,
       revenuePerRequestType: WAVE_2.revenuePerRequestType,
@@ -98,11 +108,18 @@ describe("TD campaign headless — full 3-wave registry path", () => {
     tdc.advancePhase(state); // build → simulate
     state.recomputeVisitOrder();
     runUntilDrained(state, tdc, engine);
+    // Capture terminal state while still in simulate phase.
+    const w2TerminalState = tdc.getTerminalState(state);
     tdc.advancePhase(state); // simulate → assess
-    const w2Outcome = tdc.evaluateOutcome(tdc.getCurrentWaveMetrics(state));
-    expect(w2Outcome.verdict).toBe("win");
+    expect(w2TerminalState).toBe("wave_passed");
+    expect(tdc.getViability().value).toBeGreaterThan(0);
+    // Budget carryover: in the new economy w2 starting budget = _w1FinalBudget
+    // minus rent. Assertion deferred to T16.
+    const _w2FinalBudget = economy.getBudget();
 
     // === Per-wave reset ===
+    // TODO(carryover): in the new economy, startingBudget for Wave 3 would be
+    // _w2FinalBudget rather than a hardcoded WAVE_3.startingBudget.
     economy = new TDEconomy({
       startingBudget: WAVE_3.startingBudget ?? 600,
       revenuePerRequestType: WAVE_3.revenuePerRequestType,
@@ -140,9 +157,12 @@ describe("TD campaign headless — full 3-wave registry path", () => {
     tdc.advancePhase(state); // build → simulate
     state.recomputeVisitOrder();
     runUntilDrained(state, tdc, engine);
+    // Capture terminal state while still in simulate phase.
+    const w3TerminalState = tdc.getTerminalState(state);
     tdc.advancePhase(state); // simulate → assess
-    const w3Outcome = tdc.evaluateOutcome(tdc.getCurrentWaveMetrics(state));
-    expect(w3Outcome.verdict).toBe("win");
+    expect(w3TerminalState).toBe("wave_passed");
+    expect(tdc.getViability().value).toBeGreaterThan(0);
+    const _w3FinalBudget = economy.getBudget(); // captured for future carryover assertions (T16)
 
     // === Final: campaign complete ===
     tdc.advancePhase(state); // assess → build, waveIndex past length
