@@ -37,8 +37,15 @@ export class TDEconomy implements EconomyStrategy {
     return revenue;
   }
 
-  debitUpkeep(totalUpkeep: number): void {
-    this.budget -= totalUpkeep;
+  /**
+   * No-op in TD mode. The engine's per-tick upkeep pipeline still computes
+   * and hands a total here, but TD mode does not charge per-tick upkeep —
+   * components are paid for via rent-at-READY (see TDModeController.payRent).
+   * The SLA-penalty path that previously piggybacked on debitUpkeep has
+   * been moved to viability damage in TDModeController.onTick.
+   */
+  debitUpkeep(_totalUpkeep: number): void {
+    // intentionally empty
   }
 
   debitPlacement(component: ComponentReader): void {
