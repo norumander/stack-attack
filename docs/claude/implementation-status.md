@@ -1,6 +1,6 @@
 # Implementation status
 
-**Current stage:** Phase 1, Stage 4b complete. TD mode is playable through Wave 9. Wave 9 teaches geographic latency via multi-zone topology with DNS/GTM routing. Engine's getEffectiveLatency now applies zone-pair penalties. 724 tests, typecheck clean.
+**Current stage:** Phase 1, Stage 4c complete. TD mode is playable through Wave 10 — all 10 waves shipped. Wave 10 teaches elastic architecture via AutoScale on Server + Database under 3000/tick stress with multi-chaos. 740 tests, typecheck clean.
 
 ## What ships (merged into `main`)
 
@@ -29,13 +29,18 @@
 
 **Stage 4b: Wave 9 — Going Global (multi-zone latency)** — First engine change since Stage 2c: `getEffectiveLatency()` now adds cross-zone latency via `getZonePairLatency()` (additive, after condition multiplier). `TDModeController.getInitialZoneTopology()` reads `wave.zoneTopology` instead of returning hardcoded single-zone. `TDTrafficSource` assigns `request.originZone` from `wave.zoneDistribution` via weighted random per request. `DNS_GTM_ENTRY` (geo-routing + forwarding-pipe + monitoring) added to TD bundle. All test helpers extended with optional `zone` parameter (backward compatible). Win/lose integration tests validate single-zone latency failure and multi-zone DNS routing rescue. 724 tests total.
 
-## Next: Stage 4c+ candidates (no spec yet)
+**Stage 4c: Wave 10 — The Viral Moment (AutoScale boss wave)** — AutoScaleCapability implemented with utilization-based scaling: scale-up at >80% utilization for 2 consecutive ticks, scale-down at <30% for 5 ticks. Uses previous-tick utilization snapshot (processed/capacity). Tier-based cooldown (tier 1: 5 ticks, tier 2: 2 ticks). SCALE side effects clamped by engine to [minInstances, maxInstances]. OBSERVE-phase sideEffects collection fixed in Component.process() to pipe SCALE to deliverStaged. Auto-scale added to Server (maxInstances: 10) and Database (maxInstances: 5) TD entries. chaosSchedule type extended for `connection_sever` and `latency_injection`. Three-test teaching arc: no autoscale loses, server-only loses (DB bottleneck), full autoscale wins. 740 tests total.
 
-- **Wave 10 — The Viral Moment.** Stress-test boss wave (3000+ req/tick). AutoScaleCapability needs source-dive.
-- **Dashboard zone visualization.** Zone regions on renderer, connection latency display.
-- **Cross-zone replication.** CAP theorem teaching — writes in one zone take time to reach others.
-- **Zone-aware chaos.** `zone_outage` targets entire zones (typed but unused).
-- **Adaptive zone routing.** Load-based routing beyond nearest-zone.
+## All 10 waves shipped — Phase 1 TD mode complete
+
+**Phase 2 candidates:**
+- Dashboard polish: zone visualization, stream lines, auto-scale animation, connection latency display
+- Tier upgrades (scaling UP vs scaling OUT)
+- Cross-zone replication (CAP theorem teaching)
+- Topology-validation dry-run on READY
+- Player tutorial / onboarding flow
+- REPLICATE fan-out / event type (engine step needed)
+- EnginePullable pull semantics for Queue→Worker
 
 ## History
 
