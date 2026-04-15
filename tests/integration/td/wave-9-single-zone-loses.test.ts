@@ -84,7 +84,7 @@ describe("Wave 9 — single-zone topology loses on latency SLA", () => {
     const result = runWave(state, WAVE_9, client.id);
 
     // --- Diagnostic dump on failure ---
-    if (result.outcome.verdict !== "lose") {
+    if (result.finalViability >= 100) {
       console.log("=== Wave 9 Single-Zone Diagnostic ===");
       console.log("SLA results:", JSON.stringify(result.outcome.slaResults, null, 2));
       console.log("Total:", result.totalRequests, "Dropped:", result.droppedCount, "TimedOut:", result.timedOutCount);
@@ -95,5 +95,8 @@ describe("Wave 9 — single-zone topology loses on latency SLA", () => {
     // because cross-zone penalties accumulate across every connection hop for
     // EU (35% at +3/hop) and AP (25% at +5/hop) traffic.
     expect(result.outcome.verdict).toBe("lose");
+    // TODO(T16): tune viability to actually fire on this lose path
+    // viability stays at 100 even though SLA verdict is "lose" — migrate once tuned:
+    // expect(result.finalViability).toBeLessThan(100);
   });
 });
