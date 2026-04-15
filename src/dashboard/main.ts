@@ -22,6 +22,21 @@ import { activateCyberpunkHud, isCyberpunkHudActive } from "./cyberpunk-hud";
 
 declare const Chart: any;
 
+// ─── Entry-point redirect: force iso HUD for TD mode ──────────────────
+// Slice B makes the iso cyberpunk HUD the canonical TD surface. Anyone
+// arriving with #mode=td but without ?renderer=iso gets silently rewritten.
+// Classic TD mode is deprecated and left only as a code-path for the sandbox
+// HUD's stale mirror targets; no bookmark-surface depends on it.
+(function forceIsoForTDMode(): void {
+  const hash = window.location.hash;
+  if (!hash.startsWith("#mode=td")) return;
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("renderer") === "iso") return;
+  url.searchParams.set("renderer", "iso");
+  // replaceState (not assign) so the user's history isn't polluted.
+  window.history.replaceState(null, "", url.toString());
+})();
+
 // Activate cyberpunk HUD at boot (before any TD DOM is shown) if the URL opts in.
 if (isCyberpunkHudActive()) {
   activateCyberpunkHud();
