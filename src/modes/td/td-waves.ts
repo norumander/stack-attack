@@ -8,7 +8,17 @@
 export interface TDWaveDefinition {
   readonly id: number;
   readonly name: string;
-  readonly startingBudget: number;
+  /**
+   * Optional since the new economy model carries budget across waves.
+   * Wave 1 uses this as the campaign's single starting budget; Waves 2–10
+   * do not set it. Legacy test helpers (`runWave`) fall back to a large
+   * default when undefined.
+   */
+  readonly startingBudget?: number;
+  /** Viability lost per dropped/timed-out request in this wave. */
+  readonly viabilityPerFailure: number;
+  /** Viability lost per tick while the rolling drop rate exceeds dropThreshold. */
+  readonly viabilityRampPenalty: number;
   readonly intensity: number;
   readonly composition: ReadonlyMap<string, number>;
   readonly duration: number;
@@ -66,6 +76,8 @@ export const WAVE_1: TDWaveDefinition = {
   ttl: 10,
   availableComponents: ["server", "database"],
   dropThreshold: 0.05,
+  viabilityPerFailure: 0.1,
+  viabilityRampPenalty: 0.5,
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
   keyPoolSize: 20,
   sla: { availabilityTarget: 0.90, maxAvgLatency: 10, minBudget: 0, penaltyPerTick: 2 },
@@ -81,6 +93,8 @@ export const WAVE_2: TDWaveDefinition = {
   ttl: 10,
   availableComponents: ["server", "database"],
   dropThreshold: 0.05,
+  viabilityPerFailure: 0.1,
+  viabilityRampPenalty: 0.5,
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
   keyPoolSize: 20,
   sla: { availabilityTarget: 0.92, maxAvgLatency: 8, minBudget: 0, penaltyPerTick: 3 },
@@ -96,6 +110,8 @@ export const WAVE_3: TDWaveDefinition = {
   ttl: 8,
   availableComponents: ["server", "database", "cache", "load_balancer"],
   dropThreshold: 0.05,
+  viabilityPerFailure: 0.1,
+  viabilityRampPenalty: 0.5,
   revenuePerRequestType: new Map([["api_read", 1], ["api_write", 2]]),
   keyPoolSize: 10, // pool ≤ capacity → near-100% hit rate. Wave 3 is the player's first encounter with Cache; the rescue should feel powerful, not marginal. The "imperfect cache" lesson comes in later waves if/when we want to teach it.
   sla: { availabilityTarget: 0.95, maxAvgLatency: 5, minBudget: 0, penaltyPerTick: 5 },
@@ -115,6 +131,8 @@ export const WAVE_4: TDWaveDefinition = {
   ttl: 8,
   availableComponents: ["server", "database", "cache", "load_balancer", "cdn"],
   dropThreshold: 0.05,
+  viabilityPerFailure: 0.1,
+  viabilityRampPenalty: 0.5,
   revenuePerRequestType: new Map([
     ["api_read", 1],
     ["api_write", 2],
@@ -151,6 +169,8 @@ export const WAVE_5: TDWaveDefinition = {
     "api_gateway",
   ],
   dropThreshold: 0.05,
+  viabilityPerFailure: 0.1,
+  viabilityRampPenalty: 0.5,
   revenuePerRequestType: new Map([
     ["api_read", 1],
     ["api_write", 2],
@@ -185,6 +205,8 @@ export const WAVE_6: TDWaveDefinition = {
     "queue", "worker",
   ],
   dropThreshold: 0.05,
+  viabilityPerFailure: 0.1,
+  viabilityRampPenalty: 0.5,
   revenuePerRequestType: new Map([
     ["api_read", 1],
     ["api_write", 2],
@@ -221,6 +243,8 @@ export const WAVE_7: TDWaveDefinition = {
     "queue", "worker", "circuit_breaker",
   ],
   dropThreshold: 0.05,
+  viabilityPerFailure: 0.1,
+  viabilityRampPenalty: 0.5,
   revenuePerRequestType: new Map([
     ["api_read", 1],
     ["api_write", 2],
@@ -264,6 +288,8 @@ export const WAVE_8: TDWaveDefinition = {
     "queue", "worker", "circuit_breaker", "streaming_media_server", "blob_storage",
   ],
   dropThreshold: 0.05,
+  viabilityPerFailure: 0.1,
+  viabilityRampPenalty: 0.5,
   revenuePerRequestType: new Map([
     ["api_read", 1],
     ["api_write", 2],
@@ -307,6 +333,8 @@ export const WAVE_9: TDWaveDefinition = {
     "dns_gtm",
   ],
   dropThreshold: 0.05,
+  viabilityPerFailure: 0.1,
+  viabilityRampPenalty: 0.5,
   revenuePerRequestType: new Map([
     ["api_read", 1],
     ["api_write", 2],
@@ -363,6 +391,8 @@ export const WAVE_10: TDWaveDefinition = {
     "dns_gtm",
   ],
   dropThreshold: 0.05,
+  viabilityPerFailure: 0.1,
+  viabilityRampPenalty: 0.5,
   revenuePerRequestType: new Map([
     ["api_read", 1],
     ["api_write", 2],

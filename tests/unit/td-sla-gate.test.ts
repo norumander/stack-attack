@@ -17,6 +17,8 @@ function makeWave(sla?: TDWaveDefinition["sla"]): TDWaveDefinition {
     ttl: 10,
     availableComponents: ["server"],
     dropThreshold: 0.05,
+    viabilityPerFailure: 0.1,
+    viabilityRampPenalty: 0.5,
     revenuePerRequestType: new Map([["api_read", 1]]),
   };
   if (sla === undefined) return base;

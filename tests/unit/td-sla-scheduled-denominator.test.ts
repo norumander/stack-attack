@@ -32,6 +32,8 @@ function makeWave(sla: TDWaveDefinition["sla"]): TDWaveDefinition {
     ttl: 10,
     availableComponents: ["server"],
     dropThreshold: 0.05,
+    viabilityPerFailure: 0.1,
+    viabilityRampPenalty: 0.5,
     revenuePerRequestType: new Map([["api_read", 1]]),
     ...(sla !== undefined ? { sla } : {}),
   };
@@ -58,7 +60,7 @@ function makeTDC(wave: TDWaveDefinition): TDModeController {
   return new TDModeController({
     waves: [wave],
     economy: new TDEconomy({
-      startingBudget: wave.startingBudget,
+      startingBudget: wave.startingBudget ?? 500,
       revenuePerRequestType: wave.revenuePerRequestType,
     }),
     entryPointId: "c-entry" as ComponentId,

@@ -65,7 +65,7 @@ export function runWave(
   entryPointId: ComponentId,
 ): WaveRunResult {
   const economy = new TDEconomy({
-    startingBudget: wave.startingBudget,
+    startingBudget: wave.startingBudget ?? 500,
     revenuePerRequestType: wave.revenuePerRequestType,
   });
   const mode = new TDModeController({

@@ -30,6 +30,8 @@ function makeWave(composition: Map<string, number>): TDWaveDefinition {
     ttl: 10,
     availableComponents: [],
     dropThreshold: 0.05,
+    viabilityPerFailure: 0.1,
+    viabilityRampPenalty: 0.5,
     revenuePerRequestType: new Map(),
     sla: {
       availabilityTarget: 0.9,

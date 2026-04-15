@@ -45,7 +45,7 @@ describe("TD campaign headless — full 3-wave registry path", () => {
 
     // Boot the controller for the full campaign.
     let economy = new TDEconomy({
-      startingBudget: WAVE_1.startingBudget,
+      startingBudget: WAVE_1.startingBudget ?? 500,
       revenuePerRequestType: WAVE_1.revenuePerRequestType,
     });
     const tdc = new TDModeController({
@@ -76,7 +76,7 @@ describe("TD campaign headless — full 3-wave registry path", () => {
 
     // === Per-wave reset (mirrors dashboard behavior) ===
     economy = new TDEconomy({
-      startingBudget: WAVE_2.startingBudget,
+      startingBudget: WAVE_2.startingBudget ?? 500,
       revenuePerRequestType: WAVE_2.revenuePerRequestType,
     });
     tdc.setEconomy(economy);
@@ -104,7 +104,7 @@ describe("TD campaign headless — full 3-wave registry path", () => {
 
     // === Per-wave reset ===
     economy = new TDEconomy({
-      startingBudget: WAVE_3.startingBudget,
+      startingBudget: WAVE_3.startingBudget ?? 600,
       revenuePerRequestType: WAVE_3.revenuePerRequestType,
     });
     tdc.setEconomy(economy);

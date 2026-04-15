@@ -27,6 +27,8 @@ function makeWave(args: {
     ttl: 10,
     availableComponents: ["server", "database"],
     dropThreshold: 0.05,
+    viabilityPerFailure: 0.1,
+    viabilityRampPenalty: 0.5,
     revenuePerRequestType: new Map([["api_read", 1]]),
     ...(args.sla !== undefined ? { sla: args.sla } : {}),
   };

@@ -64,7 +64,7 @@ export function makeTDController(
   const compRegistry = opts.compRegistry ?? bootTDRegistry();
   const waves = opts.waves ?? [WAVE_1, WAVE_2, WAVE_3];
   const economy = new TDEconomy({
-    startingBudget: opts.startingBudget ?? WAVE_1.startingBudget,
+    startingBudget: opts.startingBudget ?? WAVE_1.startingBudget ?? 500,
     revenuePerRequestType: WAVE_1.revenuePerRequestType,
   });
   const tdc = new TDModeController({
