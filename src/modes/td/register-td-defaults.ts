@@ -129,7 +129,9 @@ export function registerTDDefaults(
 
   capRegistry.register({
     id: "queue" as CapabilityId,
-    factory: () => new QueueCapability("queue" as CapabilityId),
+    factory: () => new QueueCapability("queue" as CapabilityId, {
+      holdTypes: new Set(["batch"]),
+    }),
     documentsSubInterfaces: ["EngineBufferable"],
   });
   capRegistry.register({
