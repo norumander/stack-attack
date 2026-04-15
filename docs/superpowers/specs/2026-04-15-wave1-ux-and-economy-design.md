@@ -172,12 +172,12 @@ New public method `getRentBill(state: SimulationState): number` — same logic a
 
 ### 4.5 Registry entry field — additive only
 
-`ComponentRegistryEntry` gains one new optional field: `rentPerWave?: number`. The existing `cost` field is **not** renamed and **not** touched — sandbox mode continues to treat it as an upfront placement cost exactly as it does today.
+`ComponentRegistryEntry` gains one new optional field: `rentPerWave?: number`. The existing `placementCost: number` field is **not** renamed and **not** touched — sandbox mode continues to treat it as an upfront placement cost exactly as it does today.
 
-- TD entries in `td-component-entries.ts` set `rentPerWave: <N>` and leave `cost: 0` (no upfront — placement is free in TD mode).
-- Sandbox entries in `src/core/registry/component-entries.ts` leave `rentPerWave` undefined and keep their existing `cost` values.
+- TD entries in `td-component-entries.ts` set `rentPerWave: <N>` and leave `placementCost: 0` (no upfront — placement is free in TD mode).
+- Sandbox entries in `src/core/registry/component-entries.ts` leave `rentPerWave` undefined and keep their existing `placementCost` values.
 - `TDModeController.computeRentBill` reads only `rentPerWave`, treating missing values as `0`. Sandbox components that somehow end up in a TD simulation contribute zero rent — safe default.
-- `SandboxModeController.tryPlace` (or wherever sandbox debits cost) reads only `cost` as it does today. No change to sandbox economy.
+- `SandboxModeController.tryPlace` (or wherever sandbox debits placement cost) reads only `placementCost` as it does today. No change to sandbox economy.
 
 This additive approach is zero-risk for sandbox — not a single sandbox call site moves.
 
@@ -196,7 +196,9 @@ No per-wave starting-budget reset. `TDWaveDefinition.startingBudget` is kept on 
 
 ### 4.8 SLA gate removal from TD
 
-`evaluateSLA` and `evaluateOutcome` (wherever they currently gate TD wave outcomes) are bypassed. The new wave outcome contract on `TDModeController`:
+`evaluateSLA` and `evaluateOutcome` are methods on `TDModeController` itself (not core utilities). They remain defined on the class — callers that still want SLA numbers for display purposes can call them — but they stop gating the wave outcome, and `evaluateOutcome` stops reading `wave.startingBudget` as a denominator (waves 2–10 no longer have that field). The composite-score denominator is switched to `wave.intensity * wave.duration * 1.0` or is dropped entirely since it's only used for an unused score field.
+
+The new wave outcome contract on `TDModeController`:
 
 ```ts
 type TDTerminalState = "running" | "wave_passed" | "dead";
@@ -210,11 +212,15 @@ getTerminalState(): TDTerminalState
 
 The dashboard's loss-modal and win-modal wiring polls `getTerminalState()` once per tick instead of reading `evaluateOutcome()`. The loss modal triggers on `"dead"`; the win modal triggers on `"wave_passed"`.
 
-### 4.9 Per-tick upkeep removal (at the data layer)
+### 4.9 Per-tick upkeep removal (at the TDEconomy layer)
 
-Every TD entry in `src/modes/td/td-component-entries.ts` gets `upkeep: 0`. The engine still subtracts zero each tick. `state.metricsHistory[i].upkeepPaid` is always `0` for TD runs.
+Upkeep is a capability-level concept (`Capability.getUpkeepCost(tier)`) summed per tick by `src/core/engine/deduct-upkeep.ts` and handed to `mc.economy.debitUpkeep(total)`. We cannot zero it on the registry side because there is no registry-side upkeep field — upkeep comes from whatever capabilities the component has.
 
-Integration tests that asserted `upkeepPaid > 0` are updated to assert `upkeepPaid === 0`. Tests that asserted budget decrements from upkeep are updated to expect no decrements from upkeep (only rent debits at advancePhase).
+**The override: `TDEconomy.debitUpkeep` becomes a no-op.** `TDEconomy` is a TD-mode-only class; making its `debitUpkeep(amount)` ignore `amount` completely and leave the budget untouched means TD runs pay zero upkeep per tick regardless of component composition. Sandbox mode continues to use `SandboxEconomy` which keeps its existing `debitUpkeep` behavior.
+
+One consequence: `TDModeController.onTick` currently calls `this.economy.debitUpkeep(wave.sla.penaltyPerTick)` at line 696 as the SLA ramping penalty mechanism. With `debitUpkeep` now a no-op, that call is a dead line. We delete it and replace the SLA penalty path with the viability-damage path defined in §4.2.
+
+`state.upkeepPaidThisTick` still gets written to (by `deduct-upkeep.ts`), and `state.metricsHistory[i].upkeepPaid` still has a value — the engine still *computes* upkeep, `TDEconomy` just declines to debit it. Tests that asserted on budget deltas from upkeep are updated to expect the budget unchanged across ticks (only rent-at-advancePhase debits).
 
 ### 4.10 Wave definitions retune
 
