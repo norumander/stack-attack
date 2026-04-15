@@ -6,7 +6,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev": "vite --port 5173"
+    "dev": "vite --port 5173",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "npx serve src/dashboard/dist -s -p 3000"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

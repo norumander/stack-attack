@@ -1,0 +1,67 @@
+name: Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - infra/**
+  pull_request:
+    branches: [main]
+    paths:
+      - infra/**
+
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    name: Pulumi Preview
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Pulumi CLI
+        uses: pulumi/actions@v6
+        with:
+          command: preview
+          stack-name: production
+          work-dir: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  deploy:
+    name: Pulumi Up
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Deploy Infrastructure
+        uses: pulumi/actions@v6
+        with:
+          command: up
+          stack-name: production
+          work-dir: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

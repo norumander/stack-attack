@@ -1,0 +1,9 @@
+name: stack-attack
+runtime:
+  name: nodejs
+  options:
+    packagemanager: pnpm
+description: Infrastructure as Code for Stack Attack — Railway deployment
+config:
+  railway:token:
+    secret: true

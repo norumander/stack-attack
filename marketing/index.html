@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stack Attack — Learn System Architecture by Defending It</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0c14;--bg2:#0f1117;--surface:#141824;--surface2:#1a1f2e;--surface3:#222840;
+  --border:#2a3050;--border-glow:#3a4570;
+  --text:#e8ecf8;--text-dim:#7882a4;--text-faint:#4a5270;
+  --accent:#6366f1;--accent-glow:#818cf8;--accent-soft:rgba(99,102,241,.12);
+  --green:#22c55e;--green-glow:#4ade80;--red:#ef4444;--red-glow:#f87171;
+  --yellow:#eab308;--orange:#f97316;--cyan:#22d3ee;--purple:#7B68EE;
+  --server:#4A90D9;--database:#7B68EE;--cache:#F5A623;--lb:#50C878;--client:#94a3b8;
+}
+html{scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:var(--border) var(--bg)}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden;line-height:1.6}
+canvas{display:block}
+
+/* ── NAV ── */
+.nav{position:fixed;top:0;left:0;right:0;z-index:1000;padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;background:rgba(10,12,20,.85);backdrop-filter:blur(20px);border-bottom:1px solid rgba(42,48,80,.4);transition:all .3s}
+.nav-logo{font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:1.3rem;letter-spacing:.08em;background:linear-gradient(135deg,var(--accent-glow),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.nav-links{display:flex;gap:2rem;align-items:center}
+.nav-links a{color:var(--text-dim);text-decoration:none;font-size:.85rem;font-weight:500;letter-spacing:.04em;transition:color .2s}
+.nav-links a:hover{color:var(--text)}
+.nav-auto{display:flex;align-items:center;gap:.6rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.35rem .7rem;cursor:pointer;color:var(--text-dim);font-size:.75rem;font-family:'JetBrains Mono',monospace;transition:all .25s}
+.nav-auto:hover,.nav-auto.active{border-color:var(--accent);color:var(--accent-glow)}
+.nav-auto .dot{width:6px;height:6px;border-radius:50%;background:var(--text-faint);transition:background .25s}
+.nav-auto.active .dot{background:var(--green);box-shadow:0 0 6px var(--green)}
+
+/* ── SECTION BASE ── */
+section{min-height:100vh;position:relative;overflow:hidden}
+.section-inner{max-width:1200px;margin:0 auto;padding:8rem 2rem 4rem}
+.reveal{opacity:0;transform:translateY(40px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.reveal-delay-1{transition-delay:.15s}
+.reveal-delay-2{transition-delay:.3s}
+.reveal-delay-3{transition-delay:.45s}
+.reveal-delay-4{transition-delay:.6s}
+
+/* ── HERO ── */
+#hero{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative}
+#hero-canvas{position:absolute;inset:0;z-index:0}
+.hero-content{position:relative;z-index:2;text-align:center;max-width:900px;padding:0 2rem}
+.hero-badge{display:inline-flex;align-items:center;gap:.5rem;background:var(--accent-soft);border:1px solid rgba(99,102,241,.25);border-radius:100px;padding:.4rem 1.2rem;margin-bottom:2rem;font-size:.75rem;font-family:'JetBrains Mono',monospace;color:var(--accent-glow);letter-spacing:.06em}
+.hero-badge .pulse{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse-glow 2s infinite}
+@keyframes pulse-glow{0%,100%{box-shadow:0 0 4px var(--green)}50%{box-shadow:0 0 16px var(--green-glow)}}
+.hero-title{font-family:'Chakra Petch',sans-serif;font-size:clamp(3rem,8vw,6.5rem);font-weight:700;line-height:1;letter-spacing:.04em;margin-bottom:1.5rem;background:linear-gradient(160deg,#fff 20%,var(--accent-glow) 50%,var(--cyan) 80%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 0 60px rgba(99,102,241,.3))}
+.hero-sub{font-size:clamp(1.1rem,2.5vw,1.6rem);color:var(--text-dim);font-weight:300;margin-bottom:2rem;letter-spacing:.02em}
+.hero-typed{font-family:'JetBrains Mono',monospace;font-size:clamp(.85rem,1.8vw,1.1rem);color:var(--cyan);min-height:2rem;margin-bottom:3rem}
+.hero-typed .cursor{display:inline-block;width:2px;height:1.1em;background:var(--cyan);margin-left:2px;animation:blink .7s step-end infinite;vertical-align:text-bottom}
+@keyframes blink{50%{opacity:0}}
+.hero-cta{display:inline-flex;align-items:center;gap:.5rem;background:linear-gradient(135deg,var(--accent),#4f46e5);color:#fff;border:none;padding:.9rem 2.2rem;border-radius:8px;font-size:1rem;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;letter-spacing:.03em;transition:all .3s;box-shadow:0 0 30px rgba(99,102,241,.3)}
+.hero-cta:hover{transform:translateY(-2px);box-shadow:0 0 50px rgba(99,102,241,.5)}
+.hero-scroll{position:absolute;bottom:2rem;left:50%;transform:translateX(-50%);color:var(--text-faint);font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;display:flex;flex-direction:column;align-items:center;gap:.5rem;animation:float 3s ease-in-out infinite}
+.hero-scroll .arrow{width:16px;height:16px;border-right:2px solid var(--text-faint);border-bottom:2px solid var(--text-faint);transform:rotate(45deg)}
+@keyframes float{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(8px)}}
+
+/* ── PROBLEM ── */
+#problem{background:var(--bg2)}
+.problem-grid{display:grid;grid-template-columns:1fr 1fr;gap:3rem;margin-top:3rem;align-items:center}
+.problem-label{font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;margin-bottom:1.5rem;display:flex;align-items:center;gap:.5rem}
+.problem-label .line{flex:1;height:1px;background:var(--border)}
+.problem-left{background:var(--surface);border-radius:12px;border:1px solid var(--border);padding:2rem;position:relative;overflow:hidden}
+.problem-left::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 28px,rgba(42,48,80,.15) 28px,rgba(42,48,80,.15) 29px);pointer-events:none}
+.fake-tutorial{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--text-faint);line-height:2.2}
+.fake-tutorial .highlight{color:var(--text-dim);background:rgba(99,102,241,.08);padding:0 4px;border-radius:2px}
+.problem-right{border-radius:12px;border:1px solid var(--accent);padding:0;position:relative;overflow:hidden;box-shadow:0 0 40px rgba(99,102,241,.08)}
+#problem-canvas{width:100%;border-radius:12px}
+.section-header{margin-bottom:1rem}
+.section-header .tag{font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;color:var(--accent-glow);margin-bottom:.8rem;display:block}
+.section-header h2{font-family:'Chakra Petch',sans-serif;font-size:clamp(1.8rem,4vw,3rem);font-weight:700;line-height:1.15;letter-spacing:.02em}
+.section-header h2 .gradient{background:linear-gradient(135deg,var(--accent-glow),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.section-header p{color:var(--text-dim);font-size:1.05rem;margin-top:.8rem;max-width:600px}
+
+/* ── HOW IT WORKS ── */
+#how{background:var(--bg)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:2rem;margin-top:3rem}
+.step-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;position:relative;overflow:hidden;transition:all .4s}
+.step-card:hover{border-color:var(--accent);transform:translateY(-4px);box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.step-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--cyan));opacity:0;transition:opacity .3s}
+.step-card:hover::before{opacity:1}
+.step-num{font-family:'Chakra Petch',sans-serif;font-size:3rem;font-weight:700;color:var(--surface3);line-height:1;margin-bottom:.5rem}
+.step-title{font-family:'Chakra Petch',sans-serif;font-size:1.3rem;font-weight:700;margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem}
+.step-title .icon{width:8px;height:8px;border-radius:50%}
+.step-desc{color:var(--text-dim);font-size:.9rem;margin-bottom:1.5rem}
+.step-visual{background:var(--bg);border-radius:8px;overflow:hidden;aspect-ratio:16/10;position:relative}
+.step-visual canvas{width:100%;height:100%}
+
+/* ── PROTOTYPE ── */
+#prototype{background:var(--bg2)}
+.proto-container{display:grid;grid-template-columns:1fr 280px;gap:2rem;margin-top:2rem}
+.proto-canvas-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;position:relative}
+#proto-canvas{width:100%;cursor:crosshair}
+.proto-status{position:absolute;top:0;left:0;right:0;padding:.6rem 1rem;background:rgba(10,12,20,.92);border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--text-dim);letter-spacing:.03em;display:flex;justify-content:space-between;align-items:center;z-index:2;transition:border-color .3s}
+.proto-status.connecting{border-bottom-color:var(--accent);color:var(--accent-glow)}
+.proto-status .budget{color:var(--green);font-weight:600}
+.proto-status .budget.low{color:var(--yellow)}
+.proto-status .budget.empty{color:var(--red)}
+.proto-sidebar{display:flex;flex-direction:column;gap:1rem}
+.proto-palette{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.2rem}
+.proto-palette h3{font-family:'Chakra Petch',sans-serif;font-size:.85rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:1rem;color:var(--text-dim)}
+.proto-btn{width:100%;padding:.7rem .8rem;margin-bottom:.5rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.75rem;cursor:pointer;display:flex;align-items:center;gap:.6rem;transition:all .2s}
+.proto-btn:hover{border-color:var(--accent);background:var(--accent-soft)}
+.proto-btn.active{border-color:var(--accent);background:rgba(99,102,241,.2);box-shadow:0 0 12px rgba(99,102,241,.15)}
+.proto-btn.disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
+.proto-btn .swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+.proto-btn .price{margin-left:auto;color:var(--text-faint)}
+.proto-sim{width:100%;padding:.85rem;background:linear-gradient(135deg,var(--accent),#4f46e5);border:none;border-radius:8px;color:#fff;font-family:'Chakra Petch',sans-serif;font-size:.95rem;font-weight:700;letter-spacing:.06em;cursor:pointer;transition:all .3s;text-transform:uppercase}
+.proto-sim:hover{box-shadow:0 0 30px rgba(99,102,241,.4);transform:translateY(-1px)}
+.proto-sim.running{background:linear-gradient(135deg,var(--red),#dc2626);animation:sim-pulse 1s infinite}
+@keyframes sim-pulse{50%{box-shadow:0 0 20px rgba(239,68,68,.3)}}
+.proto-reset{width:100%;padding:.6rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;font-size:.72rem;cursor:pointer;transition:all .2s;margin-top:.3rem}
+.proto-reset:hover{border-color:var(--red);color:var(--red)}
+.proto-stats{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.2rem}
+.proto-stats h3{font-family:'Chakra Petch',sans-serif;font-size:.85rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:1rem;color:var(--text-dim)}
+.stat-row{display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid rgba(42,48,80,.3);font-size:.8rem}
+.stat-row:last-child{border:none}
+.stat-label{color:var(--text-dim)}
+.stat-val{font-family:'JetBrains Mono',monospace;font-weight:600}
+.stat-val.good{color:var(--green)}
+.stat-val.bad{color:var(--red)}
+.stat-val.warn{color:var(--yellow)}
+.proto-hint{font-size:.7rem;color:var(--text-faint);text-align:center;margin-top:.5rem;font-style:italic}
+
+/* ── WAVES ── */
+#waves{background:var(--bg)}
+.wave-timeline{position:relative;margin-top:3rem;display:flex;flex-direction:column;gap:0}
+.wave-row{display:grid;grid-template-columns:120px 1fr;gap:2rem;padding:2rem 0;border-bottom:1px solid var(--border);position:relative}
+.wave-row:last-child{border:none}
+.wave-badge{font-family:'Chakra Petch',sans-serif;font-size:1.4rem;font-weight:700;display:flex;flex-direction:column;align-items:flex-start;gap:.3rem}
+.wave-badge .num{font-size:2.5rem;line-height:1}
+.wave-badge .label{font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim)}
+.wave-content{display:flex;gap:2rem;align-items:center}
+.wave-viz{flex:0 0 280px;height:120px;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;position:relative}
+.wave-viz canvas{width:100%;height:100%}
+.wave-info{flex:1}
+.wave-info h3{font-family:'Chakra Petch',sans-serif;font-size:1.1rem;margin-bottom:.4rem}
+.wave-info p{color:var(--text-dim);font-size:.85rem;margin-bottom:.6rem}
+.wave-tag{display:inline-flex;padding:.2rem .6rem;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.65rem;letter-spacing:.05em}
+.wave-tag.pass{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25)}
+.wave-tag.fail{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25)}
+.wave-tag.learn{background:rgba(99,102,241,.12);color:var(--accent-glow);border:1px solid rgba(99,102,241,.25)}
+
+/* ── FEATURES ── */
+#features{background:var(--bg2)}
+.features-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1.5rem;margin-top:3rem}
+.feature-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;position:relative;overflow:hidden;transition:all .4s}
+.feature-card:hover{border-color:var(--accent);transform:translateY(-3px)}
+.feature-card::after{content:'';position:absolute;top:-50%;right:-50%;width:100%;height:100%;background:radial-gradient(circle,rgba(99,102,241,.04) 0%,transparent 70%);pointer-events:none}
+.feature-icon{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:1.2rem;font-size:1.3rem;font-family:'Chakra Petch',sans-serif;font-weight:700}
+.feature-card h3{font-family:'Chakra Petch',sans-serif;font-size:1.15rem;margin-bottom:.5rem}
+.feature-card p{color:var(--text-dim);font-size:.88rem;line-height:1.6}
+.feature-card .mono{font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--text-faint);margin-top:.8rem;padding-top:.8rem;border-top:1px solid var(--border)}
+
+/* ── CTA ── */
+#cta{background:var(--bg);display:flex;align-items:center;justify-content:center;min-height:60vh;text-align:center;position:relative}
+#cta::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(99,102,241,.08) 0%,transparent 65%)}
+.cta-content{position:relative;z-index:1}
+.cta-title{font-family:'Chakra Petch',sans-serif;font-size:clamp(2.5rem,5vw,4.5rem);font-weight:700;margin-bottom:1.5rem;letter-spacing:.03em}
+.cta-button{display:inline-flex;align-items:center;gap:.6rem;background:linear-gradient(135deg,var(--accent),#4f46e5);color:#fff;border:none;padding:1.1rem 3rem;border-radius:10px;font-size:1.15rem;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;letter-spacing:.03em;transition:all .3s;position:relative;overflow:hidden;box-shadow:0 0 40px rgba(99,102,241,.3);animation:cta-glow 3s ease-in-out infinite}
+@keyframes cta-glow{0%,100%{box-shadow:0 0 40px rgba(99,102,241,.3)}50%{box-shadow:0 0 80px rgba(99,102,241,.5),0 0 120px rgba(99,102,241,.2)}}
+.cta-button:hover{transform:translateY(-3px) scale(1.02)}
+.cta-sub{color:var(--text-dim);font-size:1rem;margin-top:1.5rem;font-style:italic}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){
+  .problem-grid,.proto-container{grid-template-columns:1fr}
+  .steps{grid-template-columns:1fr}
+  .features-grid{grid-template-columns:1fr}
+  .wave-row{grid-template-columns:1fr}
+  .wave-content{flex-direction:column}
+  .wave-viz{flex:none;width:100%}
+  .nav-links a:not(:last-child){display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-logo">STACK ATTACK</div>
+  <div class="nav-links">
+    <a href="#problem">Why</a>
+    <a href="#how">How</a>
+    <a href="#prototype">Try It</a>
+    <a href="#waves">Waves</a>
+    <a href="#features">Features</a>
+    <button class="nav-auto" id="autoplay-btn" title="Auto-play cinematic mode">
+      <span class="dot"></span>AUTOPLAY
+    </button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <canvas id="hero-canvas"></canvas>
+  <div class="hero-content">
+    <div class="hero-badge reveal"><span class="pulse"></span>TOWER DEFENSE × SYSTEM DESIGN</div>
+    <h1 class="hero-title reveal reveal-delay-1">Stack Attack</h1>
+    <p class="hero-sub reveal reveal-delay-2">Learn System Architecture by Defending It</p>
+    <div class="hero-typed reveal reveal-delay-3"><span id="typed-text"></span><span class="cursor"></span></div>
+    <a href="#prototype" class="hero-cta reveal reveal-delay-4">Play the Prototype ↓</a>
+  </div>
+  <div class="hero-scroll"><span>Scroll</span><div class="arrow"></div></div>
+</section>
+
+<!-- THE PROBLEM -->
+<section id="problem">
+  <div class="section-inner">
+    <div class="section-header reveal">
+      <span class="tag">The Problem</span>
+      <h2>Tutorials teach theory.<br><span class="gradient">Stack Attack teaches intuition.</span></h2>
+      <p>After 100 hours of tutorials, you know what a load balancer is. After one wave of Stack Attack, you know why you need one.</p>
+    </div>
+    <div class="problem-grid">
+      <div class="problem-left reveal reveal-delay-1">
+        <div class="problem-label">Traditional tutorial <span class="line"></span></div>
+        <div class="fake-tutorial">
+          <div>Chapter 12: Load Balancing</div>
+          <div>&nbsp;</div>
+          <div>A <span class="highlight">load balancer</span> distributes</div>
+          <div>incoming network traffic across</div>
+          <div>multiple servers. This ensures</div>
+          <div>no single server bears too much</div>
+          <div>demand. Common algorithms:</div>
+          <div>&nbsp;</div>
+          <div>• Round Robin</div>
+          <div>• Least Connections</div>
+          <div>• IP Hash</div>
+          <div>&nbsp;</div>
+          <div style="color:var(--text-faint)">[ Continue reading → ]</div>
+          <div style="color:var(--text-faint)">[ Quiz: 0/10 completed ]</div>
+        </div>
+      </div>
+      <div class="problem-right reveal reveal-delay-2">
+        <canvas id="problem-canvas" width="500" height="340"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section id="how">
+  <div class="section-inner">
+    <div class="section-header reveal">
+      <span class="tag">How It Works</span>
+      <h2>Build. Watch. <span class="gradient">Assess.</span></h2>
+      <p>No mid-wave intervention. Deploy your architecture, observe it under pressure, then iterate. Just like real engineering.</p>
+    </div>
+    <div class="steps">
+      <div class="step-card reveal reveal-delay-1">
+        <div class="step-num">01</div>
+        <div class="step-title"><span class="icon" style="background:var(--accent)"></span>BUILD</div>
+        <p class="step-desc">Place components on the grid. Connect them. Spend your budget wisely.</p>
+        <div class="step-visual"><canvas id="step-build-canvas"></canvas></div>
+      </div>
+      <div class="step-card reveal reveal-delay-2">
+        <div class="step-num">02</div>
+        <div class="step-title"><span class="icon" style="background:var(--cyan)"></span>WATCH</div>
+        <p class="step-desc">Traffic hits. Requests flow through your architecture. Components heat up.</p>
+        <div class="step-visual"><canvas id="step-watch-canvas"></canvas></div>
+      </div>
+      <div class="step-card reveal reveal-delay-3">
+        <div class="step-num">03</div>
+        <div class="step-title"><span class="icon" style="background:var(--green)"></span>ASSESS</div>
+        <p class="step-desc">Did your system hold? Check throughput, latency, and dropped requests.</p>
+        <div class="step-visual"><canvas id="step-assess-canvas"></canvas></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INTERACTIVE PROTOTYPE -->
+<section id="prototype">
+  <div class="section-inner">
+    <div class="section-header reveal">
+      <span class="tag">Try It Now</span>
+      <h2>Build your first <span class="gradient">architecture.</span></h2>
+      <p>Click a component, place it on the grid, then connect them. Hit simulate to watch traffic flow.</p>
+    </div>
+    <div class="proto-container reveal reveal-delay-1">
+      <div class="proto-canvas-wrap">
+        <div class="proto-status">
+          <span id="proto-msg">Select a component to place</span>
+          <span class="budget" id="proto-budget">$500</span>
+        </div>
+        <canvas id="proto-canvas" width="720" height="400"></canvas>
+      </div>
+      <div class="proto-sidebar">
+        <div class="proto-palette">
+          <h3>Components</h3>
+          <button class="proto-btn" data-type="client" data-cost="0">
+            <span class="swatch" style="background:var(--client)"></span>Client<span class="price">FREE</span>
+          </button>
+          <button class="proto-btn" data-type="server" data-cost="100">
+            <span class="swatch" style="background:var(--server)"></span>Server<span class="price">$100</span>
+          </button>
+          <button class="proto-btn" data-type="database" data-cost="200">
+            <span class="swatch" style="background:var(--database)"></span>Database<span class="price">$200</span>
+          </button>
+          <button class="proto-btn" data-type="cache" data-cost="150">
+            <span class="swatch" style="background:var(--cache)"></span>Cache<span class="price">$150</span>
+          </button>
+          <button class="proto-btn" data-type="lb" data-cost="175">
+            <span class="swatch" style="background:var(--lb)"></span>Load Balancer<span class="price">$175</span>
+          </button>
+        </div>
+        <button class="proto-sim" id="proto-sim-btn">▶ SIMULATE</button>
+        <button class="proto-reset" id="proto-reset-btn">↻ Clear Board</button>
+        <div class="proto-stats">
+          <h3>Live Stats</h3>
+          <div class="stat-row"><span class="stat-label">Resolved</span><span class="stat-val good" id="stat-resolved">—</span></div>
+          <div class="stat-row"><span class="stat-label">Dropped</span><span class="stat-val" id="stat-dropped">—</span></div>
+          <div class="stat-row"><span class="stat-label">Avg Latency</span><span class="stat-val" id="stat-latency">—</span></div>
+          <div class="stat-row"><span class="stat-label">Throughput</span><span class="stat-val" id="stat-throughput">—</span></div>
+        </div>
+        <div class="proto-hint">Tip: Place a Client first, then Server, then connect them.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WAVE CHALLENGE -->
+<section id="waves">
+  <div class="section-inner">
+    <div class="section-header reveal">
+      <span class="tag">The Learning Arc</span>
+      <h2>Three waves. Three <span class="gradient">lessons.</span></h2>
+      <p>Each wave teaches a new architecture concept — not through text, but through failure.</p>
+    </div>
+    <div class="wave-timeline">
+      <div class="wave-row reveal reveal-delay-1">
+        <div class="wave-badge" style="color:var(--green)"><span class="num">01</span><span class="label">Warm-up</span></div>
+        <div class="wave-content">
+          <div class="wave-viz"><canvas id="wave1-canvas"></canvas></div>
+          <div class="wave-info">
+            <h3>Simple Reads</h3>
+            <p>Just API reads. A single server handles it all. Players learn the basic flow: Client → Server → Response.</p>
+            <span class="wave-tag pass">✓ PASSED — Server holds</span>
+          </div>
+        </div>
+      </div>
+      <div class="wave-row reveal reveal-delay-2">
+        <div class="wave-badge" style="color:var(--yellow)"><span class="num">02</span><span class="label">Escalation</span></div>
+        <div class="wave-content">
+          <div class="wave-viz"><canvas id="wave2-canvas"></canvas></div>
+          <div class="wave-info">
+            <h3>Mixed Traffic</h3>
+            <p>Reads AND writes arrive. The server alone can't persist data. Players discover they need a Database.</p>
+            <span class="wave-tag learn">↗ LESSON — Add persistence</span>
+          </div>
+        </div>
+      </div>
+      <div class="wave-row reveal reveal-delay-3">
+        <div class="wave-badge" style="color:var(--red)"><span class="num">03</span><span class="label">Traffic Spike</span></div>
+        <div class="wave-content">
+          <div class="wave-viz"><canvas id="wave3-canvas"></canvas></div>
+          <div class="wave-info">
+            <h3>The Spike</h3>
+            <p>Traffic triples. The server overloads and drops requests. Players must add a Cache or Load Balancer to survive.</p>
+            <span class="wave-tag fail">✗ FAILED — without scaling</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="section-inner">
+    <div class="section-header reveal">
+      <span class="tag">Design Philosophy</span>
+      <h2>Not another <span class="gradient">tutorial.</span></h2>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card reveal reveal-delay-1">
+        <div class="feature-icon" style="background:rgba(34,211,238,.1);color:var(--cyan)">{}</div>
+        <h3>Real Terminology</h3>
+        <p>It's a "cache," not a "memory helper." Real words connect to every tutorial and job posting outside the game.</p>
+        <div class="mono">cache · load_balancer · queue · cdn · circuit_breaker</div>
+      </div>
+      <div class="feature-card reveal reveal-delay-2">
+        <div class="feature-icon" style="background:rgba(239,68,68,.1);color:var(--red)">?!</div>
+        <h3>Wrong Intuitions on Purpose</h3>
+        <p>Caches don't always help. Load balancers aren't always the answer. Queues trade latency for throughput. Discover real tradeoffs.</p>
+        <div class="mono">Wave 5: adding a cache makes latency WORSE</div>
+      </div>
+      <div class="feature-card reveal reveal-delay-3">
+        <div class="feature-icon" style="background:rgba(234,179,8,.1);color:var(--yellow)">⚖</div>
+        <h3>Multi-Axis Scoring</h3>
+        <p>Cost vs. performance vs. reliability. The best architecture is the cheapest one that survives the worst-case load.</p>
+        <div class="mono">$500 budget · 95% SLA · &lt;200ms p99 latency</div>
+      </div>
+      <div class="feature-card reveal reveal-delay-4">
+        <div class="feature-icon" style="background:rgba(99,102,241,.1);color:var(--accent-glow)">🚀</div>
+        <h3>KSP for Backend Engineering</h3>
+        <p>KSP doesn't teach aerospace engineering — but after playing, every orbital mechanics concept has an experiential anchor. We do the same for system architecture.</p>
+        <div class="mono">play first → understand later → never forget</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section id="cta">
+  <div class="cta-content">
+    <h2 class="cta-title reveal">Ready to <span style="color:var(--accent-glow)">Defend?</span></h2>
+    <button class="cta-button reveal reveal-delay-1" onclick="document.getElementById('prototype').scrollIntoView({behavior:'smooth'})">Launch Stack Attack →</button>
+    <p class="cta-sub reveal reveal-delay-2">Strategy game first. The learning is the surprise.</p>
+  </div>
+</section>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════════════
+const COLORS = {
+  bg:'#0a0c14', surface:'#141824', border:'#2a3050',
+  text:'#e8ecf8', dim:'#7882a4', faint:'#4a5270',
+  accent:'#6366f1', accentGlow:'#818cf8', green:'#22c55e',
+  red:'#ef4444', yellow:'#eab308', orange:'#f97316', cyan:'#22d3ee',
+  server:'#4A90D9', database:'#7B68EE', cache:'#F5A623', lb:'#50C878', client:'#94a3b8'
+};
+function lerp(a,b,t){return a+(b-a)*t}
+function hexToRgb(h){const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);return{r,g,b}}
+function rgbStr({r,g,b},a=1){return a<1?`rgba(${r},${g},${b},${a})`:`rgb(${r},${g},${b})`}
+function utilColor(u){
+  const c = u < .5
+    ? {r:lerp(34,234,u*2),g:lerp(197,179,u*2),b:lerp(94,8,u*2)}
+    : {r:lerp(234,239,(u-.5)*2),g:lerp(179,68,(u-.5)*2),b:lerp(8,68,(u-.5)*2)};
+  return rgbStr(c);
+}
+
+// ═══════════════════════════════════════════════════════
+//  INTERSECTION OBSERVER
+// ═══════════════════════════════════════════════════════
+const obs = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); });
+},{threshold:.15});
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+
+// ═══════════════════════════════════════════════════════
+//  TYPING EFFECT
+// ═══════════════════════════════════════════════════════
+const phrases = [
+  'Traffic is the enemy. Infrastructure is your weapon.',
+  'Caches don\'t always help. Discover why.',
+  'Deploy. Observe. Iterate. Survive.',
+  'The best architecture is the cheapest one that holds.'
+];
+let phraseIdx=0, charIdx=0, deleting=false;
+const typedEl = document.getElementById('typed-text');
+function typeLoop(){
+  const phrase = phrases[phraseIdx];
+  if(!deleting){
+    typedEl.textContent = phrase.slice(0, ++charIdx);
+    if(charIdx === phrase.length){ deleting = true; setTimeout(typeLoop, 2200); return; }
+    setTimeout(typeLoop, 45 + Math.random()*30);
+  } else {
+    typedEl.textContent = phrase.slice(0, --charIdx);
+    if(charIdx === 0){ deleting = false; phraseIdx = (phraseIdx+1) % phrases.length; setTimeout(typeLoop, 400); return; }
+    setTimeout(typeLoop, 22);
+  }
+}
+setTimeout(typeLoop, 1500);
+
+// ═══════════════════════════════════════════════════════
+//  HERO PARTICLE CANVAS
+// ═══════════════════════════════════════════════════════
+(function heroParticles(){
+  const c = document.getElementById('hero-canvas');
+  const ctx = c.getContext('2d');
+  let W, H;
+  function resize(){ W = c.width = c.offsetWidth; H = c.height = c.offsetHeight; }
+  resize(); window.addEventListener('resize', resize);
+
+  // Particles: flowing request dots
+  const particles = [];
+  const COMP_SHAPES = [
+    {x:.2,y:.35,color:COLORS.server,w:36,h:28,type:'rect'},
+    {x:.5,y:.55,color:COLORS.database,w:28,h:34,type:'cyl'},
+    {x:.75,y:.3,color:COLORS.cache,w:26,h:26,type:'dia'},
+    {x:.35,y:.7,color:COLORS.lb,w:30,h:26,type:'hex'},
+    {x:.8,y:.65,color:COLORS.server,w:36,h:28,type:'rect'},
+    {x:.15,y:.6,color:COLORS.client,w:22,h:22,type:'circle'},
+  ];
+
+  function spawnParticle(){
+    const from = COMP_SHAPES[Math.floor(Math.random()*COMP_SHAPES.length)];
+    const to = COMP_SHAPES[Math.floor(Math.random()*COMP_SHAPES.length)];
+    if(from === to) return;
+    particles.push({
+      x: from.x*W, y: from.y*H,
+      tx: to.x*W, ty: to.y*H,
+      t: 0, speed: .003 + Math.random()*.004,
+      color: Math.random()>.5 ? COLORS.cyan : COLORS.orange,
+      size: 2 + Math.random()*2
+    });
+  }
+
+  function drawShape(s){
+    const x=s.x*W, y=s.y*H;
+    ctx.globalAlpha = .08;
+    ctx.fillStyle = s.color;
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = .12;
+    if(s.type==='rect'){ctx.fillRect(x-s.w/2,y-s.h/2,s.w,s.h);ctx.strokeRect(x-s.w/2,y-s.h/2,s.w,s.h);}
+    else if(s.type==='circle'){ctx.beginPath();ctx.arc(x,y,s.w/2,0,Math.PI*2);ctx.fill();ctx.stroke();}
+    else if(s.type==='dia'){ctx.beginPath();ctx.moveTo(x,y-s.h/2);ctx.lineTo(x+s.w/2,y);ctx.lineTo(x,y+s.h/2);ctx.lineTo(x-s.w/2,y);ctx.closePath();ctx.fill();ctx.stroke();}
+    else if(s.type==='hex'){ctx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/6;ctx.lineTo(x+Math.cos(a)*s.w/2,y+Math.sin(a)*s.w/2);}ctx.closePath();ctx.fill();ctx.stroke();}
+    else if(s.type==='cyl'){ctx.fillRect(x-s.w/2,y-s.h/4,s.w,s.h/2);ctx.beginPath();ctx.ellipse(x,y-s.h/4,s.w/2,8,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(x,y+s.h/4,s.w/2,8,0,0,Math.PI*2);ctx.fill();}
+    ctx.globalAlpha = 1;
+  }
+
+  // Connection lines between shapes
+  function drawLines(){
+    ctx.strokeStyle = COLORS.border;
+    ctx.lineWidth = .5;
+    ctx.globalAlpha = .15;
+    for(let i=0;i<COMP_SHAPES.length;i++){
+      for(let j=i+1;j<COMP_SHAPES.length;j++){
+        const a=COMP_SHAPES[i],b=COMP_SHAPES[j];
+        const dist = Math.hypot(a.x-b.x,a.y-b.y);
+        if(dist < .45){
+          ctx.beginPath();ctx.moveTo(a.x*W,a.y*H);ctx.lineTo(b.x*W,b.y*H);ctx.stroke();
+        }
+      }
+    }
+    ctx.globalAlpha=1;
+  }
+
+  function animate(){
+    ctx.clearRect(0,0,W,H);
+
+    // Radial gradient background
+    const grad = ctx.createRadialGradient(W*.5,H*.45,0,W*.5,H*.45,W*.6);
+    grad.addColorStop(0,'rgba(99,102,241,.04)');
+    grad.addColorStop(1,'transparent');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,W,H);
+
+    // Grid
+    ctx.strokeStyle = 'rgba(42,48,80,.12)';
+    ctx.lineWidth = .5;
+    const gs = 50;
+    for(let x=0;x<W;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for(let y=0;y<H;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+    drawLines();
+    COMP_SHAPES.forEach(drawShape);
+
+    if(Math.random()<.15) spawnParticle();
+    for(let i=particles.length-1;i>=0;i--){
+      const p = particles[i];
+      p.t += p.speed;
+      if(p.t >= 1){ particles.splice(i,1); continue; }
+      p.x = lerp(p.x, p.tx, p.speed*1.5);
+      p.y = lerp(p.y, p.ty, p.speed*1.5);
+      ctx.globalAlpha = Math.sin(p.t * Math.PI) * .7;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+      ctx.fill();
+      // Trail
+      ctx.globalAlpha *= .3;
+      ctx.beginPath();
+      ctx.arc(p.x - (p.tx-p.x)*.02, p.y - (p.ty-p.y)*.02, p.size*.7, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(animate);
+  }
+  animate();
+})();
+
+// ═══════════════════════════════════════════════════════
+//  PROBLEM SECTION CANVAS — animated game topology
+// ═══════════════════════════════════════════════════════
+(function problemCanvas(){
+  const c = document.getElementById('problem-canvas');
+  const ctx = c.getContext('2d');
+  c.width = 500; c.height = 340;
+  const W=500,H=340;
+
+  const nodes = [
+    {x:80,y:170,type:'client',label:'Client',util:0},
+    {x:220,y:80,type:'lb',label:'Load Balancer',util:0},
+    {x:220,y:260,type:'cache',label:'Cache',util:0},
+    {x:370,y:120,type:'server',label:'Server',util:0},
+    {x:370,y:220,type:'server',label:'Server 2',util:0},
+    {x:460,y:170,type:'database',label:'Database',util:0},
+  ];
+  const edges = [[0,1],[0,2],[1,3],[1,4],[3,5],[4,5]];
+  const dots = [];
+
+  function drawNode(n){
+    const col = n.util > 0 ? utilColor(n.util) : COLORS[n.type] || COLORS.server;
+    ctx.fillStyle = col;
+    ctx.globalAlpha = .85;
+    if(n.type==='client'){ctx.beginPath();ctx.arc(n.x,n.y,14,0,Math.PI*2);ctx.fill();}
+    else if(n.type==='server'){ctx.fillRect(n.x-18,n.y-13,36,26);ctx.strokeStyle=col;ctx.lineWidth=1;ctx.globalAlpha=.4;ctx.strokeRect(n.x-18,n.y-13,36,26);}
+    else if(n.type==='database'){ctx.fillRect(n.x-14,n.y-8,28,16);ctx.beginPath();ctx.ellipse(n.x,n.y-8,14,6,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(n.x,n.y+8,14,6,0,0,Math.PI*2);ctx.fill();}
+    else if(n.type==='cache'){ctx.beginPath();ctx.moveTo(n.x,n.y-15);ctx.lineTo(n.x+15,n.y);ctx.lineTo(n.x,n.y+15);ctx.lineTo(n.x-15,n.y);ctx.closePath();ctx.fill();}
+    else if(n.type==='lb'){ctx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/6;ctx.lineTo(n.x+Math.cos(a)*16,n.y+Math.sin(a)*16);}ctx.closePath();ctx.fill();}
+    ctx.globalAlpha=1;
+    ctx.fillStyle = COLORS.text;
+    ctx.font = '500 10px "JetBrains Mono",monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(n.label, n.x, n.y+28);
+  }
+
+  let tick = 0;
+  function animate(){
+    ctx.clearRect(0,0,W,H);
+    // Grid
+    ctx.strokeStyle = 'rgba(42,48,80,.2)';
+    ctx.lineWidth = .5;
+    for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+    // Edges
+    ctx.strokeStyle = COLORS.green;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = .3;
+    edges.forEach(([a,b])=>{ctx.beginPath();ctx.moveTo(nodes[a].x,nodes[a].y);ctx.lineTo(nodes[b].x,nodes[b].y);ctx.stroke();});
+    ctx.globalAlpha = 1;
+
+    // Spawn dots
+    tick++;
+    if(tick%18===0){
+      const edge = edges[Math.floor(Math.random()*edges.length)];
+      dots.push({from:edge[0],to:edge[1],t:0,color:Math.random()>.4?COLORS.cyan:COLORS.orange});
+    }
+    // Update utilization
+    nodes.forEach(n=>n.util=.15+Math.sin(tick*.03+nodes.indexOf(n))*.25+.25);
+
+    // Animate dots
+    for(let i=dots.length-1;i>=0;i--){
+      const d=dots[i];
+      d.t+=.02;
+      if(d.t>=1){
+        // Shockwave
+        const tn=nodes[d.to];
+        tn.util=Math.min(1,tn.util+.15);
+        dots.splice(i,1);continue;
+      }
+      const a=nodes[d.from],b=nodes[d.to];
+      const x=lerp(a.x,b.x,d.t),y=lerp(a.y,b.y,d.t);
+      ctx.fillStyle=d.color;
+      ctx.globalAlpha=Math.sin(d.t*Math.PI);
+      ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=1;
+    }
+
+    nodes.forEach(drawNode);
+    requestAnimationFrame(animate);
+  }
+  animate();
+})();
+
+// ═══════════════════════════════════════════════════════
+//  STEP CANVASES (Build, Watch, Assess)
+// ═══════════════════════════════════════════════════════
+function initStepCanvases(){
+  // BUILD canvas — ghost placement animation
+  (function(){
+    const c=document.getElementById('step-build-canvas');
+    if(!c)return;
+    const ctx=c.getContext('2d');
+    const W=c.width=c.parentElement.offsetWidth;
+    const H=c.height=c.parentElement.offsetHeight;
+    const gs=40;
+    let ghost={x:3,y:1,type:'server',opacity:0,placed:false};
+    let placedComps=[{x:1,y:1,type:'client',color:COLORS.client}];
+    let tick=0,phase=0;
+    const sequence=[
+      {x:3,y:1,type:'server',color:COLORS.server},
+      {x:5,y:2,type:'database',color:COLORS.database},
+    ];
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle=COLORS.bg;ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle='rgba(42,48,80,.3)';ctx.lineWidth=.5;
+      for(let x=0;x<W;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+      for(let y=0;y<H;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+      placedComps.forEach(p=>{
+        ctx.fillStyle=p.color;ctx.globalAlpha=.8;
+        const px=p.x*gs+gs/2,py=p.y*gs+gs/2;
+        if(p.type==='client'){ctx.beginPath();ctx.arc(px,py,12,0,Math.PI*2);ctx.fill();}
+        else{ctx.fillRect(px-16,py-12,32,24);}
+        ctx.globalAlpha=1;
+        ctx.fillStyle=COLORS.text;ctx.font='500 9px "JetBrains Mono",monospace';ctx.textAlign='center';
+        ctx.fillText(p.type,px,py+24);
+      });
+      tick++;
+      if(phase<sequence.length){
+        const s=sequence[phase];
+        const a=Math.sin(tick*.08)*.15+.35;
+        ctx.fillStyle=s.color;ctx.globalAlpha=a;
+        const px=s.x*gs+gs/2,py=s.y*gs+gs/2;
+        ctx.fillRect(px-16,py-12,32,24);
+        ctx.globalAlpha=1;
+        ctx.strokeStyle=COLORS.accent;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+        ctx.strokeRect(px-16,py-12,32,24);ctx.setLineDash([]);
+        if(tick%120===0){placedComps.push({...s});phase++;tick=0;}
+      }
+      requestAnimationFrame(draw);
+    }
+    draw();
+  })();
+
+  // WATCH canvas — flowing dots
+  (function(){
+    const c=document.getElementById('step-watch-canvas');
+    if(!c)return;
+    const ctx=c.getContext('2d');
+    const W=c.width=c.parentElement.offsetWidth;
+    const H=c.height=c.parentElement.offsetHeight;
+    const nodes=[{x:40,y:H/2,color:COLORS.client,util:0},{x:W*.4,y:H/2,color:COLORS.server,util:0},{x:W*.75,y:H/2,color:COLORS.database,util:0}];
+    const dots=[];
+    let tick=0;
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle=COLORS.bg;ctx.fillRect(0,0,W,H);
+      // Lines
+      ctx.strokeStyle=COLORS.green;ctx.lineWidth=2;ctx.globalAlpha=.3;
+      ctx.beginPath();ctx.moveTo(nodes[0].x,nodes[0].y);ctx.lineTo(nodes[1].x,nodes[1].y);ctx.lineTo(nodes[2].x,nodes[2].y);ctx.stroke();
+      ctx.globalAlpha=1;
+      tick++;
+      if(tick%12===0) dots.push({seg:0,t:0,color:Math.random()>.5?COLORS.cyan:COLORS.orange});
+      nodes[1].util=.3+Math.sin(tick*.04)*.3;
+      nodes[2].util=.2+Math.sin(tick*.03+1)*.25;
+      for(let i=dots.length-1;i>=0;i--){
+        const d=dots[i];
+        d.t+=.025;
+        if(d.t>=1){if(d.seg<1){d.seg++;d.t=0;}else{dots.splice(i,1);continue;}}
+        const a=nodes[d.seg],b=nodes[d.seg+1];
+        const x=lerp(a.x,b.x,d.t),y=lerp(a.y,b.y,d.t);
+        ctx.fillStyle=d.color;ctx.globalAlpha=.8;
+        ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+      }
+      nodes.forEach(n=>{
+        ctx.fillStyle=n.util>0?utilColor(n.util):n.color;ctx.globalAlpha=.85;
+        ctx.beginPath();ctx.arc(n.x,n.y,14,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+      });
+      requestAnimationFrame(draw);
+    }
+    draw();
+  })();
+
+  // ASSESS canvas — stats
+  (function(){
+    const c=document.getElementById('step-assess-canvas');
+    if(!c)return;
+    const ctx=c.getContext('2d');
+    const W=c.width=c.parentElement.offsetWidth;
+    const H=c.height=c.parentElement.offsetHeight;
+    let tick=0;
+    const stats=[
+      {label:'Resolved',value:847,color:COLORS.green,current:0},
+      {label:'Dropped',value:12,color:COLORS.red,current:0},
+      {label:'Latency',value:42,color:COLORS.cyan,current:0,suffix:'ms'},
+    ];
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle=COLORS.bg;ctx.fillRect(0,0,W,H);
+      tick++;
+      const progress=Math.min(1,tick/90);
+      const eased=1-Math.pow(1-progress,3);
+      stats.forEach((s,i)=>{
+        const y=30+i*50;
+        s.current=Math.round(s.value*eased);
+        ctx.fillStyle=COLORS.dim;ctx.font='500 11px "JetBrains Mono",monospace';ctx.textAlign='left';
+        ctx.globalAlpha=eased;
+        ctx.fillText(s.label,20,y);
+        ctx.fillStyle=s.color;ctx.font='700 22px "Chakra Petch",sans-serif';
+        ctx.fillText(s.current+(s.suffix||''),20,y+28);
+        // Bar
+        const barW=(W-40)*Math.min(1,s.current/900);
+        ctx.fillStyle=s.color;ctx.globalAlpha=.15*eased;
+        ctx.fillRect(20,y+34,barW,4);
+        ctx.globalAlpha=1;
+      });
+      // Wave result
+      if(progress>.7){
+        const a2=Math.min(1,(progress-.7)/.3);
+        ctx.globalAlpha=a2;
+        ctx.fillStyle=COLORS.green;ctx.font='700 16px "Chakra Petch",sans-serif';ctx.textAlign='center';
+        ctx.fillText('✓ WAVE PASSED',W/2,H-20);
+        ctx.globalAlpha=1;
+      }
+      if(tick<200)requestAnimationFrame(draw);else{tick=0;stats.forEach(s=>s.current=0);requestAnimationFrame(draw);}
+    }
+    draw();
+  })();
+}
+// Delay init until elements are sized
+setTimeout(initStepCanvases, 200);
+window.addEventListener('resize', ()=>{clearTimeout(window._stepResize);window._stepResize=setTimeout(initStepCanvases,300);});
+
+// ═══════════════════════════════════════════════════════
+//  WAVE CANVASES
+// ═══════════════════════════════════════════════════════
+function initWaveCanvases(){
+  function waveCanvas(id, layout, edgeList, intensity, fail){
+    const c=document.getElementById(id);
+    if(!c)return;
+    const ctx=c.getContext('2d');
+    const W=c.width=c.parentElement.offsetWidth;
+    const H=c.height=c.parentElement.offsetHeight;
+    const nodes=layout.map(n=>({...n,x:n.x*W,y:n.y*H,util:0}));
+    const dots=[];
+    let tick=0;
+    function draw(){
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle='#0e1018';ctx.fillRect(0,0,W,H);
+      // edges
+      ctx.strokeStyle=fail?'rgba(239,68,68,.2)':'rgba(34,197,94,.2)';ctx.lineWidth=1.5;
+      edgeList.forEach(([a,b])=>{ctx.beginPath();ctx.moveTo(nodes[a].x,nodes[a].y);ctx.lineTo(nodes[b].x,nodes[b].y);ctx.stroke();});
+      tick++;
+      if(tick%Math.max(4,20-intensity*3)===0){
+        const e=edgeList[0];
+        dots.push({seg:0,t:0,color:Math.random()>.6?COLORS.orange:COLORS.cyan});
+      }
+      nodes.forEach((n,i)=>{if(i>0)n.util=Math.min(1,.15+intensity*.08+Math.sin(tick*.05+i)*.2);});
+      // dots along full path
+      for(let i=dots.length-1;i>=0;i--){
+        const d=dots[i];
+        d.t+=.03;
+        if(d.t>=1){
+          if(d.seg<edgeList.length-1){d.seg++;d.t=0;}
+          else{
+            if(fail&&Math.random()>.5){
+              const ln=nodes[nodes.length-1];
+              // Red flash
+              ctx.fillStyle=COLORS.red;ctx.globalAlpha=.3;
+              ctx.beginPath();ctx.arc(ln.x,ln.y,20,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+            }
+            dots.splice(i,1);continue;
+          }
+        }
+        const e=edgeList[d.seg];
+        const a=nodes[e[0]],b=nodes[e[1]];
+        const x=lerp(a.x,b.x,d.t),y=lerp(a.y,b.y,d.t);
+        ctx.fillStyle=fail&&d.t>.8&&d.seg===edgeList.length-1?COLORS.red:d.color;
+        ctx.globalAlpha=.8;
+        ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+      }
+      nodes.forEach(n=>{
+        const col=n.util>0?utilColor(n.util):(COLORS[n.type]||COLORS.server);
+        ctx.fillStyle=col;ctx.globalAlpha=.85;
+        ctx.beginPath();ctx.arc(n.x,n.y,10,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+        ctx.fillStyle=COLORS.text;ctx.font='500 8px "JetBrains Mono",monospace';ctx.textAlign='center';
+        ctx.fillText(n.label,n.x,n.y+18);
+      });
+      if(fail){
+        ctx.fillStyle=COLORS.red;ctx.globalAlpha=.06+Math.sin(tick*.1)*.04;
+        ctx.fillRect(0,0,W,H);ctx.globalAlpha=1;
+      }
+      requestAnimationFrame(draw);
+    }
+    draw();
+  }
+
+  waveCanvas('wave1-canvas',
+    [{x:.15,y:.5,type:'client',label:'Client'},{x:.65,y:.5,type:'server',label:'Server'}],
+    [[0,1]], 2, false
+  );
+  waveCanvas('wave2-canvas',
+    [{x:.1,y:.5,type:'client',label:'Client'},{x:.45,y:.5,type:'server',label:'Server'},{x:.8,y:.5,type:'database',label:'DB'}],
+    [[0,1],[1,2]], 4, false
+  );
+  waveCanvas('wave3-canvas',
+    [{x:.1,y:.5,type:'client',label:'Client'},{x:.55,y:.5,type:'server',label:'Server'}],
+    [[0,1]], 9, true
+  );
+}
+setTimeout(initWaveCanvases, 300);
+
+// ═══════════════════════════════════════════════════════
+//  INTERACTIVE PROTOTYPE
+// ═══════════════════════════════════════════════════════
+(function prototype(){
+  const canvas = document.getElementById('proto-canvas');
+  const ctx = canvas.getContext('2d');
+  const CELL = 60;
+  const COLS = 12, ROWS = 6;
+  canvas.width = COLS * CELL;
+  canvas.height = ROWS * CELL + 40; // +40 for status bar offset
+  const OY = 40; // offset for status bar
+
+  const typeColors = {client:COLORS.client,server:COLORS.server,database:COLORS.database,cache:COLORS.cache,lb:COLORS.lb};
+  const typeLabels = {client:'Client',server:'Server',database:'Database',cache:'Cache',lb:'LB'};
+
+  let budget = 500;
+  let components = [];
+  let connections = [];
+  let selectedType = null;
+  let connectFrom = null;
+  let simulating = false;
+  let simDots = [];
+  let simTick = 0;
+  let stats = {resolved:0,dropped:0,latency:[],throughput:0};
+  let hoverCell = null;
+  let mousePos = {x:0,y:0}; // raw canvas coords for connection preview line
+
+  const msgEl = document.getElementById('proto-msg');
+  const budgetEl = document.getElementById('proto-budget');
+  const statusBar = document.querySelector('.proto-status');
+  const simBtn = document.getElementById('proto-sim-btn');
+  const resetBtn = document.getElementById('proto-reset-btn');
+
+  function setConnecting(on){ statusBar.classList.toggle('connecting', on); }
+
+  function updateBudget(){
+    budgetEl.textContent = '$'+budget;
+    budgetEl.className = 'budget'+(budget<100?' low':'')+(budget<=0?' empty':'');
+    // Disable buttons that cost more than budget
+    document.querySelectorAll('.proto-btn').forEach(b=>{
+      const cost = parseInt(b.dataset.cost);
+      if(cost > budget && cost > 0) b.classList.add('disabled');
+      else b.classList.remove('disabled');
+    });
+  }
+
+  function compAt(col,row){return components.find(c=>c.col===col&&c.row===row);}
+
+  function drawGrid(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = COLORS.bg;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(42,48,80,.3)';
+    ctx.lineWidth = .5;
+    for(let x=0;x<=COLS;x++){ctx.beginPath();ctx.moveTo(x*CELL,OY);ctx.lineTo(x*CELL,ROWS*CELL+OY);ctx.stroke();}
+    for(let y=0;y<=ROWS;y++){ctx.beginPath();ctx.moveTo(0,y*CELL+OY);ctx.lineTo(COLS*CELL,y*CELL+OY);ctx.stroke();}
+
+    // Hover cell
+    if(hoverCell && selectedType && !simulating){
+      const existing = compAt(hoverCell.col,hoverCell.row);
+      if(!existing){
+        ctx.fillStyle = typeColors[selectedType];
+        ctx.globalAlpha = .15;
+        ctx.fillRect(hoverCell.col*CELL+1, hoverCell.row*CELL+OY+1, CELL-2, CELL-2);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Connections
+    connections.forEach(cn=>{
+      const a=cn.from,b=cn.to;
+      const ax=a.col*CELL+CELL/2,ay=a.row*CELL+CELL/2+OY;
+      const bx=b.col*CELL+CELL/2,by=b.row*CELL+CELL/2+OY;
+      const load = simulating ? .4+Math.sin(simTick*.05+connections.indexOf(cn))*.3 : .3;
+      ctx.strokeStyle = COLORS.green;
+      ctx.lineWidth = simulating ? 2+load*2.5 : 2;
+      ctx.globalAlpha = simulating ? .4+load*.5 : .5;
+      ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke();
+      // Arrow head
+      const angle=Math.atan2(by-ay,bx-ax);
+      const ahl=10;
+      ctx.beginPath();
+      ctx.moveTo(bx-Math.cos(angle-Math.PI/6)*ahl,by-Math.sin(angle-Math.PI/6)*ahl);
+      ctx.lineTo(bx,by);
+      ctx.lineTo(bx-Math.cos(angle+Math.PI/6)*ahl,by-Math.sin(angle+Math.PI/6)*ahl);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+
+    // Connection preview line (dashed, from source to cursor)
+    if(connectFrom && !simulating){
+      const ax=connectFrom.col*CELL+CELL/2,ay=connectFrom.row*CELL+CELL/2+OY;
+      ctx.strokeStyle = COLORS.accent;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = .6;
+      ctx.setLineDash([6,4]);
+      ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(mousePos.x,mousePos.y);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+
+    // Sim dots
+    simDots.forEach(d=>{
+      const cn=connections[d.connIdx];
+      if(!cn)return;
+      const a=cn.from,b=cn.to;
+      const ax=a.col*CELL+CELL/2,ay=a.row*CELL+CELL/2+OY;
+      const bx=b.col*CELL+CELL/2,by=b.row*CELL+CELL/2+OY;
+      const x=lerp(ax,bx,d.t),y=lerp(ay,by,d.t);
+      ctx.fillStyle=d.color;
+      ctx.globalAlpha=Math.sin(d.t*Math.PI)*.9;
+      ctx.beginPath();ctx.arc(x,y,3.5,0,Math.PI*2);ctx.fill();
+      // glow
+      ctx.globalAlpha*=.3;
+      ctx.beginPath();ctx.arc(x,y,7,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=1;
+    });
+
+    // Components
+    components.forEach(comp=>{
+      const cx=comp.col*CELL+CELL/2, cy=comp.row*CELL+CELL/2+OY;
+      const col = simulating && comp.util!==undefined ? utilColor(comp.util) : typeColors[comp.type];
+
+      ctx.fillStyle = col;
+      ctx.globalAlpha = .9;
+      if(comp.type==='client'){ctx.beginPath();ctx.arc(cx,cy,14,0,Math.PI*2);ctx.fill();}
+      else if(comp.type==='server'){ctx.fillRect(cx-18,cy-13,36,26);}
+      else if(comp.type==='database'){
+        ctx.fillRect(cx-14,cy-6,28,14);
+        ctx.beginPath();ctx.ellipse(cx,cy-6,14,5,0,0,Math.PI*2);ctx.fill();
+        ctx.beginPath();ctx.ellipse(cx,cy+8,14,5,0,0,Math.PI*2);ctx.fill();
+      }
+      else if(comp.type==='cache'){
+        ctx.beginPath();ctx.moveTo(cx,cy-16);ctx.lineTo(cx+16,cy);ctx.lineTo(cx,cy+16);ctx.lineTo(cx-16,cy);ctx.closePath();ctx.fill();
+      }
+      else if(comp.type==='lb'){
+        ctx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/6;ctx.lineTo(cx+Math.cos(a)*16,cy+Math.sin(a)*16);}ctx.closePath();ctx.fill();
+      }
+      ctx.globalAlpha=1;
+
+      // Selection ring
+      if(connectFrom === comp){
+        ctx.strokeStyle=COLORS.green;ctx.lineWidth=2;
+        ctx.beginPath();ctx.arc(cx,cy,22,0,Math.PI*2);ctx.stroke();
+      }
+
+      // Label
+      ctx.fillStyle=COLORS.text;ctx.font='600 9px "JetBrains Mono",monospace';ctx.textAlign='center';
+      ctx.fillText(typeLabels[comp.type],cx,cy+28);
+
+      // Utilization bar
+      if(simulating && comp.util!==undefined && comp.type!=='client'){
+        const bw=30, bh=3;
+        ctx.fillStyle='rgba(42,48,80,.5)';ctx.fillRect(cx-bw/2,cy-22,bw,bh);
+        ctx.fillStyle=utilColor(comp.util);ctx.fillRect(cx-bw/2,cy-22,bw*comp.util,bh);
+      }
+    });
+  }
+
+  function getCell(e){
+    const rect=canvas.getBoundingClientRect();
+    const sx=canvas.width/rect.width, sy=canvas.height/rect.height;
+    const mx=(e.clientX-rect.left)*sx, my=(e.clientY-rect.top)*sy;
+    const col=Math.floor(mx/CELL), row=Math.floor((my-OY)/CELL);
+    if(col<0||col>=COLS||row<0||row>=ROWS) return null;
+    return {col,row};
+  }
+
+  canvas.addEventListener('mousemove', e=>{
+    hoverCell = getCell(e);
+    const rect=canvas.getBoundingClientRect();
+    const sx=canvas.width/rect.width, sy=canvas.height/rect.height;
+    mousePos.x=(e.clientX-rect.left)*sx;
+    mousePos.y=(e.clientY-rect.top)*sy;
+    // Update cursor: pointer when hovering a component, crosshair otherwise
+    if(hoverCell && compAt(hoverCell.col,hoverCell.row)){
+      canvas.style.cursor='pointer';
+    } else if(selectedType){
+      canvas.style.cursor='crosshair';
+    } else {
+      canvas.style.cursor='default';
+    }
+  });
+
+  canvas.addEventListener('click', e=>{
+    if(simulating) return;
+    const cell = getCell(e);
+    if(!cell) return;
+    const existing = compAt(cell.col, cell.row);
+
+    if(connectFrom){
+      if(existing && existing !== connectFrom){
+        // Complete connection
+        const dup = connections.find(c=>(c.from===connectFrom&&c.to===existing)||(c.from===existing&&c.to===connectFrom));
+        if(!dup){
+          connections.push({from:connectFrom, to:existing});
+          msgEl.textContent = `Connected ${typeLabels[connectFrom.type]} → ${typeLabels[existing.type]}. Click another component to connect more.`;
+        }
+        connectFrom = null; setConnecting(false);
+      } else if(existing === connectFrom){
+        connectFrom = null; setConnecting(false);
+        msgEl.textContent = 'Connection cancelled. Click a component to start connecting.';
+      } else {
+        msgEl.textContent = `Still connecting from ${typeLabels[connectFrom.type]} — click a component (not empty space). Press Esc to cancel.`;
+      }
+      return;
+    }
+
+    if(existing){
+      connectFrom = existing; setConnecting(true);
+      selectedType = null;
+      document.querySelectorAll('.proto-btn').forEach(b=>b.classList.remove('active'));
+      msgEl.textContent = `Connecting from ${typeLabels[existing.type]} — click another component to wire them`;
+      return;
+    }
+
+    if(selectedType){
+      const cost = selectedType==='client'?0:selectedType==='server'?100:selectedType==='database'?200:selectedType==='cache'?150:175;
+      if(budget < cost){msgEl.textContent='Not enough budget!';return;}
+      budget -= cost;
+      updateBudget();
+      components.push({col:cell.col, row:cell.row, type:selectedType, util:0});
+      msgEl.textContent = `Placed ${typeLabels[selectedType]}. Click another component to connect, or place more.`;
+    }
+  });
+
+  // Escape to cancel connection
+  document.addEventListener('keydown', e=>{
+    if(e.key==='Escape' && connectFrom){
+      connectFrom = null; setConnecting(false);
+      msgEl.textContent = 'Connection cancelled. Click a component to connect, or select from palette to place.';
+    }
+  });
+
+  // Palette buttons
+  document.querySelectorAll('.proto-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      if(simulating)return;
+      document.querySelectorAll('.proto-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedType = btn.dataset.type;
+      connectFrom = null; setConnecting(false);
+      msgEl.textContent = `Placing ${typeLabels[selectedType]} — click an empty cell`;
+    });
+  });
+
+  // Simulate
+  simBtn.addEventListener('click',()=>{
+    if(connections.length===0 && components.length<2){
+      msgEl.textContent = 'Place and connect at least 2 components first!';
+      return;
+    }
+    if(simulating){
+      simulating=false;
+      simBtn.textContent='▶ SIMULATE';
+      simBtn.classList.remove('running');
+      msgEl.textContent='Simulation stopped.';
+      components.forEach(c=>c.util=0);
+      simDots=[];
+      return;
+    }
+    simulating=true;
+    simTick=0;
+    stats={resolved:0,dropped:0,latency:[],throughput:0};
+    simBtn.textContent='■ STOP';
+    simBtn.classList.add('running');
+    msgEl.textContent='Simulating traffic...';
+  });
+
+  // Reset
+  resetBtn.addEventListener('click',()=>{
+    simulating=false;
+    components=[];connections=[];simDots=[];connectFrom=null;selectedType=null;setConnecting(false);
+    budget=500;updateBudget();
+    simBtn.textContent='▶ SIMULATE';simBtn.classList.remove('running');
+    msgEl.textContent='Board cleared. Select a component to place.';
+    document.querySelectorAll('.proto-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById('stat-resolved').textContent='—';
+    document.getElementById('stat-dropped').textContent='—';
+    document.getElementById('stat-latency').textContent='—';
+    document.getElementById('stat-throughput').textContent='—';
+  });
+
+  // Animation loop
+  function simLoop(){
+    if(simulating && connections.length > 0){
+      simTick++;
+      // Spawn dots
+      if(simTick%8===0){
+        const ci=Math.floor(Math.random()*connections.length);
+        simDots.push({connIdx:ci,t:0,color:Math.random()>.5?COLORS.cyan:COLORS.orange});
+      }
+      // Update dots
+      for(let i=simDots.length-1;i>=0;i--){
+        simDots[i].t+=.015;
+        if(simDots[i].t>=1){
+          const cn=connections[simDots[i].connIdx];
+          if(cn){
+            cn.to.util=Math.min(1,(cn.to.util||0)+.05);
+            if(cn.to.util>.85){stats.dropped++;} else {stats.resolved++;}
+            stats.latency.push(30+cn.to.util*170);
+          }
+          simDots.splice(i,1);
+        }
+      }
+      // Decay utilization
+      components.forEach(c=>{if(c.util>0)c.util=Math.max(0,c.util-.008);});
+      // Update stats display
+      stats.throughput=stats.resolved+stats.dropped;
+      document.getElementById('stat-resolved').textContent=stats.resolved;
+      document.getElementById('stat-resolved').className='stat-val good';
+      document.getElementById('stat-dropped').textContent=stats.dropped;
+      document.getElementById('stat-dropped').className='stat-val'+(stats.dropped>20?' bad':'');
+      const avgLat=stats.latency.length?Math.round(stats.latency.slice(-50).reduce((a,b)=>a+b,0)/Math.min(50,stats.latency.length)):0;
+      document.getElementById('stat-latency').textContent=avgLat+'ms';
+      document.getElementById('stat-latency').className='stat-val'+(avgLat>120?' warn':'');
+      document.getElementById('stat-throughput').textContent=stats.throughput+'/s';
+    }
+    drawGrid();
+    requestAnimationFrame(simLoop);
+  }
+  simLoop();
+  updateBudget();
+})();
+
+// ═══════════════════════════════════════════════════════
+//  AUTOPLAY CINEMATIC MODE
+// ═══════════════════════════════════════════════════════
+(function autoplay(){
+  const btn = document.getElementById('autoplay-btn');
+  let active = false;
+  let currentSection = 0;
+  const sections = ['hero','problem','how','prototype','waves','features','cta'];
+  let timer = null;
+
+  function scrollToNext(){
+    if(!active) return;
+    currentSection = (currentSection + 1) % sections.length;
+    document.getElementById(sections[currentSection]).scrollIntoView({behavior:'smooth'});
+    timer = setTimeout(scrollToNext, 5000);
+  }
+
+  btn.addEventListener('click',()=>{
+    active = !active;
+    btn.classList.toggle('active',active);
+    if(active){
+      currentSection = -1;
+      scrollToNext();
+    } else {
+      clearTimeout(timer);
+    }
+  });
+})();
+
+</script>
+</body>
+</html>
