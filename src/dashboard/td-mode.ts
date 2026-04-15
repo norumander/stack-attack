@@ -9,7 +9,7 @@ import {
   LOAD_BALANCER_ENTRY,
 } from "@modes/td/td-component-entries";
 import type { ComponentRegistryEntry } from "@core/registry/component-registry";
-import { PixiTopologyRenderer } from "./render/pixi-topology-renderer.js";
+import { createRenderer } from "./render/renderer-factory.js";
 import type {
   TopologyRenderer,
   RendererPointerEvent,
@@ -86,12 +86,13 @@ export async function createTDDashboard(args: {
   };
 
   // ─── Pixi renderer bootstrap ──────────────────────────────────────────
-  const renderer: TopologyRenderer = new PixiTopologyRenderer();
+  const renderer: TopologyRenderer = createRenderer();
   await renderer.mount(topologyContainer);
 
   // Minimal DOM status banner stacked above the canvas.
   const statusEl = document.createElement("div");
   statusEl.className = "td-status";
+  statusEl.id = "td-status";
   statusEl.style.position = "absolute";
   statusEl.style.top = "8px";
   statusEl.style.left = "8px";
@@ -253,11 +254,13 @@ export async function createTDDashboard(args: {
         dash.cursor = "idle";
         dash.connectingFromId = null;
         renderer.setSelected(null);
+        renderer.setConnectionMode(false);
         setStatusText();
       } else {
         dash.cursor = "connecting";
         dash.connectingFromId = id;
         renderer.setSelected(id);
+        renderer.setConnectionMode(true);
         showComponentInfoPanel(id, state);
         setStatusText();
         // eslint-disable-next-line no-console
@@ -306,6 +309,7 @@ export async function createTDDashboard(args: {
     paletteButtons.forEach((b) => b.classList.remove("placing"));
     renderer.setSelected(null);
     renderer.setPlacementGhost(null, null);
+    renderer.setConnectionMode(false);
     setStatusText();
   });
 
@@ -332,6 +336,37 @@ export async function createTDDashboard(args: {
     seededConnectionIds.delete(connectionId);
     args.onDisconnect?.({ connectionId, sourceId, targetId });
     setStatusText();
+  });
+
+  const unsubDragEnd = renderer.onComponentDragEnd(({ componentId, gridPosition }) => {
+    const comp = state.components.get(componentId);
+    if (!comp) return;
+
+    const revert = (): void => {
+      renderer.updateComponent(componentId, {
+        gridPosition: { x: comp.position.x, y: comp.position.y },
+      });
+    };
+
+    if (controller.getPhase() !== "build") {
+      revert();
+      return;
+    }
+    // No-op if the position didn't actually change.
+    if (comp.position.x === gridPosition.x && comp.position.y === gridPosition.y) {
+      revert();
+      return;
+    }
+    // Collision check — don't overlap other components.
+    for (const other of state.components.values()) {
+      if (other.id === componentId) continue;
+      if (other.position.x === gridPosition.x && other.position.y === gridPosition.y) {
+        revert();
+        return;
+      }
+    }
+    // Commit the move on the game model. Renderer already shows the new cell.
+    comp.position = gridPosition;
   });
 
   /**
@@ -433,6 +468,7 @@ export async function createTDDashboard(args: {
       unsubPointerDown();
       unsubPointerMove();
       unsubConnectionDown();
+      unsubDragEnd();
       renderer.destroy();
       if (statusEl.parentElement === topologyContainer) {
         topologyContainer.removeChild(statusEl);

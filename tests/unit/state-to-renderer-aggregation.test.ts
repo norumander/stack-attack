@@ -62,6 +62,8 @@ function recordingRenderer(): {
     },
     setSelected: () => {},
     setPlacementGhost: () => {},
+    setConnectionMode: () => {},
+    onComponentDragEnd: () => () => {},
     hitTest: () => null,
     screenToGrid: (x, y) => ({ x, y }),
     worldToScreen: (p) => ({ x: p.x, y: p.y }),
