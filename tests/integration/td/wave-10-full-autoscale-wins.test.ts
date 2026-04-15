@@ -265,7 +265,7 @@ describe("Wave 10 — full auto-scale (Server + Database) wins the boss wave", (
     const result = runWave(state, WAVE_10, dns.component.id);
 
     // --- Diagnostic dump on failure ---
-    if (result.outcome.verdict !== "win") {
+    if (result.terminalState !== "wave_passed") {
       console.log("=== Wave 10 Full Autoscale Diagnostic ===");
       console.log("SLA results:", JSON.stringify(result.outcome.slaResults, null, 2));
       console.log("Total:", result.totalRequests, "Dropped:", result.droppedCount, "TimedOut:", result.timedOutCount);
@@ -291,8 +291,9 @@ describe("Wave 10 — full auto-scale (Server + Database) wins the boss wave", (
       console.log("Drops by component|reason:", Object.fromEntries(dropsByComponent));
     }
 
-    // 1. Verdict is "win"
-    expect(result.outcome.verdict).toBe("win");
+    // 1. Verdict is wave_passed
+    expect(result.terminalState).toBe("wave_passed");
+    expect(result.finalViability).toBeGreaterThan(0);
 
     // 2. Availability SLA passes (85%)
     expect(result.outcome.slaResults?.availability.passed).toBe(true);
