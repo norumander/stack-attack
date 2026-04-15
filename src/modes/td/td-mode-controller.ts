@@ -708,45 +708,42 @@ export class TDModeController implements ModeController {
   }
 
   /**
-   * Mid-wave SLA penalty. Called by the engine at the end of each tick.
-   * If the rolling availability or latency is breaching the SLA target,
-   * deduct a penalty from the budget — creating real economic pressure
-   * during the wave, not just at the end.
+   * Per-tick hook fired by the TD SimLoop after every engine tick.
+   * Applies viability damage for failures THIS tick, and an additional
+   * ramping penalty while the rolling drop rate exceeds the wave's
+   * dropThreshold. Replaces the Stage 3c SLA-budget-penalty mechanism.
    */
   onTick(state: SimulationStateReader): void {
     if (this.phase !== "simulate") return;
     const wave = this.getCurrentWave();
-    if (!wave.sla) return;
 
     const metrics = (state as unknown as SimulationState).metricsHistory.slice(
       this.waveStartMetricsIndex,
     );
     if (metrics.length === 0) return;
 
-    let resolved = 0;
-    let dropped = 0;
-    let timedOut = 0;
-    for (const m of metrics) {
-      resolved += m.requestsResolved;
-      dropped += m.requestsDropped;
-      timedOut += m.requestsTimedOut;
+    // Per-tick damage: latest tick's drops + timeouts × wave.viabilityPerFailure
+    const latest = metrics[metrics.length - 1]!;
+    const latestFailures = latest.requestsDropped + latest.requestsTimedOut;
+    if (latestFailures > 0) {
+      this.viability.damage(latestFailures * wave.viabilityPerFailure);
     }
 
-    // Rolling availability uses the same denominator discipline as the final
-    // verdict: scheduled-generated through this tick, capped at the wave
-    // duration (drain ticks don't generate new requests). This means a
-    // topology that silently drops every request STILL accrues mid-wave
-    // penalty ticks — the old `if (total === 0) return` short-circuit hid
-    // broken architectures from the player's budget.
-    const ticksInWave = metrics.length;
-    const generatingTicks = Math.min(ticksInWave, wave.duration);
-    const expectedGeneratedSoFar = wave.intensity * generatingTicks;
-    const accountedTotal = resolved + dropped + timedOut;
-    const denominator = Math.max(accountedTotal, expectedGeneratedSoFar, 1);
-    const rollingAvailability = resolved / denominator;
-
-    if (rollingAvailability < wave.sla.availabilityTarget) {
-      this.economy.debitUpkeep(wave.sla.penaltyPerTick);
+    // Ramp penalty: if the rolling-3-tick drop rate exceeds dropThreshold,
+    // apply an additional per-tick viability hit.
+    const windowMetrics = metrics.slice(-3);
+    let windowResolved = 0;
+    let windowFailed = 0;
+    for (const m of windowMetrics) {
+      windowResolved += m.requestsResolved;
+      windowFailed += m.requestsDropped + m.requestsTimedOut;
+    }
+    const windowTotal = windowResolved + windowFailed;
+    if (windowTotal > 0) {
+      const dropRate = windowFailed / windowTotal;
+      if (dropRate > wave.dropThreshold) {
+        this.viability.damage(wave.viabilityRampPenalty);
+      }
     }
   }
 }

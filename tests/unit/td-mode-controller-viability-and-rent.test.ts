@@ -5,6 +5,7 @@ import type { TDWaveDefinition } from "@modes/td/td-waves";
 import { bootTDRegistry, makeRng } from "@harness/td-fixtures";
 import type { ComponentId } from "@core/types/ids";
 import { SimulationState } from "@core/state/simulation-state";
+import type { SimulationStateReader } from "@core/state/state-reader";
 
 const MINIMAL_WAVE: TDWaveDefinition = {
   id: 1,
@@ -78,5 +79,81 @@ describe("TDModeController.payRent", () => {
     if (result.ok) {
       expect(result.bill).toBe(0);
     }
+  });
+});
+
+describe("TDModeController.onTick viability damage", () => {
+  it("damages viability per dropped/timed-out request this tick", () => {
+    const controller = makeController();
+    const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
+
+    // Advance to simulate phase so onTick runs
+    controller.advancePhase(state);
+
+    // Seed metricsHistory with one tick: 10 dropped requests
+    state.metricsHistory.push({
+      tick: 0,
+      requestsGenerated: 10,
+      requestsResolved: 0,
+      requestsDropped: 10,
+      requestsTimedOut: 0,
+      avgLatency: 0,
+      componentsActive: 0,
+      revenueEarned: 0,
+      upkeepPaid: 0,
+    } as any);
+
+    controller.onTick(state as unknown as SimulationStateReader);
+
+    // Base damage: 10 drops × 0.1 viabilityPerFailure = 1.0
+    // Plus ramp penalty (0.5): drop rate = 100% > dropThreshold 0.2 → fires
+    // Total: 1.5
+    expect(controller.getViability().value).toBeCloseTo(98.5, 1);
+  });
+
+  it("does not apply ramp penalty when drop rate is below dropThreshold", () => {
+    const controller = makeController();
+    const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
+    controller.advancePhase(state);
+
+    // Fill with healthy tick: 100 resolved, 1 dropped → 1% drop rate < 20% threshold
+    state.metricsHistory.push({
+      tick: 0,
+      requestsGenerated: 101,
+      requestsResolved: 100,
+      requestsDropped: 1,
+      requestsTimedOut: 0,
+      avgLatency: 0,
+      componentsActive: 0,
+      revenueEarned: 0,
+      upkeepPaid: 0,
+    } as any);
+
+    controller.onTick(state as unknown as SimulationStateReader);
+
+    // Only base damage: 1 drop × 0.1 = 0.1; no ramp penalty
+    expect(controller.getViability().value).toBeCloseTo(99.9, 2);
+  });
+
+  it("does not damage viability in build phase", () => {
+    const controller = makeController();
+    const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
+
+    // Still in build phase — do not advance
+    state.metricsHistory.push({
+      tick: 0,
+      requestsGenerated: 100,
+      requestsResolved: 0,
+      requestsDropped: 100,
+      requestsTimedOut: 0,
+      avgLatency: 0,
+      componentsActive: 0,
+      revenueEarned: 0,
+      upkeepPaid: 0,
+    } as any);
+
+    controller.onTick(state as unknown as SimulationStateReader);
+
+    expect(controller.getViability().value).toBe(100);
   });
 });
