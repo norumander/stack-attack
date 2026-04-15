@@ -75,8 +75,9 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
 
     const result = runWave(state, WAVE_7, client.id);
 
-    // 1. SLA passes — verdict is "win" despite chaos at ticks 15 and 22
-    expect(result.outcome.verdict).toBe("win");
+    // 1. SLA passes — wave_passed despite chaos at ticks 15 and 22
+    expect(result.terminalState).toBe("wave_passed");
+    expect(result.finalViability).toBeGreaterThan(0);
 
     // 2. Availability SLA passes
     expect(result.outcome.slaResults?.availability.passed).toBe(true);
