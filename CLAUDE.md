@@ -21,15 +21,23 @@ This file is intentionally small. Pull the chunk you need:
 ## Always-apply rules
 
 - **Use git worktrees for code changes.** Project-local at `.worktrees/<branch-name>`. See `docs/claude/worktree-gotchas.md` — especially "never `git worktree remove` the worktree you're currently in."
+- **Only one `pnpm dev` per session.** Vite silently falls back to port 5174 if 5173 is held by another worktree — kill the old server via `lsof -ti:5173 | xargs kill` before starting a new one, or the browser will be pointing at stale code.
 - **Session start: fetch origin.** `git fetch origin && git rev-list --count HEAD..origin/main`. If nonzero, rebase/branch off the new main before starting work. Critical when multiple agents are active.
 - **Never commit unless explicitly asked.** New commits over amending. Never `--no-verify`, never force-push to main.
 - **Pure TypeScript simulation in Phase 1.** No React, Next.js, or Vercel imports in `src/core/` or `src/capabilities/`. Enforced by `tests/unit/engine-pixi-isolation.test.ts`.
+- **Ignore Vercel plugin hook noise.** The plugin injects Next.js / verification skill reminders on `vite` / `pnpm dev|build` regex matches — this is a local Vite + Pixi project, not Vercel/Next. Those reminders are false positives.
 
 ## Quickstart
 
 ```bash
-pnpm test                              # full suite (~6s, 645 tests)
+pnpm test                              # full suite (~6s)
 pnpm test tests/unit/<name>.test.ts    # single file (~1s)
 pnpm typecheck                         # strict tsc --noEmit
 pnpm dev                               # Vite dashboard
+pnpm exec vite build                   # production build (no "build" script in package.json)
 ```
+
+Dashboard URLs:
+- `/` — classic sandbox
+- `/#mode=td` — classic TD mode
+- `/?renderer=iso#mode=td` — cyberpunk iso renderer + HUD overlay
