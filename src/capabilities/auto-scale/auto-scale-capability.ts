@@ -3,19 +3,21 @@ import type { Request } from "../../core/types/request.js";
 import type { ProcessContext } from "../../core/capability/process-context.js";
 import type { ProcessResult, SideEffect } from "../../core/types/result.js";
 import type { CapabilityId } from "../../core/types/ids.js";
+import type { Component } from "../../core/component/component.js";
+import { componentThroughputPerTick } from "../../core/engine/throughput.js";
 
 const SCALE_UP_THRESHOLD = 0.8;
 const SCALE_DOWN_THRESHOLD = 0.3;
+const SCALE_UP_TICKS = 2;
+const SCALE_DOWN_TICKS = 5;
 
-/**
- * OBSERVE-phase capability for dynamic auto-scaling.
- * Emits SCALE side effects based on load (processed/throughput ratio).
- * Tier 1: 5-tick cooldown. Tier 2: 2-tick cooldown.
- */
 export class AutoScaleCapability implements Capability {
   readonly phase = "OBSERVE" as const;
 
   private lastScaleTick = -Infinity;
+  private lastDecisionTick = -1;
+  private highUtilTicks = 0;
+  private lowUtilTicks = 0;
 
   constructor(readonly id: CapabilityId) {}
 
@@ -24,6 +26,11 @@ export class AutoScaleCapability implements Capability {
   }
 
   process(_request: Request, context: ProcessContext): ProcessResult {
+    if (context.currentTick === this.lastDecisionTick) {
+      return { outcome: { kind: "PASS" }, sideEffects: [], events: [] };
+    }
+    this.lastDecisionTick = context.currentTick;
+
     const tier = context.effectiveTiers.get(this.id) ?? 1;
     const cooldown = tier >= 2 ? 2 : 5;
 
@@ -36,15 +43,38 @@ export class AutoScaleCapability implements Capability {
       return { outcome: { kind: "PASS" }, sideEffects: [], events: [] };
     }
 
-    // Read monitoring stats to gauge load
-    // Simple heuristic: check pending queue depth
+    const counters = context.state.perComponentThisTick.get(context.componentId);
+    const processed = counters?.processed ?? 0;
+    const capacity = componentThroughputPerTick(component as unknown as Component);
+
+    if (capacity === Infinity || capacity <= 0) {
+      return { outcome: { kind: "PASS" }, sideEffects: [], events: [] };
+    }
+
+    const utilization = processed / capacity;
     const sideEffects: SideEffect[] = [];
     const currentInstances = component.instanceCount;
 
-    // This is a simplified model — in a full implementation,
-    // we'd read MonitoringCapability.getStats() for precise load metrics.
-    // For now, auto-scale is triggered by OBSERVE seeing requests,
-    // and the side effect is queued for the engine to handle.
+    if (utilization > SCALE_UP_THRESHOLD) {
+      this.highUtilTicks += 1;
+      this.lowUtilTicks = 0;
+      if (this.highUtilTicks >= SCALE_UP_TICKS) {
+        sideEffects.push({ kind: "SCALE", targetInstanceCount: currentInstances + 1 });
+        this.lastScaleTick = context.currentTick;
+        this.highUtilTicks = 0;
+      }
+    } else if (utilization < SCALE_DOWN_THRESHOLD) {
+      this.lowUtilTicks += 1;
+      this.highUtilTicks = 0;
+      if (this.lowUtilTicks >= SCALE_DOWN_TICKS) {
+        sideEffects.push({ kind: "SCALE", targetInstanceCount: currentInstances - 1 });
+        this.lastScaleTick = context.currentTick;
+        this.lowUtilTicks = 0;
+      }
+    } else {
+      this.highUtilTicks = 0;
+      this.lowUtilTicks = 0;
+    }
 
     return { outcome: { kind: "PASS" }, sideEffects, events: [] };
   }
@@ -54,6 +84,10 @@ export class AutoScaleCapability implements Capability {
   }
 
   getStats(): CapabilityStats {
-    return { lastScaleTick: this.lastScaleTick };
+    return {
+      lastScaleTick: this.lastScaleTick,
+      highUtilTicks: this.highUtilTicks,
+      lowUtilTicks: this.lowUtilTicks,
+    };
   }
 }

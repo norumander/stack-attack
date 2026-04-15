@@ -151,6 +151,7 @@ export class SimulationState {
       components: self.components as unknown as ReadonlyMap<ComponentId, ComponentReader>,
       connections: self.connections,
       zoneTopology: self.zoneTopology,
+      perComponentThisTick: self.perComponentThisTick,
       get currentTick() {
         return self.currentTick;
       },
