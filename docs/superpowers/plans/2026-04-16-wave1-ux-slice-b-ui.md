@@ -1571,7 +1571,15 @@ describe("CyberpunkHudController.updateBriefing", () => {
   it("writes Wave 1 title, narrative, load, traffic, objective, reward", () => {
     const hud = getCyberpunkHudController()!;
     const display = renderBriefing(WAVE_1);
-    hud.updateBriefing({ ...display, narrative: getNarrative(1) });
+    // exactOptionalPropertyTypes rejects `narrative: getNarrative(1)` when
+    // the getter can return undefined — conditional-spread keeps the key
+    // absent rather than explicitly undefined. Local renamed to avoid
+    // shadowing the later `narrativeEl` DOM query.
+    const waveNarrative = getNarrative(1);
+    hud.updateBriefing({
+      ...display,
+      ...(waveNarrative !== undefined ? { narrative: waveNarrative } : {}),
+    });
 
     const panel = document.getElementById("cp-briefing-panel")!;
     expect(panel.classList.contains("cp-hidden")).toBe(false);
@@ -1579,8 +1587,8 @@ describe("CyberpunkHudController.updateBriefing", () => {
     const title = panel.querySelector(".cp-briefing-title")!;
     expect(title.textContent).toBe("LAUNCH DAY");
 
-    const narrative = panel.querySelector(".cp-briefing-narrative")!;
-    expect(narrative.textContent).toContain("trickle of users");
+    const narrativeEl = panel.querySelector(".cp-briefing-narrative")!;
+    expect(narrativeEl.textContent).toContain("trickle of users");
 
     const dots = panel.querySelector(".cp-briefing-load-dots")!;
     expect(dots.textContent).toBe("●○○○○");
