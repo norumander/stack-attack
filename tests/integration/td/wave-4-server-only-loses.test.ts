@@ -80,6 +80,9 @@ describe("Wave 4 — server-only loses", () => {
     const result = runWave(state, WAVE_4, "client" as ComponentId);
 
     expect(result.outcome.verdict).toBe("lose");
+    // TODO(T16): tune viability to actually fire on this lose path
+    // viability stays at 100 even though SLA verdict is "lose" — migrate once tuned:
+    // expect(result.finalViability).toBeLessThan(100);
     expect(result.outcome.slaResults?.availability.passed).toBe(false);
   });
 });
