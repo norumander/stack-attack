@@ -295,6 +295,7 @@ function buildInfoPanel(root: HTMLElement): void {
 const paletteButtons = new Map<string, HTMLButtonElement>();
 
 function buildPaletteStrip(root: HTMLElement): void {
+  paletteButtons.clear();
   const strip = div("cp-palette");
 
   const label = div("cp-palette-header");
