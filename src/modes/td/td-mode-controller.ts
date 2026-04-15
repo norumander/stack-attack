@@ -22,6 +22,7 @@ import type { Connection } from "@core/types/connection.js";
 import type { ComponentRegistry } from "@core/registry/component-registry.js";
 import { isEngineBufferable } from "@core/capability/engine-interfaces.js";
 import type { TDEconomy } from "./td-economy.js";
+import { TDViability } from "./td-viability.js";
 import type { TDWaveDefinition } from "./td-waves.js";
 import { TDTrafficSource } from "./td-traffic-source.js";
 import { validateTopology, type TopologyError } from "./validate-topology.js";
@@ -85,6 +86,7 @@ export class TDModeController implements ModeController {
   private placementSerial = 0;
   private cachedState: SimulationState | null = null;
   private _topologyErrors: TopologyError[] = [];
+  private readonly viability = new TDViability();
   private readonly componentRegistry: ComponentRegistry;
   private readonly entryPointId: ComponentId;
   private readonly rng: () => number;
@@ -120,6 +122,21 @@ export class TDModeController implements ModeController {
   /** Topology validation errors from the last build→simulate transition. */
   getTopologyErrors(): readonly TopologyError[] {
     return this._topologyErrors;
+  }
+
+  /** Campaign-wide viability pool (0–100). Drains on failures, never refills. */
+  getViability(): Readonly<{
+    value: number;
+    max: number;
+    fraction: number;
+    isDead: boolean;
+  }> {
+    return {
+      value: this.viability.value,
+      max: this.viability.maxValue,
+      fraction: this.viability.fraction,
+      isDead: this.viability.isDead,
+    };
   }
 
   // === New multi-wave getters ===
