@@ -19,6 +19,12 @@ import { createTDDashboard, type TDDashboard } from "./td-mode";
 import type { OutcomeReport } from "@core/types/outcome";
 import { diagnoseWave } from "./td/diagnose-wave";
 import { activateCyberpunkHud, isCyberpunkHudActive } from "./cyberpunk-hud";
+import {
+  ComponentDossierStore,
+  DOSSIERS,
+  showDossier,
+} from "./td/component-dossier.js";
+import { getCyberpunkHudController } from "./cyberpunk-hud.js";
 
 declare const Chart: any;
 
@@ -427,6 +433,8 @@ function cumulativeStartingBudget(waveIndex: number): number {
   }
   return sum;
 }
+
+const dossierStore = new ComponentDossierStore();
 
 let tdDashboard: TDDashboard | null = null;
 let tdLoop: SimLoop<TDModeController> | null = null;
@@ -1125,6 +1133,55 @@ async function bootTDMode(): Promise<void> {
       }
     },
   });
+
+  // Slice B: NEW badges + first-click dossier interception.
+  {
+    const hud = getCyberpunkHudController();
+    if (hud) {
+      const paletteButtonsMap = hud.getPaletteButtons();
+      const wave = controller.getCurrentWave();
+      for (const type of wave.availableComponents) {
+        const cell = paletteButtonsMap.get(type);
+        if (!cell) continue;
+        cell.classList.toggle(
+          "cp-palette-cell--new",
+          !dossierStore.hasSeen(type),
+        );
+      }
+
+      for (const [type, cell] of paletteButtonsMap) {
+        // Capture phase so we run BEFORE cyberpunk-hud's own forwarding click.
+        cell.addEventListener(
+          "click",
+          async (e: Event) => {
+            if (dossierStore.hasSeen(type)) return;
+            if (!(type in DOSSIERS)) {
+              // No content authored yet — mark seen silently so we don't block
+              // placement indefinitely on a roadmap component.
+              dossierStore.markSeen(type);
+              cell.classList.remove("cp-palette-cell--new");
+              return;
+            }
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const entry = compRegistry.get(type);
+            const rent = entry?.rentPerWave ?? 0;
+            await showDossier(type, rent);
+            dossierStore.markSeen(type);
+            cell.classList.remove("cp-palette-cell--new");
+            // Forward manually to the classic palette button so the place-mode
+            // state machine kicks in. This mirrors what cyberpunk-hud's normal
+            // forwarding would have done.
+            const classicBtn = document.querySelector<HTMLButtonElement>(
+              `.td-palette-btn[data-type="${type}"]`,
+            );
+            classicBtn?.click();
+          },
+          { capture: true },
+        );
+      }
+    }
+  }
 
   tdLoop = new SimLoop<TDModeController>({
     engine,
