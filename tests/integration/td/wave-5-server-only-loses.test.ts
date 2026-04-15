@@ -88,6 +88,9 @@ describe("Wave 5 — server-only loses", () => {
     const result = runWave(state, WAVE_5, "client" as ComponentId);
 
     expect(result.outcome.verdict).toBe("lose");
+    // TODO(T16): tune viability to actually fire on this lose path
+    // viability stays at 100 even though SLA verdict is "lose" — migrate once tuned:
+    // expect(result.finalViability).toBeLessThan(100);
     // At Wave 5 intensity (150/tick) the Server's pooled throughput (30/tick) is overwhelmed:
     // auth_required + api_write volume saturates Server capacity → availability collapses to ~54%
     // vs the 92% SLA target. Latency avg stays low (~2 ticks) because only the resolved subset
