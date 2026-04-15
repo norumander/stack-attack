@@ -40,9 +40,11 @@ export class TDEconomy implements EconomyStrategy {
   /**
    * No-op in TD mode. The engine's per-tick upkeep pipeline still computes
    * and hands a total here, but TD mode does not charge per-tick upkeep —
-   * components are paid for via rent-at-READY (see TDModeController.payRent).
-   * The SLA-penalty path that previously piggybacked on debitUpkeep has
-   * been moved to viability damage in TDModeController.onTick.
+   * components will be paid for via rent-at-READY (TDModeController.payRent,
+   * landing in a follow-up task). TDModeController.onTick also calls this
+   * method with wave.sla.penaltyPerTick for the ramping SLA penalty; that
+   * call is intentionally swallowed here pending the viability-damage
+   * migration in a follow-up task.
    */
   debitUpkeep(_totalUpkeep: number): void {
     // intentionally empty
