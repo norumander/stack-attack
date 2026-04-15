@@ -1,6 +1,6 @@
 # Implementation status
 
-**Current stage:** Phase 1, Stage 4a complete. TD mode is playable through Wave 8. Wave 8 teaches streaming traffic isolation via inline Streaming Media Server + Blob Storage. TDTrafficSource populates streamDuration/streamBandwidth from wave.streamConfig. Engine's active-stream lifecycle handles bandwidth reservation. 708 tests, typecheck clean.
+**Current stage:** Phase 1, Stage 4b complete. TD mode is playable through Wave 9. Wave 9 teaches geographic latency via multi-zone topology with DNS/GTM routing. Engine's getEffectiveLatency now applies zone-pair penalties. 724 tests, typecheck clean.
 
 ## What ships (merged into `main`)
 
@@ -27,15 +27,15 @@
 
 **Stage 4a: Wave 8 — Video Launch (streaming isolation)** — `stream` request type with multi-tick bandwidth reservation. `TDTrafficSource` populates `streamDuration`/`streamBandwidth` from `wave.streamConfig` for stream-type requests, activating the engine's existing active-stream lifecycle. TD entries added: `STREAMING_SERVER_ENTRY` (streaming + forwarding-pipe + monitoring, inline filter pattern) and `BLOB_STORAGE_ENTRY` (blob-storage + monitoring, decorative). `runWave` extended with stream drain loop to tick past wave duration until `isWaveDrained` returns true. Win/lose integration test pair validates streaming isolation rescue. 708 tests total.
 
-## Next: Stage 4b+ candidates (no spec yet)
+**Stage 4b: Wave 9 — Going Global (multi-zone latency)** — First engine change since Stage 2c: `getEffectiveLatency()` now adds cross-zone latency via `getZonePairLatency()` (additive, after condition multiplier). `TDModeController.getInitialZoneTopology()` reads `wave.zoneTopology` instead of returning hardcoded single-zone. `TDTrafficSource` assigns `request.originZone` from `wave.zoneDistribution` via weighted random per request. `DNS_GTM_ENTRY` (geo-routing + forwarding-pipe + monitoring) added to TD bundle. All test helpers extended with optional `zone` parameter (backward compatible). Win/lose integration tests validate single-zone latency failure and multi-zone DNS routing rescue. 724 tests total.
 
-- **Wave 9 — Going Global.** Multi-datacenter with zone latency penalties. Requires engine source-dive: does tick loop apply `getZonePairLatency`?
-- **Wave 10 — The Viral Moment.** Stress-test boss wave. AutoScaleCapability needs source-dive.
-- **Dashboard stream visualization.** Persistent connection lines for active streams, bandwidth utilization chart.
-- **Adaptive bitrate in StreamingCapability.** Stream quality degrades under congestion.
-- **Type-aware LB routing.** Round-robin LB can't route by request type.
-- **Worker/StreamingServer registry entry with ForwardingCapability.** Both use custom inline filter pattern; registry entries lack forwarding-pipe.
-- **`pickStreamConnection` reserves on ingress connection.** Stream bandwidth reservation lands on the last-traversed connection (ingress to RESPOND component). High-bandwidth ingress connections needed for streaming paths.
+## Next: Stage 4c+ candidates (no spec yet)
+
+- **Wave 10 — The Viral Moment.** Stress-test boss wave (3000+ req/tick). AutoScaleCapability needs source-dive.
+- **Dashboard zone visualization.** Zone regions on renderer, connection latency display.
+- **Cross-zone replication.** CAP theorem teaching — writes in one zone take time to reach others.
+- **Zone-aware chaos.** `zone_outage` targets entire zones (typed but unused).
+- **Adaptive zone routing.** Load-based routing beyond nearest-zone.
 
 ## History
 
