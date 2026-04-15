@@ -73,5 +73,8 @@ describe("Wave 8 — no streaming isolation loses", () => {
 
     // Without streaming isolation, stream traffic overwhelms the topology → SLA fails
     expect(result.outcome.verdict).toBe("lose");
+    // TODO(T16): tune viability to actually fire on this lose path
+    // viability stays at 100 even though SLA verdict is "lose" — migrate once tuned:
+    // expect(result.finalViability).toBeLessThan(100);
   });
 });
