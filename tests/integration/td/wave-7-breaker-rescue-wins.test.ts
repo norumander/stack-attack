@@ -12,11 +12,19 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
     const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
 
     // Rescue topology:
-    //   Client → CDN → Gateway → Cache → Queue → Worker → LB → CB → Server1 (chaos target) → DB
+    //   Client → CDN → Gateway → Cache → Worker → Queue → LB → CB → Server1 (chaos target) → DB
     //                                                          → Server2 → DB
     //                                                          → Server3 → DB
     //                                                          → Server4 → DB
     //                                                          → Server5 → DB
+    //
+    // Worker sits UPSTREAM of Queue so batch requests reach Worker first.
+    // Worker's BatchProcessingCapability handles batch (RESPOND), absorbing
+    // the 20% batch load. Non-batch flows through Worker → Queue → LB.
+    //
+    // With pull semantics, Queue's INTERCEPT phase holds batch (QUEUE_HOLD).
+    // Placing Worker upstream avoids the Queue-capacity bottleneck: at tier-cap 1,
+    // Queue holds only 32 items while Wave 7 generates 70 batch/tick (350 × 20%).
     //
     // CB sits between LB and Server1 to isolate chaos failures on the first server.
     // Server1 must be placed FIRST so resolveTargetByType("server", 0) targets it.
@@ -27,8 +35,8 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
     const cdn = buildCDN(compRegistry);
     const gateway = buildAPIGateway(compRegistry);
     const cache = buildCache(compRegistry);
-    const queue = buildQueue(compRegistry);
     const worker = buildWorker(compRegistry);
+    const queue = buildQueue(compRegistry);
     const serverCount = 5;
     const lb = buildLoadBalancer("lb", serverCount);
     const cb = buildCircuitBreaker(compRegistry);
@@ -44,8 +52,8 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
     state.placeComponent(cdn.component);
     state.placeComponent(gateway.component);
     state.placeComponent(cache.component);
-    state.placeComponent(queue.component);
     state.placeComponent(worker.component);
+    state.placeComponent(queue.component);
     state.placeComponent(lb.component);
     state.placeComponent(cb.component);
     for (const s of servers) state.placeComponent(s.component);
@@ -53,13 +61,13 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
 
     const clientEgress = client.ports.find(p => p.direction === "egress")!;
 
-    // Client → CDN → Gateway → Cache → Queue → Worker → LB
+    // Client → CDN → Gateway → Cache → Worker → Queue → LB
     wire(state, { component: client, egressPortId: clientEgress.id }, { component: cdn.component, ingressPortId: cdn.ingressPortId }, "c-client-cdn", { bandwidth: 600 });
     wire(state, { component: cdn.component, egressPortId: cdn.egressPortId }, { component: gateway.component, ingressPortId: gateway.ingressPortId }, "c-cdn-gw", { bandwidth: 600 });
     wire(state, { component: gateway.component, egressPortId: gateway.egressPortId }, { component: cache.component, ingressPortId: cache.ingressPortId }, "c-gw-cache", { bandwidth: 600 });
-    wire(state, { component: cache.component, egressPortId: cache.egressPortId }, { component: queue.component, ingressPortId: queue.ingressPortId }, "c-cache-queue", { bandwidth: 600 });
-    wire(state, { component: queue.component, egressPortId: queue.egressPortId }, { component: worker.component, ingressPortId: worker.ingressPortId }, "c-queue-worker", { bandwidth: 600 });
-    wire(state, { component: worker.component, egressPortId: worker.egressPortId }, { component: lb.component, ingressPortId: lb.ingressPortId }, "c-worker-lb", { bandwidth: 600 });
+    wire(state, { component: cache.component, egressPortId: cache.egressPortId }, { component: worker.component, ingressPortId: worker.ingressPortId }, "c-cache-worker", { bandwidth: 600 });
+    wire(state, { component: worker.component, egressPortId: worker.egressPortId }, { component: queue.component, ingressPortId: queue.ingressPortId }, "c-worker-queue", { bandwidth: 600 });
+    wire(state, { component: queue.component, egressPortId: queue.egressPortId }, { component: lb.component, ingressPortId: lb.ingressPortId }, "c-queue-lb", { bandwidth: 600 });
 
     // LB egress[0] → CB → Server[0] (chaos target), LB egress[1..N] → Server[1..N]
     wire(state, { component: lb.component, egressPortId: lb.egressPortIds[0]! }, { component: cb.component, ingressPortId: cb.ingressPortId }, "c-lb-cb", { bandwidth: 600 });
@@ -75,9 +83,10 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
 
     const result = runWave(state, WAVE_7, client.id);
 
-    // 1. SLA passes — wave_passed despite chaos at ticks 15 and 22
+    // 1. SLA passes — wave_passed, verdict is "win" despite chaos at ticks 15 and 22
     expect(result.terminalState).toBe("wave_passed");
     expect(result.finalViability).toBeGreaterThan(0);
+    expect(result.outcome.verdict).toBe("win");
 
     // 2. Availability SLA passes
     expect(result.outcome.slaResults?.availability.passed).toBe(true);
@@ -93,7 +102,7 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
     const cbForwarded = result.forwardedCountByComponent.get(cb.component.id) ?? 0;
     expect(cbForwarded).toBeGreaterThan(0);
 
-    // 5. Queue diagnostic: no overflow drops
+    // 5. Queue diagnostic: no batch overflowed (Worker absorbed batch upstream)
     const queueCap = queue.component.capabilities.get("queue" as CapabilityId) as QueueCapability;
     const queueStats = queueCap.getStats();
     expect(queueStats.totalDroppedFull).toBe(0);

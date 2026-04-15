@@ -14,12 +14,21 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
     const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
 
     // Rescue topology (inline filter pattern):
-    //   Client → CDN → Gateway → Cache → StreamingServer → Queue → Worker → LB → CB → [Server×5] → DB
+    //   Client → CDN → Gateway → Cache → StreamingServer → Worker → Queue → LB → CB → [Server×5] → DB
     //
-    // StreamingServer sits inline between Cache and Queue:
+    // StreamingServer sits inline between Cache and Worker:
     // - "stream" requests: StreamingCapability (PROCESS) → RESPOND (engine registers
     //   active stream with bandwidth reservation on the last TRAVERSED connection)
-    // - all other types: ForwardingCapability (PROCESS) → FORWARD downstream to Queue
+    // - all other types: ForwardingCapability (PROCESS) → FORWARD downstream to Worker
+    //
+    // Worker sits UPSTREAM of Queue so batch requests reach Worker first.
+    // Worker's BatchProcessingCapability handles batch (RESPOND), absorbing
+    // the 15% batch load. Non-batch (non-stream, non-batch) flows through
+    // Worker → Queue → LB for distribution to Servers.
+    //
+    // With pull semantics, Queue's INTERCEPT phase holds batch (QUEUE_HOLD).
+    // Placing Worker upstream avoids the Queue-capacity bottleneck: at tier-cap 1,
+    // Queue holds only 32 items while Wave 8 generates 75 batch/tick (500 × 15%).
     //
     // Tuning decision: the cache→StreamingServer connection needs high bandwidth (15,000)
     // because pickStreamConnection reserves stream bandwidth on the last TRAVERSED
@@ -33,8 +42,8 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
     const gateway = buildAPIGateway(compRegistry);
     const cache = buildCache(compRegistry);
     const streamServer = buildStreamingServer(compRegistry);
-    const queue = buildQueue(compRegistry);
     const worker = buildWorker(compRegistry);
+    const queue = buildQueue(compRegistry);
     const serverCount = 5;
     const lb = buildLoadBalancer("lb", serverCount);
     const cb = buildCircuitBreaker(compRegistry);
@@ -49,8 +58,8 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
     state.placeComponent(gateway.component);
     state.placeComponent(cache.component);
     state.placeComponent(streamServer.component);
-    state.placeComponent(queue.component);
     state.placeComponent(worker.component);
+    state.placeComponent(queue.component);
     state.placeComponent(lb.component);
     state.placeComponent(cb.component);
     for (const s of servers) state.placeComponent(s.component);
@@ -66,10 +75,10 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
     // Cache → StreamingServer (high bandwidth to absorb stream bandwidth reservations)
     wire(state, { component: cache.component, egressPortId: cache.egressPortId }, { component: streamServer.component, ingressPortId: streamServer.ingressPortId }, "c-cache-stream", { bandwidth: 15000 });
 
-    // StreamingServer → Queue → Worker → LB
-    wire(state, { component: streamServer.component, egressPortId: streamServer.egressPortId }, { component: queue.component, ingressPortId: queue.ingressPortId }, "c-stream-queue", { bandwidth: 700 });
-    wire(state, { component: queue.component, egressPortId: queue.egressPortId }, { component: worker.component, ingressPortId: worker.ingressPortId }, "c-queue-worker", { bandwidth: 700 });
-    wire(state, { component: worker.component, egressPortId: worker.egressPortId }, { component: lb.component, ingressPortId: lb.ingressPortId }, "c-worker-lb", { bandwidth: 700 });
+    // StreamingServer → Worker → Queue → LB
+    wire(state, { component: streamServer.component, egressPortId: streamServer.egressPortId }, { component: worker.component, ingressPortId: worker.ingressPortId }, "c-stream-worker", { bandwidth: 700 });
+    wire(state, { component: worker.component, egressPortId: worker.egressPortId }, { component: queue.component, ingressPortId: queue.ingressPortId }, "c-worker-queue", { bandwidth: 700 });
+    wire(state, { component: queue.component, egressPortId: queue.egressPortId }, { component: lb.component, ingressPortId: lb.ingressPortId }, "c-queue-lb", { bandwidth: 700 });
 
     // LB egress[0] → CB → Server[0], LB egress[1..N] → Server[1..N]
     wire(state, { component: lb.component, egressPortId: lb.egressPortIds[0]! }, { component: cb.component, ingressPortId: cb.ingressPortId }, "c-lb-cb", { bandwidth: 700 });
@@ -91,6 +100,8 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
       console.log("SLA results:", JSON.stringify(result.outcome.slaResults, null, 2));
       console.log("Total:", result.totalRequests, "Dropped:", result.droppedCount, "TimedOut:", result.timedOutCount);
       console.log("StreamServer forwarded:", result.forwardedCountByComponent.get(streamServer.component.id) ?? 0);
+      console.log("Worker forwarded:", result.forwardedCountByComponent.get(worker.component.id) ?? 0);
+      console.log("Queue forwarded:", result.forwardedCountByComponent.get(queue.component.id) ?? 0);
       console.log("Events:", Object.fromEntries(result.eventCountsByType));
     }
 
