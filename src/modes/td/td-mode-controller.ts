@@ -139,6 +139,22 @@ export class TDModeController implements ModeController {
     };
   }
 
+  /**
+   * Compute the total rent that will be debited at the next READY (build→simulate)
+   * transition. Pure function over the current state and the registry. Sandbox
+   * components with undefined rentPerWave contribute zero — safe default.
+   */
+  getRentBill(state: SimulationState): number {
+    let bill = 0;
+    for (const component of state.components.values()) {
+      const entry = this.componentRegistry.get(component.type);
+      if (entry?.rentPerWave !== undefined) {
+        bill += entry.rentPerWave;
+      }
+    }
+    return bill;
+  }
+
   // === New multi-wave getters ===
 
   getCurrentWaveIndex(): number {
