@@ -4,7 +4,7 @@ import { bootTDRegistry } from "@harness/td-fixtures";
 import { WAVE_8 } from "@modes/td/td-waves";
 import {
   runWave, buildServer, buildDatabase, buildCache, buildCDN, buildAPIGateway,
-  buildLoadBalancer, buildQueue, buildCircuitBreaker, buildWorkerWithForwarding, wire,
+  buildLoadBalancer, buildQueue, buildCircuitBreaker, buildWorker, wire,
 } from "./helpers";
 
 describe("Wave 8 — no streaming isolation loses", () => {
@@ -26,7 +26,7 @@ describe("Wave 8 — no streaming isolation loses", () => {
     const gateway = buildAPIGateway(compRegistry);
     const cache = buildCache(compRegistry);
     const queue = buildQueue(compRegistry);
-    const worker = buildWorkerWithForwarding();
+    const worker = buildWorker(compRegistry);
     const serverCount = 5;
     const lb = buildLoadBalancer("lb", serverCount);
     const cb = buildCircuitBreaker(compRegistry);

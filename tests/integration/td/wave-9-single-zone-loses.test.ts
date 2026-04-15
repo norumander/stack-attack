@@ -5,7 +5,7 @@ import { WAVE_9 } from "@modes/td/td-waves";
 import { zonePairKey } from "@core/types/zone";
 import {
   runWave, buildServer, buildDatabase, buildCache, buildCDN, buildAPIGateway,
-  buildLoadBalancer, buildQueue, buildStreamingServer, buildWorkerWithForwarding, wire,
+  buildLoadBalancer, buildQueue, buildStreamingServer, buildWorker, wire,
 } from "./helpers";
 
 describe("Wave 9 — single-zone topology loses on latency SLA", () => {
@@ -36,7 +36,7 @@ describe("Wave 9 — single-zone topology loses on latency SLA", () => {
     const cache = buildCache(compRegistry, "na-east");
     const streamServer = buildStreamingServer(compRegistry, "na-east");
     const queue = buildQueue(compRegistry, "na-east");
-    const worker = buildWorkerWithForwarding();
+    const worker = buildWorker(compRegistry, "na-east");
     const serverCount = 5;
     const lb = buildLoadBalancer("lb", serverCount);
 

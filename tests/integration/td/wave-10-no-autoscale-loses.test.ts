@@ -6,7 +6,7 @@ import { zonePairKey } from "@core/types/zone";
 import {
   runWave, buildServer, buildDatabase, buildCache, buildCDN,
   buildLoadBalancer, buildStreamingServer, buildDNSGTM,
-  buildWorkerWithForwarding, wire,
+  buildWorker, wire,
 } from "./helpers";
 
 describe("Wave 10 — static topology without auto-scale loses", () => {
@@ -37,7 +37,7 @@ describe("Wave 10 — static topology without auto-scale loses", () => {
       const cdn = buildCDN(compRegistry, zone);
       const cache = buildCache(compRegistry, zone);
       const stream = buildStreamingServer(compRegistry, zone);
-      const worker = buildWorkerWithForwarding();
+      const worker = buildWorker(compRegistry, zone);
       const lb = buildLoadBalancer(`${prefix}-lb`, serverCount);
       const servers: ReturnType<typeof buildServer>[] = [];
       for (let i = 0; i < serverCount; i++) servers.push(buildServer(compRegistry, zone));

@@ -4,7 +4,7 @@ import { bootTDRegistry } from "@harness/td-fixtures";
 import type { CapabilityId } from "@core/types/ids";
 import { WAVE_6 } from "@modes/td/td-waves";
 import { QueueCapability } from "@capabilities/queue/queue-capability";
-import { runWave, buildServer, buildDatabase, buildCache, buildCDN, buildAPIGateway, buildLoadBalancer, buildQueue, buildWorkerWithForwarding, wire } from "./helpers";
+import { runWave, buildServer, buildDatabase, buildCache, buildCDN, buildAPIGateway, buildLoadBalancer, buildQueue, buildWorker, wire } from "./helpers";
 
 describe("Wave 6 — Queue + Worker rescue wins", () => {
   it("adding Queue + Worker to the topology rescues Wave 6 batch traffic", () => {
@@ -25,7 +25,7 @@ describe("Wave 6 — Queue + Worker rescue wins", () => {
     const gateway = buildAPIGateway(compRegistry);
     const cache = buildCache(compRegistry);
     const queue = buildQueue(compRegistry);
-    const worker = buildWorkerWithForwarding();
+    const worker = buildWorker(compRegistry);
     const serverCount = 3;
     const lb = buildLoadBalancer("lb", serverCount);
     const servers: ReturnType<typeof buildServer>[] = [];
