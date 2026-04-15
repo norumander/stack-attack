@@ -2,7 +2,7 @@ import type { Capability, CapabilityStats } from "../../core/capability/capabili
 import type { Request } from "../../core/types/request.js";
 import type { ProcessContext } from "../../core/capability/process-context.js";
 import type { ProcessResult, SideEffect } from "../../core/types/result.js";
-import type { CapabilityId } from "../../core/types/ids.js";
+import type { CapabilityId, ComponentId } from "../../core/types/ids.js";
 import type { Component } from "../../core/component/component.js";
 import { componentThroughputPerTick } from "../../core/engine/throughput.js";
 
@@ -18,6 +18,16 @@ export class AutoScaleCapability implements Capability {
   private lastDecisionTick = -1;
   private highUtilTicks = 0;
   private lowUtilTicks = 0;
+  /**
+   * Stores the previous tick's utilization ratio. Captured by
+   * `snapshotUtilization()` at the end of each tick (called via
+   * `resetPerTickState`), then used for scaling decisions on the
+   * next tick. This avoids the timing problem where the current
+   * tick's processed counter is 0 or near-0 when auto-scale first
+   * evaluates within the fixed-point loop.
+   */
+  private prevTickUtilization = 0;
+  private snapshotComponentId: ComponentId | null = null;
 
   constructor(readonly id: CapabilityId) {}
 
@@ -25,11 +35,35 @@ export class AutoScaleCapability implements Capability {
     return true;
   }
 
+  /**
+   * Called by Component.resetPerTickState() at the end of each tick.
+   * Snapshots the current tick's utilization so the next tick can use it.
+   */
+  resetPerTickState(): void {
+    // prevTickUtilization was set during snapshotUtilization() calls
+    // within process() — nothing to clear here. The snapshot persists.
+  }
+
   process(_request: Request, context: ProcessContext): ProcessResult {
+    // Capture componentId for snapshots
+    this.snapshotComponentId = context.componentId;
+
     if (context.currentTick === this.lastDecisionTick) {
+      // Already decided this tick — but update the utilization snapshot
+      // so we capture the highest value for next tick's decision.
+      this.updateUtilizationSnapshot(context);
       return { outcome: { kind: "PASS" }, sideEffects: [], events: [] };
     }
     this.lastDecisionTick = context.currentTick;
+
+    // Use PREVIOUS tick's utilization for the scaling decision.
+    // This avoids the timing problem where current-tick processed = 0
+    // when auto-scale first evaluates.
+    const utilization = this.prevTickUtilization;
+
+    // Reset snapshot for this tick — will be built up as requests process.
+    this.prevTickUtilization = 0;
+    this.updateUtilizationSnapshot(context);
 
     const tier = context.effectiveTiers.get(this.id) ?? 1;
     const cooldown = tier >= 2 ? 2 : 5;
@@ -43,15 +77,6 @@ export class AutoScaleCapability implements Capability {
       return { outcome: { kind: "PASS" }, sideEffects: [], events: [] };
     }
 
-    const counters = context.state.perComponentThisTick.get(context.componentId);
-    const processed = counters?.processed ?? 0;
-    const capacity = componentThroughputPerTick(component as unknown as Component);
-
-    if (capacity === Infinity || capacity <= 0) {
-      return { outcome: { kind: "PASS" }, sideEffects: [], events: [] };
-    }
-
-    const utilization = processed / capacity;
     const sideEffects: SideEffect[] = [];
     const currentInstances = component.instanceCount;
 
@@ -79,6 +104,23 @@ export class AutoScaleCapability implements Capability {
     return { outcome: { kind: "PASS" }, sideEffects, events: [] };
   }
 
+  /**
+   * Updates the utilization snapshot with the current tick's processed count.
+   * Called on every request so the snapshot captures the peak value.
+   */
+  private updateUtilizationSnapshot(context: ProcessContext): void {
+    const component = context.state.components.get(context.componentId);
+    if (!component) return;
+    const capacity = componentThroughputPerTick(component as unknown as Component);
+    if (capacity === Infinity || capacity <= 0) return;
+    const counters = context.state.perComponentThisTick.get(context.componentId);
+    const processed = counters?.processed ?? 0;
+    const util = processed / capacity;
+    if (util > this.prevTickUtilization) {
+      this.prevTickUtilization = util;
+    }
+  }
+
   getUpkeepCost(tier: number): number {
     return tier * 3;
   }
@@ -88,6 +130,7 @@ export class AutoScaleCapability implements Capability {
       lastScaleTick: this.lastScaleTick,
       highUtilTicks: this.highUtilTicks,
       lowUtilTicks: this.lowUtilTicks,
+      prevTickUtilization: this.prevTickUtilization,
     };
   }
 }

@@ -103,7 +103,7 @@ function makeContext(
   const stateReader: SimulationStateReader = {
     components: new Map([[compId, component]]),
     connections: new Map(),
-    zoneTopology: { zones: [], latencies: new Map() },
+    zoneTopology: { zones: [], pairLatency: new Map() },
     currentTick: tick,
     phase: "simulate",
     perComponentThisTick,
@@ -122,7 +122,7 @@ function makeContext(
       asId,
     ]),
     currentTick: tick,
-    rng: { next: () => 0.5 },
+    rng: { next: () => 0.5, nextInt: (n: number) => Math.floor(0.5 * n), fork: () => ({ next: () => 0.5, nextInt: (n: number) => Math.floor(0.5 * n), fork: () => null as any }) },
     directories: [],
     childResponses: new Map(),
   };
@@ -154,19 +154,23 @@ describe("AutoScaleCapability", () => {
     expect(new AutoScaleCapability("as" as CapabilityId).canHandle("api_read")).toBe(true);
   });
 
-  it("emits SCALE(current+1) after 2 consecutive high-utilization ticks", () => {
+  it("emits SCALE(current+1) after 2 consecutive high-utilization ticks (lagged by 1)", () => {
     const comp = makeScalableComponent({ instanceCount: 1, maxInstances: 10 });
     const cap = new AutoScaleCapability("as" as CapabilityId);
     const req = makeRequest();
 
-    // Tick 0: 90% utilization (9 of 10) — 1st high tick, no scale
+    // Tick 0: prevTickUtilization = 0 (initial), snapshots 90% for next tick
     const r0 = cap.process(req, makeContext(comp, 0, 9));
     expect(r0.sideEffects).toHaveLength(0);
 
-    // Tick 1: 90% utilization again — 2nd consecutive, should emit SCALE
+    // Tick 1: uses tick 0's snapshot (90%) — 1st high tick, no scale yet
     const r1 = cap.process(req, makeContext(comp, 1, 9));
-    expect(r1.sideEffects).toHaveLength(1);
-    expect(r1.sideEffects[0]).toEqual({
+    expect(r1.sideEffects).toHaveLength(0);
+
+    // Tick 2: uses tick 1's snapshot (90%) — 2nd consecutive high → SCALE
+    const r2 = cap.process(req, makeContext(comp, 2, 9));
+    expect(r2.sideEffects).toHaveLength(1);
+    expect(r2.sideEffects[0]).toEqual({
       kind: "SCALE",
       targetInstanceCount: 2,
     });
@@ -178,6 +182,8 @@ describe("AutoScaleCapability", () => {
     const cap = new AutoScaleCapability("as" as CapabilityId);
     const req = makeRequest();
 
+    // Tick 0: prevTickUtilization=0 (initial, low). Ticks 1-3: lagged 16.7% (low).
+    // Total 5 low ticks: tick 0 (initial) + ticks 1-3 = 4, not 5 yet.
     for (let tick = 0; tick < 4; tick++) {
       const r = cap.process(req, makeContext(comp, tick, 5));
       expect(r.sideEffects).toHaveLength(0);
@@ -197,23 +203,24 @@ describe("AutoScaleCapability", () => {
     const cap = new AutoScaleCapability("as" as CapabilityId);
     const req = makeRequest();
 
-    // Trigger scale-up at tick 1
-    cap.process(req, makeContext(comp, 0, 9)); // 1st high
-    const r1 = cap.process(req, makeContext(comp, 1, 9)); // 2nd high → SCALE
-    expect(r1.sideEffects).toHaveLength(1);
+    // Trigger scale-up at tick 2 (lagged by 1 from original tick 1)
+    cap.process(req, makeContext(comp, 0, 9)); // snapshot 90%, decision uses 0 (initial)
+    cap.process(req, makeContext(comp, 1, 9)); // 1st high (uses tick 0 snapshot 90%)
+    const r2 = cap.process(req, makeContext(comp, 2, 9)); // 2nd high → SCALE
+    expect(r2.sideEffects).toHaveLength(1);
 
-    // Tick 2: still high util, but within tier-1 cooldown (5 ticks)
-    const r2 = cap.process(req, makeContext(comp, 2, 9));
-    expect(r2.sideEffects).toHaveLength(0);
+    // Tick 3: still high util, but within tier-1 cooldown (5 ticks from tick 2)
+    const r3 = cap.process(req, makeContext(comp, 3, 9));
+    expect(r3.sideEffects).toHaveLength(0);
 
-    // Tick 5: still within cooldown (lastScaleTick=1, 5-1=4 < 5)
-    const r5 = cap.process(req, makeContext(comp, 5, 9));
-    expect(r5.sideEffects).toHaveLength(0);
-
-    // Tick 6: cooldown expired (6-1=5 >= 5), but counters were reset
-    // so this is only the 1st high tick
+    // Tick 6: still within cooldown (lastScaleTick=2, 6-2=4 < 5)
     const r6 = cap.process(req, makeContext(comp, 6, 9));
     expect(r6.sideEffects).toHaveLength(0);
+
+    // Tick 7: cooldown expired (7-2=5 >= 5), but counters were reset
+    // so this is only the 1st high tick
+    const r7 = cap.process(req, makeContext(comp, 7, 9));
+    expect(r7.sideEffects).toHaveLength(0);
   });
 
   it("does not emit SCALE for moderate utilization even after 10 ticks", () => {
@@ -234,24 +241,36 @@ describe("AutoScaleCapability", () => {
     const cap = new AutoScaleCapability("as" as CapabilityId);
     const req = makeRequest();
 
-    // Ticks 0-2: low utilization (processed=5, 16.7%)
+    // With lagged decisions, each tick's decision uses the PREVIOUS tick's snapshot.
+    // Tick 0: decision uses 0 (initial, treated as low), snapshots 16.7%
+    // Tick 1: decision uses 16.7% (low), snapshots 16.7%
+    // Tick 2: decision uses 16.7% (low), snapshots 16.7%
+    // Tick 3: decision uses 16.7% (low), snapshots 50% (moderate)
+    // Tick 4: decision uses 50% (moderate) — resets counter
+    // Ticks 5-8: decisions use 16.7% (low) — 4 consecutive low
+    // Tick 9: 5th consecutive low → SCALE down
+
     for (let tick = 0; tick <= 2; tick++) {
       cap.process(req, makeContext(comp, tick, 5));
     }
 
-    // Tick 3: spike to moderate (processed=15, 50%) — resets counter
+    // Tick 3: actual processed is moderate (15/30=50%), but decision
+    // uses tick 2's snapshot (16.7%, still low)
     cap.process(req, makeContext(comp, 3, 15));
 
-    // Ticks 4-7: low again (4 consecutive, not 5 yet)
-    for (let tick = 4; tick <= 7; tick++) {
+    // Tick 4: decision uses tick 3's snapshot (50%, moderate) — resets counter
+    cap.process(req, makeContext(comp, 4, 5));
+
+    // Ticks 5-8: decisions use previous tick's 16.7% (low), 4 consecutive
+    for (let tick = 5; tick <= 8; tick++) {
       const r = cap.process(req, makeContext(comp, tick, 5));
       expect(r.sideEffects).toHaveLength(0);
     }
 
-    // Tick 8: 5th consecutive low tick after the reset → SCALE down
-    const r8 = cap.process(req, makeContext(comp, 8, 5));
-    expect(r8.sideEffects).toHaveLength(1);
-    expect(r8.sideEffects[0]).toEqual({
+    // Tick 9: 5th consecutive low tick after the moderate reset → SCALE down
+    const r9 = cap.process(req, makeContext(comp, 9, 5));
+    expect(r9.sideEffects).toHaveLength(1);
+    expect(r9.sideEffects[0]).toEqual({
       kind: "SCALE",
       targetInstanceCount: 2,
     });
