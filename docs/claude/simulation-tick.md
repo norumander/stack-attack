@@ -6,6 +6,7 @@
 
 1. **INJECT TRAFFIC** — TrafficSource generates new requests.
 2. **RE-EMIT QUEUED** — `reEmitQueued` drains `EngineBufferable` partitions back into pending / stagedOutcomes.
+2.5. **PULL FROM BUFFERS** — `pullFromBuffers` iterates components with `EnginePullable` capabilities (e.g. Worker's BatchProcessingCapability). Each calls `pullPending()` which reads ingress connections, finds upstream `EngineBufferable` components (Queue), and calls `dequeueBatch(throughputPerTick)`. Pulled requests are enqueued in the puller's pending queue for step 3 processing.
 3. **PROCESS PENDING** — `processPending` + `deliverStaged` in a fixed-point loop (throughput-gated, quiesces or throws `FixedPointRunaway`).
 3b. **OVERLOADED SWEEP** — leftover pending items get `OVERLOADED` events.
 4b. **UPDATE ACTIVE STREAMS** — decrement `remainingDuration`, release on completion, credit stream revenue at `STREAM_COMPLETED`.

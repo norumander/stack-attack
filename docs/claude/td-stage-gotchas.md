@@ -83,7 +83,7 @@ Surfaced during Stage 3d playtest and left unresolved when the branch pivoted to
 ## Stage 3e augmentation gotchas
 
 - **`event` type dropped from Waves 6+7.** REPLICATE fan-out is unimplemented in the engine. The `event` entry remains in `forwarding-pipe.handledTypes` for forward-compat but no wave generates it.
-- **EnginePullable intentionally stubbed.** `BatchProcessingCapability.pullPending()` returns empty; the engine never calls it. Workers consume requests through normal PROCESS-phase routing via connections. This is by design for Stage 3e.
+- **EnginePullable is now implemented (Stage 5b).** BatchProcessingCapability.pullPending() pulls from connected Queue's heldBuffer up to throughputPerTick capacity. Engine step 2.5 (pullFromBuffers) runs after reEmitQueued, before the fixed-point loop. Queue holds batch requests via QUEUE_HOLD (INTERCEPT phase), with split held/overflow buffers. emitReady drains only overflow; dequeueBatch drains held.
 - **Queue capacity at tier 1 (32 slots) fills fast.** At Wave 6's 250/tick with 20% batch, ~50 batch req/tick arrive. Queue buffers overflow between Worker's 5/tick processing rate. Monitor `totalDroppedFull` — if nonzero, bump Queue to tier 2 (64 slots) or add a second Worker.
 - **CircuitBreaker `requestsBlocked` resets every tick.** `resetPerTickState()` zeroes it. After a wave ends, `getStats().requestsBlocked` is always 0 regardless of whether the circuit tripped. Use `getCircuitState()` for post-wave diagnostics or check `forwardedCountByComponent` for participation proof.
 - **CircuitBreaker `reportFailure()` is external-only.** The engine does NOT automatically call `reportFailure()` when downstream components fail. The CB state machine stays CLOSED unless explicitly triggered. In integration tests, CB's value is as a pipeline participant that would trip on explicit failure reports — the chaos system affects component condition directly, not through CB.
@@ -122,3 +122,12 @@ Surfaced during Stage 3d playtest and left unresolved when the branch pivoted to
 - **Wave 10 stream bandwidth reservation is massive.** 35% of 3000 = 1050 stream/tick. Cache→StreamServer connections need 50,000+ bandwidth to avoid BACKPRESSURED drops from stream reservations.
 - **chaosSchedule now supports all 4 chaos kinds.** `connection_sever` and `latency_injection` require `connectionId` in the schedule entry. `getScheduledChaos` maps them to `ChaosEvent` objects.
 - **Wave 10 test suite is slow (~50s).** 3000/tick × 40 ticks + drain = massive simulation. Expected behavior — the boss wave is computationally heavy.
+
+## Stage 5b gotchas
+
+- **Queue now intercepts batch requests.** QueueCapability.canHandle("batch") returns true (was false). Queue returns QUEUE_HOLD outcome, which deliver-staged routes to the held buffer. Non-batch types still PASS through to forwarding-pipe.
+- **Queue has split buffers.** heldBuffer (QUEUE_HOLD items, drained by Worker pull) and overflowBuffer (backpressure items, drained by reEmitQueued). Capacity is shared across both.
+- **Worker pulls up to throughputPerTick from Queue.** At tier 1, BatchProcessingCapability pulls 5 items/tick. Queue may accumulate more batch than Worker can process per tick — items wait until next pull cycle or TTL out.
+- **Topology order matters with pull semantics.** If Queue is upstream of Worker, batch requests are QUEUE_HOLD'd and Worker must pull them. If Worker is upstream of Queue, batch is processed directly and Queue only sees non-batch traffic. Wave 6/7/8 win tests use Worker-upstream topology for throughput reasons.
+- **pullFromBuffers runs once per tick (step 2.5).** Not inside the fixed-point loop. Pulled items are enqueued in Worker's pending queue before PROCESS phase starts.
+- **getTierCap() limits Queue capacity.** TD mode caps capability tiers at 1, giving Queue 32 slots. At high batch volumes (50+ per tick), Queue overflows before Worker can pull. Worker-upstream topology avoids this by processing batch before it reaches Queue.

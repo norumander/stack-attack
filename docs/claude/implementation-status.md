@@ -1,6 +1,6 @@
 # Implementation status
 
-**Current stage:** Phase 1, Stage 4c complete. TD mode is playable through Wave 10 — all 10 waves shipped. Wave 10 teaches elastic architecture via AutoScale on Server + Database under 3000/tick stress with multi-chaos. 740 tests, typecheck clean.
+**Current stage:** Phase 1, Stage 5b complete. TD mode is playable through Wave 10 — all 10 waves shipped. Wave 10 teaches elastic architecture via AutoScale on Server + Database under 3000/tick stress with multi-chaos. 762 tests, typecheck clean.
 
 ## What ships (merged into `main`)
 
@@ -30,6 +30,8 @@
 **Stage 4b: Wave 9 — Going Global (multi-zone latency)** — First engine change since Stage 2c: `getEffectiveLatency()` now adds cross-zone latency via `getZonePairLatency()` (additive, after condition multiplier). `TDModeController.getInitialZoneTopology()` reads `wave.zoneTopology` instead of returning hardcoded single-zone. `TDTrafficSource` assigns `request.originZone` from `wave.zoneDistribution` via weighted random per request. `DNS_GTM_ENTRY` (geo-routing + forwarding-pipe + monitoring) added to TD bundle. All test helpers extended with optional `zone` parameter (backward compatible). Win/lose integration tests validate single-zone latency failure and multi-zone DNS routing rescue. 724 tests total.
 
 **Stage 4c: Wave 10 — The Viral Moment (AutoScale boss wave)** — AutoScaleCapability implemented with utilization-based scaling: scale-up at >80% utilization for 2 consecutive ticks, scale-down at <30% for 5 ticks. Uses previous-tick utilization snapshot (processed/capacity). Tier-based cooldown (tier 1: 5 ticks, tier 2: 2 ticks). SCALE side effects clamped by engine to [minInstances, maxInstances]. OBSERVE-phase sideEffects collection fixed in Component.process() to pipe SCALE to deliverStaged. Auto-scale added to Server (maxInstances: 10) and Database (maxInstances: 5) TD entries. chaosSchedule type extended for `connection_sever` and `latency_injection`. Three-test teaching arc: no autoscale loses, server-only loses (DB bottleneck), full autoscale wins. 740 tests total.
+
+**Stage 5b: EnginePullable pull semantics** — Queue now holds batch requests via QUEUE_HOLD outcome (split buffer: heldBuffer for intentional holds, overflowBuffer for backpressure). Worker actively pulls from connected Queue's heldBuffer via BatchProcessingCapability.pullPending(). New engine step 2.5 (pullFromBuffers) between reEmitQueued and the fixed-point loop iterates EnginePullable components and routes pulled items to their pending queues. registerTDDefaults passes holdTypes: Set(["batch"]) to Queue factory. Wave 6/7/8 topologies adjusted for pull-based flow. 762 tests total.
 
 ## All 10 waves shipped — Phase 1 TD mode complete
 
