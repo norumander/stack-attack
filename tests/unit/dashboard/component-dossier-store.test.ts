@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { ComponentDossierStore } from "../../../src/dashboard/td/component-dossier.js";
+import { ComponentDossierStore, DOSSIERS } from "../../../src/dashboard/td/component-dossier.js";
 
 describe("ComponentDossierStore", () => {
   beforeEach(() => {
@@ -43,5 +43,14 @@ describe("ComponentDossierStore", () => {
     window.localStorage.setItem("td-dossiers-seen", "not-json{{");
     expect(() => new ComponentDossierStore()).not.toThrow();
     expect(new ComponentDossierStore().hasSeen("server")).toBe(false);
+  });
+});
+
+describe("DOSSIERS content", () => {
+  it("ships Server and Database copy", () => {
+    expect(DOSSIERS.server?.title).toBe("SERVER");
+    expect(DOSSIERS.database?.title).toBe("DATABASE");
+    expect(DOSSIERS.server?.body.length).toBeGreaterThan(0);
+    expect(DOSSIERS.database?.body.length).toBeGreaterThan(0);
   });
 });
