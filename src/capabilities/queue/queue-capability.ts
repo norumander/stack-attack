@@ -8,33 +8,44 @@ import type { CapabilityId } from "../../core/types/ids.js";
 
 const CAPACITY_PER_TIER = [0, 32, 64, 128] as const;
 
+export interface QueueCapabilityOptions {
+  readonly holdTypes?: ReadonlySet<string>;
+}
+
 /**
  * INTERCEPT-phase capability implementing a FIFO message queue.
- * Implements EngineBufferable for backpressure handling.
+ * Implements EngineBufferable for backpressure handling + job holding.
  *
- * When used as an INTERCEPT capability (canHandle returns false),
- * it doesn't intercept normal pipeline flow. Instead, the engine
- * routes backpressured requests to enqueueForRetry(), and step 2
- * (reEmitQueued) drains them on the next tick.
- *
- * Tier 1: 32 slots. Tier 2: 64 slots. Tier 3: 128 slots.
+ * Held types (default: "batch") are intercepted with QUEUE_HOLD outcome
+ * and stored in heldBuffer. Worker pulls them via dequeueBatch().
+ * Non-held types pass through to forwarding-pipe as before.
+ * Backpressure overflow goes to overflowBuffer, drained by reEmitQueued.
  */
 export class QueueCapability implements Capability, EngineBufferable {
   readonly phase = "INTERCEPT" as const;
 
-  private buffer: { request: Request; result: ProcessResult }[] = [];
+  private readonly holdTypes: ReadonlySet<string>;
+  private heldBuffer: { request: Request; result: ProcessResult }[] = [];
+  private overflowBuffer: { request: Request; result: ProcessResult }[] = [];
   private totalEnqueued = 0;
   private totalDroppedFull = 0;
   private currentTier = 1;
 
-  constructor(readonly id: CapabilityId) {}
-
-  canHandle(_requestType: string): boolean {
-    // Don't intercept normal pipeline flow — only buffer backpressured items
-    return false;
+  constructor(
+    readonly id: CapabilityId,
+    options?: QueueCapabilityOptions,
+  ) {
+    this.holdTypes = options?.holdTypes ?? new Set(["batch"]);
   }
 
-  process(_request: Request, _context: ProcessContext): ProcessResult {
+  canHandle(requestType: string): boolean {
+    return this.holdTypes.has(requestType);
+  }
+
+  process(request: Request, _context: ProcessContext): ProcessResult {
+    if (this.holdTypes.has(request.type)) {
+      return { outcome: { kind: "QUEUE_HOLD" }, sideEffects: [], events: [] };
+    }
     return { outcome: { kind: "PASS" }, sideEffects: [], events: [] };
   }
 
@@ -45,7 +56,9 @@ export class QueueCapability implements Capability, EngineBufferable {
 
   getStats(): CapabilityStats {
     return {
-      queueDepth: this.buffer.length,
+      queueDepth: this.heldBuffer.length + this.overflowBuffer.length,
+      heldDepth: this.heldBuffer.length,
+      overflowDepth: this.overflowBuffer.length,
       capacity: CAPACITY_PER_TIER[this.currentTier] ?? 32,
       totalEnqueued: this.totalEnqueued,
       totalDroppedFull: this.totalDroppedFull,
@@ -56,11 +69,14 @@ export class QueueCapability implements Capability, EngineBufferable {
 
   enqueueForRetry(request: Request, result: ProcessResult): boolean {
     const capacity = CAPACITY_PER_TIER[this.currentTier] ?? 32;
-    if (this.buffer.length >= capacity) {
+    const totalSize = this.heldBuffer.length + this.overflowBuffer.length;
+    if (totalSize >= capacity) {
       this.totalDroppedFull += 1;
       return false;
     }
-    this.buffer.push({ request, result });
+    const isHeld = result.outcome.kind === "QUEUE_HOLD";
+    const targetBuffer = isHeld ? this.heldBuffer : this.overflowBuffer;
+    targetBuffer.push({ request, result });
     this.totalEnqueued += 1;
     return true;
   }
@@ -69,28 +85,35 @@ export class QueueCapability implements Capability, EngineBufferable {
     awaitingPipeline: Request[];
     awaitingDelivery: { request: Request; result: ProcessResult }[];
   } {
-    const out = this.buffer.slice();
-    this.buffer.length = 0;
+    const out = this.overflowBuffer.slice();
+    this.overflowBuffer.length = 0;
     return { awaitingPipeline: [], awaitingDelivery: out };
   }
 
   dequeueBatch(n: number): Request[] {
     const out: Request[] = [];
-    for (let i = 0; i < n && this.buffer.length > 0; i++) {
-      const entry = this.buffer.shift();
+    for (let i = 0; i < n && this.heldBuffer.length > 0; i++) {
+      const entry = this.heldBuffer.shift();
       if (entry) out.push(entry.request);
     }
     return out;
   }
 
   peekBuffered(): ReadonlyArray<{ request: Request; result: ProcessResult }> {
-    return this.buffer;
+    return [...this.heldBuffer, ...this.overflowBuffer];
   }
 
   removeRequest(id: RequestId): boolean {
-    const idx = this.buffer.findIndex((e) => e.request.id === id);
-    if (idx === -1) return false;
-    this.buffer.splice(idx, 1);
-    return true;
+    let idx = this.heldBuffer.findIndex((e) => e.request.id === id);
+    if (idx !== -1) {
+      this.heldBuffer.splice(idx, 1);
+      return true;
+    }
+    idx = this.overflowBuffer.findIndex((e) => e.request.id === id);
+    if (idx !== -1) {
+      this.overflowBuffer.splice(idx, 1);
+      return true;
+    }
+    return false;
   }
 }
