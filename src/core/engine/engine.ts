@@ -11,6 +11,7 @@ import { injectChaos as defaultInjectChaos } from "./inject-chaos.js";
 import { deductUpkeep as defaultDeductUpkeep } from "./deduct-upkeep.js";
 import { recordMetrics as defaultRecordMetrics } from "./metrics-builder.js";
 import { resetPerTickState as defaultResetPerTickState } from "./reset-per-tick.js";
+import { pullFromBuffers as defaultPullFromBuffers } from "./pull-from-buffers.js";
 
 /**
  * Injectable step functions. Defaults to the real Stage 2a implementations.
@@ -19,6 +20,7 @@ import { resetPerTickState as defaultResetPerTickState } from "./reset-per-tick.
 export interface EngineSteps {
   injectTraffic: (state: SimulationState, mc: ModeController) => void;
   reEmitQueued: (state: SimulationState) => void;
+  pullFromBuffers: (state: SimulationState, mc: ModeController) => void;
   runFixedPointLoop: (state: SimulationState, mc: ModeController) => void;
   sweepOverloaded: (state: SimulationState) => void;
   updateActiveStreams: (state: SimulationState, mc: ModeController) => void;
@@ -33,6 +35,7 @@ export interface EngineSteps {
 const defaultSteps: EngineSteps = {
   injectTraffic: defaultInjectTraffic,
   reEmitQueued: defaultReEmitQueued,
+  pullFromBuffers: defaultPullFromBuffers,
   runFixedPointLoop: defaultRunFixedPointLoop,
   sweepOverloaded: defaultSweepOverloaded,
   updateActiveStreams: defaultUpdateActiveStreams,
@@ -65,6 +68,7 @@ export class Engine {
     this.state.lastTickEvents.length = 0;                        // clear per-tick view
     this.steps.injectTraffic(this.state, modeController);        // step 1
     this.steps.reEmitQueued(this.state);                         // step 2
+    this.steps.pullFromBuffers(this.state, modeController);      // step 2.5
     this.steps.runFixedPointLoop(this.state, modeController);    // step 3 (fixed-point)
     this.steps.sweepOverloaded(this.state);                      // step 3b (post-loop sweep)
     this.steps.updateActiveStreams(this.state, modeController);  // step 4b
