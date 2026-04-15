@@ -22,6 +22,7 @@ import {
   updateComponentInfoPanelStats,
   getOpenInfoPanelComponentId,
 } from "./td/component-info-panel.js";
+import { getCyberpunkHudController } from "./cyberpunk-hud.js";
 
 const ENTRY_BY_TYPE: Record<string, ComponentRegistryEntry> = {
   client: CLIENT_ENTRY,
@@ -417,7 +418,39 @@ export async function createTDDashboard(args: {
 
   function onReady(): void {
     if (controller.getPhase() !== "build") return;
+
+    // Slice B: atomic rent pre-flight. Runs BEFORE advancePhase.
+    const rent = controller.payRent(state);
+    if (!rent.ok) {
+      const hud = getCyberpunkHudController();
+      const msg =
+        `Rent due: $${rent.bill}. You only have $${rent.budget}. ` +
+        `Scrap a component to reduce the bill.`;
+      if (hud) {
+        hud.showToast(msg);
+      } else {
+        // Classic (deprecated) path: fall back to an alert so the player
+        // at least sees the block.
+        // eslint-disable-next-line no-alert
+        window.alert(msg);
+      }
+      return;
+    }
+
     controller.advancePhase(state);
+
+    // Topology validation is advisory — surface any warnings but continue.
+    const errors = controller.getTopologyErrors();
+    if (errors.length > 0) {
+      const hud = getCyberpunkHudController();
+      if (hud) {
+        const summary = errors
+          .map((e) => `${e.reason} (${e.requestType} @ ${e.componentType})`)
+          .join(" · ");
+        hud.showToast(`Topology warning: ${summary}`);
+      }
+    }
+
     args.onPhaseChange?.();
     refreshHud();
   }
