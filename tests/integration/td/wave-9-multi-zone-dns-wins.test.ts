@@ -7,7 +7,7 @@ import type { CapabilityId } from "@core/types/ids";
 import {
   runWave, buildServer, buildDatabase, buildCache, buildCDN,
   buildLoadBalancer, buildStreamingServer, buildDNSGTM,
-  buildWorkerWithForwarding, wire,
+  buildWorker, wire,
 } from "./helpers";
 
 describe("Wave 9 — multi-zone DNS/GTM rescue wins with latency SLA", () => {
@@ -48,7 +48,7 @@ describe("Wave 9 — multi-zone DNS/GTM rescue wins with latency SLA", () => {
       const cdn = buildCDN(compRegistry, zone);
       const cache = buildCache(compRegistry, zone);
       const stream = buildStreamingServer(compRegistry, zone);
-      const worker = buildWorkerWithForwarding();
+      const worker = buildWorker(compRegistry, zone);
       const lb = buildLoadBalancer(`${prefix}-lb`, serverCount);
       const servers: ReturnType<typeof buildServer>[] = [];
       for (let i = 0; i < serverCount; i++) servers.push(buildServer(compRegistry, zone));

@@ -276,11 +276,13 @@ export const WORKER_ENTRY: ComponentRegistryEntry = {
     "your API Servers — add more Workers for heavier batch loads without affecting API latency.",
   capabilitiesHuman: [
     "Processes batch requests (5/tick at tier 1)",
+    "Forwards non-batch traffic to downstream components",
     "Pulls from connected Queue component",
     "Operates independently of synchronous API traffic",
   ],
   capabilities: [
     { id: "batch-processing" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "forwarding-pipe" as CapabilityId, defaultTier: 1, maxTier: 2 },
     { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
   ],
   ports: [

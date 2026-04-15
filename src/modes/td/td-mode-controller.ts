@@ -24,6 +24,7 @@ import { isEngineBufferable } from "@core/capability/engine-interfaces.js";
 import type { TDEconomy } from "./td-economy.js";
 import type { TDWaveDefinition } from "./td-waves.js";
 import { TDTrafficSource } from "./td-traffic-source.js";
+import { validateTopology, type TopologyError } from "./validate-topology.js";
 
 export interface TDModeControllerOptions {
   readonly waves: readonly TDWaveDefinition[];
@@ -83,6 +84,7 @@ export class TDModeController implements ModeController {
   private waveStartTick = 0;
   private placementSerial = 0;
   private cachedState: SimulationState | null = null;
+  private _topologyErrors: TopologyError[] = [];
   private readonly componentRegistry: ComponentRegistry;
   private readonly entryPointId: ComponentId;
   private readonly rng: () => number;
@@ -113,6 +115,11 @@ export class TDModeController implements ModeController {
   /** Dashboard calls this on assess→build to swap in the next wave's economy. */
   setEconomy(economy: TDEconomy): void {
     this.economy = economy;
+  }
+
+  /** Topology validation errors from the last build→simulate transition. */
+  getTopologyErrors(): readonly TopologyError[] {
+    return this._topologyErrors;
   }
 
   // === New multi-wave getters ===
@@ -317,6 +324,14 @@ export class TDModeController implements ModeController {
           this.waveStartMetricsIndex = state.metricsHistory.length;
           this.waveStartTick = state.currentTick;
           this.cachedState = state;
+        }
+        // Topology validation: catch dead-end paths before simulation
+        if (state !== undefined) {
+          this._topologyErrors = validateTopology(
+            state,
+            this.waves[this.currentWaveIndex]!,
+            this.entryPointId,
+          );
         }
         this.phase = "simulate";
         break;

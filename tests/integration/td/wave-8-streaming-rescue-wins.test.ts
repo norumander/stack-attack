@@ -5,7 +5,7 @@ import { WAVE_8 } from "@modes/td/td-waves";
 import {
   runWave, buildServer, buildDatabase, buildCache, buildCDN, buildAPIGateway,
   buildLoadBalancer, buildQueue, buildCircuitBreaker, buildStreamingServer,
-  buildWorkerWithForwarding, wire,
+  buildWorker, wire,
 } from "./helpers";
 
 describe("Wave 8 — streaming isolation rescue wins", () => {
@@ -34,7 +34,7 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
     const cache = buildCache(compRegistry);
     const streamServer = buildStreamingServer(compRegistry);
     const queue = buildQueue(compRegistry);
-    const worker = buildWorkerWithForwarding();
+    const worker = buildWorker(compRegistry);
     const serverCount = 5;
     const lb = buildLoadBalancer("lb", serverCount);
     const cb = buildCircuitBreaker(compRegistry);

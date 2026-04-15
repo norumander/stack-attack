@@ -4,7 +4,7 @@ import { bootTDRegistry } from "@harness/td-fixtures";
 import type { CapabilityId } from "@core/types/ids";
 import { WAVE_7 } from "@modes/td/td-waves";
 import { QueueCapability } from "@capabilities/queue/queue-capability";
-import { runWave, buildServer, buildDatabase, buildCache, buildCDN, buildAPIGateway, buildLoadBalancer, buildQueue, buildCircuitBreaker, buildWorkerWithForwarding, wire } from "./helpers";
+import { runWave, buildServer, buildDatabase, buildCache, buildCDN, buildAPIGateway, buildLoadBalancer, buildQueue, buildCircuitBreaker, buildWorker, wire } from "./helpers";
 
 describe("Wave 7 — CircuitBreaker rescue wins", () => {
   it("adding CircuitBreaker to the topology rescues Wave 7 from chaos-induced failure", () => {
@@ -28,7 +28,7 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
     const gateway = buildAPIGateway(compRegistry);
     const cache = buildCache(compRegistry);
     const queue = buildQueue(compRegistry);
-    const worker = buildWorkerWithForwarding();
+    const worker = buildWorker(compRegistry);
     const serverCount = 5;
     const lb = buildLoadBalancer("lb", serverCount);
     const cb = buildCircuitBreaker(compRegistry);
