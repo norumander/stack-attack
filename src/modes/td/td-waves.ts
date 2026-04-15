@@ -283,3 +283,59 @@ export const WAVE_8: TDWaveDefinition = {
     penaltyPerTick: 7,
   },
 };
+
+export const WAVE_9: TDWaveDefinition = {
+  id: 9,
+  name: "Going Global",
+  startingBudget: 2500,
+  intensity: 800,
+  composition: new Map([
+    ["api_read", 0.25],
+    ["api_write", 0.10],
+    ["static_asset", 0.15],
+    ["auth_required", 0.10],
+    ["batch", 0.10],
+    ["stream", 0.30],
+  ]),
+  duration: 40,
+  ttl: 15,
+  availableComponents: [
+    "server", "database", "cache", "load_balancer", "cdn", "api_gateway",
+    "queue", "worker", "circuit_breaker", "streaming_media_server", "blob_storage",
+    "dns_gtm",
+  ],
+  dropThreshold: 0.05,
+  revenuePerRequestType: new Map([
+    ["api_read", 1],
+    ["api_write", 2],
+    ["static_asset", 0.3],
+    ["auth_required", 1.5],
+    ["batch", 5],
+    ["stream", 8],
+  ]),
+  keyPoolSize: 15,
+  connectionBandwidth: 800,
+  streamConfig: {
+    duration: 20,
+    bandwidth: 3,
+  },
+  zoneTopology: {
+    zones: ["na-east", "eu-west", "ap-south"],
+    pairLatency: new Map([
+      ["ap-south|na-east", 5],
+      ["eu-west|na-east", 3],
+      ["ap-south|eu-west", 4],
+    ]),
+  },
+  zoneDistribution: new Map([
+    ["na-east", 0.40],
+    ["eu-west", 0.35],
+    ["ap-south", 0.25],
+  ]),
+  sla: {
+    availabilityTarget: 0.90,
+    maxAvgLatency: 4,
+    minBudget: 0,
+    penaltyPerTick: 8,
+  },
+};
