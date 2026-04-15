@@ -100,7 +100,8 @@ describe("Wave 4 — CDN rescue wins", () => {
 
     const result = runWave(state, WAVE_4, "client" as ComponentId);
 
-    expect(result.outcome.verdict).toBe("win");
+    expect(result.terminalState).toBe("wave_passed");
+    expect(result.finalViability).toBeGreaterThan(0);
 
     // CDN must absorb static_asset via caching
     const cdnCaching = cdn.component.capabilities.get(
