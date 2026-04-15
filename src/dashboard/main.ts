@@ -18,8 +18,14 @@ import { Engine } from "@core/engine/engine";
 import { createTDDashboard, type TDDashboard } from "./td-mode";
 import type { OutcomeReport } from "@core/types/outcome";
 import { diagnoseWave } from "./td/diagnose-wave";
+import { activateCyberpunkHud, isCyberpunkHudActive } from "./cyberpunk-hud";
 
 declare const Chart: any;
+
+// Activate cyberpunk HUD at boot (before any TD DOM is shown) if the URL opts in.
+if (isCyberpunkHudActive()) {
+  activateCyberpunkHud();
+}
 
 // ─── State ────────────────────────────────────────────────────────────
 let topo: TopologyInfo;
@@ -471,23 +477,32 @@ function clearChildren(el: HTMLElement): void {
 }
 
 function showWaveResultToast(outcome: OutcomeReport): void {
+  const isWin = outcome.verdict === "win";
+  const modifier = isWin ? "td-toast--win" : "td-toast--loss";
   const toast = document.createElement("div");
-  toast.className = "td-toast";
-  toast.style.position = "fixed";
-  toast.style.top = "24px";
-  toast.style.left = "50%";
-  toast.style.transform = "translateX(-50%)";
-  toast.style.padding = "16px 28px";
-  toast.style.background = outcome.verdict === "win" ? "#1a3b1f" : "#3b1a1a";
-  toast.style.color = "#e1e4ed";
-  toast.style.border = `1px solid ${outcome.verdict === "win" ? "#22c55e" : "#ef4444"}`;
-  toast.style.borderRadius = "8px";
-  toast.style.fontWeight = "600";
-  toast.style.fontSize = "14px";
-  toast.style.zIndex = "1000";
-  toast.style.boxShadow = "0 8px 24px rgba(0,0,0,0.5)";
-  const noteText = outcome.notes.join(" · ");
-  if (outcome.verdict === "win" && tdController && tdState) {
+  toast.className = `td-toast ${modifier}`;
+
+  const currentIdx = tdController?.getCurrentWaveIndex() ?? 0;
+  const currentWave = TD_WAVES[currentIdx];
+  const nextWave = TD_WAVES[currentIdx + 1];
+
+  // ─ Title ──────────────────────────────────────────────────────────
+  const title = document.createElement("div");
+  title.className = "td-toast__title";
+  title.textContent = isWin
+    ? `Wave ${currentIdx + 1} Complete`
+    : `Wave ${currentIdx + 1} Lost`;
+  toast.appendChild(title);
+
+  if (currentWave) {
+    const subtitle = document.createElement("div");
+    subtitle.className = "td-toast__subtitle";
+    subtitle.textContent = currentWave.name;
+    toast.appendChild(subtitle);
+  }
+
+  // ─ Current-round stats ────────────────────────────────────────────
+  if (tdController && tdState) {
     const metrics = tdController.getCurrentWaveMetrics(tdState);
     const totalResolved = metrics.reduce((s, m) => s + m.requestsResolved, 0);
     const totalDropped = metrics.reduce((s, m) => s + m.requestsDropped, 0);
@@ -495,13 +510,104 @@ function showWaveResultToast(outcome: OutcomeReport): void {
     const totalUpkeep = metrics.reduce((s, m) => s + m.upkeepPaid, 0);
     const denom = totalResolved + totalDropped;
     const servedPct = denom > 0 ? Math.round((totalResolved / denom) * 100) : 0;
-    toast.textContent = `Wave WIN — ${servedPct}% served · $${totalRev} revenue · $${totalUpkeep} upkeep`;
-  } else {
-    toast.textContent = `Wave ${outcome.verdict.toUpperCase()} — ${noteText}`;
+    const net = totalRev - totalUpkeep;
+    const netSign = net >= 0 ? "+" : "";
+
+    const stats = document.createElement("div");
+    stats.className = "td-toast__block";
+    stats.appendChild(statRow("Served", `${servedPct}%`));
+    stats.appendChild(statRow("Revenue", `$${totalRev}`));
+    stats.appendChild(statRow("Upkeep", `$${totalUpkeep}`));
+    stats.appendChild(statRow("Net", `${netSign}$${net}`));
+    toast.appendChild(stats);
+
+    if (outcome.notes.length > 0) {
+      const notes = document.createElement("div");
+      notes.className = "td-toast__notes";
+      notes.textContent = outcome.notes.join(" · ");
+      toast.appendChild(notes);
+    }
   }
+
+  // ─ Next-wave preview ──────────────────────────────────────────────
+  if (isWin && nextWave) {
+    const divider = document.createElement("div");
+    divider.className = "td-toast__divider";
+    toast.appendChild(divider);
+
+    const next = document.createElement("div");
+    next.className = "td-toast__block";
+
+    const nextHeader = document.createElement("div");
+    nextHeader.className = "td-toast__next-header";
+    nextHeader.textContent = `Next — ${nextWave.name}`;
+    next.appendChild(nextHeader);
+
+    next.appendChild(statRow("Intensity", `${nextWave.intensity} req/tick`));
+    next.appendChild(statRow("Budget", `$${nextWave.startingBudget}`));
+    next.appendChild(statRow("Traffic", formatTrafficMix(nextWave.composition)));
+    if (nextWave.sla) {
+      const availPct = Math.round(nextWave.sla.availabilityTarget * 100);
+      next.appendChild(statRow("SLA", `≥${availPct}% · ≤${nextWave.sla.maxAvgLatency}t latency`));
+    }
+    toast.appendChild(next);
+  } else if (isWin) {
+    const divider = document.createElement("div");
+    divider.className = "td-toast__divider";
+    toast.appendChild(divider);
+
+    const note = document.createElement("div");
+    note.className = "td-toast__next-header";
+    note.textContent = "Campaign Complete";
+    toast.appendChild(note);
+  }
+
+  // ─ Action button (dismiss) ────────────────────────────────────────
+  const dismiss = (): void => {
+    if (toast.parentNode) toast.remove();
+  };
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "td-toast__btn";
+  button.textContent = isWin && nextWave ? "Continue ▶" : "Dismiss";
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    dismiss();
+  });
+  toast.appendChild(button);
+
+  // Click anywhere on the toast also dismisses.
+  toast.addEventListener("click", dismiss);
+
   document.body.appendChild(toast);
-  // 10-second timeout so the player has time to read it
-  setTimeout(() => toast.remove(), 10000);
+}
+
+function statRow(key: string, value: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "td-toast__stat";
+  const k = document.createElement("span");
+  k.className = "td-toast__stat-key";
+  k.textContent = key;
+  const v = document.createElement("span");
+  v.className = "td-toast__stat-val";
+  v.textContent = value;
+  row.appendChild(k);
+  row.appendChild(v);
+  return row;
+}
+
+function formatTrafficMix(composition: ReadonlyMap<string, number>): string {
+  const parts: string[] = [];
+  for (const [type, pct] of composition) {
+    const short = type
+      .replace(/^api_/, "")
+      .replace(/^static_/, "")
+      .replace(/_required$/, "")
+      .replace(/_/g, " ");
+    parts.push(`${Math.round(pct * 100)}% ${short}`);
+  }
+  return parts.join(" · ");
 }
 
 /** Tracks per-wave start tick so we can compute wave-relative tick number for the HUD. */

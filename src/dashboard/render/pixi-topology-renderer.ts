@@ -562,6 +562,9 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     this.ghostSprite = ghost;
   }
 
+  /** Noop — classic renderer doesn't adjust cursor for connection mode. */
+  setConnectionMode(_active: boolean): void {}
+
   hitTest(screenX: number, screenY: number): { componentId: ComponentId } | null {
     for (const [id, state] of this.components) {
       const cx = state.container.x;
@@ -645,6 +648,16 @@ export class PixiTopologyRenderer implements TopologyRenderer {
       const i = this.connectionPointerDownCallbacks.indexOf(cb);
       if (i >= 0) this.connectionPointerDownCallbacks.splice(i, 1);
     };
+  }
+
+  /** Classic renderer doesn't support component drag — noop. */
+  onComponentDragEnd(
+    _cb: (args: {
+      componentId: ComponentId;
+      gridPosition: { x: number; y: number };
+    }) => void,
+  ): () => void {
+    return () => {};
   }
 
   private tickFrame(): void {

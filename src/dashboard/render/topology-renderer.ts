@@ -49,6 +49,12 @@ export interface TopologyRenderer {
   // ─ Selection + placement preview ──────────────────────────────────────
   setSelected(id: ComponentId | null): void;
   setPlacementGhost(type: string | null, screenPos: { x: number; y: number } | null): void;
+  /**
+   * Signal that the user is mid-"connect two components" interaction. The
+   * renderer may use this to adjust the cursor and disable pan gestures.
+   * Classic renderer may implement as a noop.
+   */
+  setConnectionMode(active: boolean): void;
 
   // ─ Input queries (screen-space ↔ world-space) ─────────────────────────
   hitTest(screenX: number, screenY: number): { componentId: ComponentId } | null;
@@ -63,6 +69,18 @@ export interface TopologyRenderer {
    * user clicks a rendered connection. Returns an unsubscribe function.
    */
   onConnectionPointerDown(cb: (connectionId: ConnectionId) => void): () => void;
+  /**
+   * Fires when the user releases a component drag. The renderer has already
+   * moved the component visually to `gridPosition`; the game layer should
+   * decide whether to commit (mutate game state) or revert (call
+   * updateComponent with the original position).
+   */
+  onComponentDragEnd(
+    cb: (args: {
+      componentId: ComponentId;
+      gridPosition: { x: number; y: number };
+    }) => void,
+  ): () => void;
 }
 
 export interface ComponentVisual {
