@@ -77,6 +77,8 @@ export type PayRentResult =
   | { readonly ok: true; readonly bill: number }
   | { readonly ok: false; readonly bill: number; readonly budget: number };
 
+export type TDTerminalState = "running" | "wave_passed" | "dead";
+
 export class TDModeController implements ModeController {
   // economy is mutable so the dashboard can swap in a fresh per-wave economy
   economy: TDEconomy;
@@ -141,6 +143,25 @@ export class TDModeController implements ModeController {
       fraction: this.viability.fraction,
       isDead: this.viability.isDead,
     };
+  }
+
+  /**
+   * High-level outcome state for the dashboard and tests.
+   *
+   * - "running": wave is still in build phase, or in simulate phase but
+   *    neither dead nor drained
+   * - "wave_passed": wave has been fully drained with viability > 0
+   * - "dead": viability hit 0 at any point (campaign is over)
+   *
+   * `wave_passed` requires the caller to pass a drained state. Without
+   * state, we cannot distinguish running from passed, so we return `running`.
+   */
+  getTerminalState(state?: SimulationState): TDTerminalState {
+    if (this.viability.isDead) return "dead";
+    if (state !== undefined && this.phase === "simulate" && this.isWaveDrained(state)) {
+      return "wave_passed";
+    }
+    return "running";
   }
 
   /**

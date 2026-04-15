@@ -157,3 +157,39 @@ describe("TDModeController.onTick viability damage", () => {
     expect(controller.getViability().value).toBe(100);
   });
 });
+
+describe("TDModeController.getTerminalState", () => {
+  it('returns "running" in build phase', () => {
+    const controller = makeController();
+    expect(controller.getTerminalState()).toBe("running");
+  });
+
+  it('returns "running" in simulate with viability > 0 and wave not drained', () => {
+    const controller = makeController();
+    const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
+    controller.advancePhase(state);
+    state.metricsHistory.push({
+      tick: 0, requestsGenerated: 10, requestsResolved: 10,
+      requestsDropped: 0, requestsTimedOut: 0, avgLatency: 0,
+      componentsActive: 0, revenueEarned: 10, upkeepPaid: 0,
+    } as any);
+    expect(controller.getTerminalState()).toBe("running");
+  });
+
+  it('returns "dead" when viability hits 0', () => {
+    const controller = makeController();
+    const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
+    controller.advancePhase(state);
+
+    // Drop 1500 in one tick × 0.1 = 150 viability damage → dead
+    state.metricsHistory.push({
+      tick: 0, requestsGenerated: 1500, requestsResolved: 0,
+      requestsDropped: 1500, requestsTimedOut: 0, avgLatency: 0,
+      componentsActive: 0, revenueEarned: 0, upkeepPaid: 0,
+    } as any);
+    controller.onTick(state as any);
+
+    expect(controller.getViability().isDead).toBe(true);
+    expect(controller.getTerminalState()).toBe("dead");
+  });
+});
