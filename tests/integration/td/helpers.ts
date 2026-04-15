@@ -146,48 +146,48 @@ export { makeRng } from "@harness/td-fixtures";
  * Build a Server component from the TD registry. Processing+Forwarding+Monitoring
  * shape (read cap 20/tick, write forward 12/tick) comes from `registerTDDefaults`.
  */
-export function buildServer(compRegistry: ComponentRegistry): {
+export function buildServer(compRegistry: ComponentRegistry, zone?: string): {
   component: Component;
   ingressPortId: PortId;
   egressPortId: PortId;
 } {
-  const component = compRegistry.create("server", { x: 0, y: 0 }, null);
+  const component = compRegistry.create("server", { x: 0, y: 0 }, zone ?? null);
   return { component, ...singlePortIds(component) };
 }
 
 /**
  * Build a Database component from the TD registry (Storage 25/tick + Monitoring).
  */
-export function buildDatabase(compRegistry: ComponentRegistry): {
+export function buildDatabase(compRegistry: ComponentRegistry, zone?: string): {
   component: Component;
   ingressPortId: PortId;
   egressPortId: PortId;
 } {
-  const component = compRegistry.create("database", { x: 0, y: 0 }, null);
+  const component = compRegistry.create("database", { x: 0, y: 0 }, zone ?? null);
   return { component, ...singlePortIds(component) };
 }
 
 /**
  * Build a Cache component from the TD registry (Caching + forwarding-pipe 200/tick).
  */
-export function buildCache(compRegistry: ComponentRegistry): {
+export function buildCache(compRegistry: ComponentRegistry, zone?: string): {
   component: Component;
   ingressPortId: PortId;
   egressPortId: PortId;
 } {
-  const component = compRegistry.create("cache", { x: 0, y: 0 }, null);
+  const component = compRegistry.create("cache", { x: 0, y: 0 }, zone ?? null);
   return { component, ...singlePortIds(component) };
 }
 
 /**
  * Build a CDN component from the TD registry (Caching + forwarding-pipe + Monitoring).
  */
-export function buildCDN(compRegistry: ComponentRegistry): {
+export function buildCDN(compRegistry: ComponentRegistry, zone?: string): {
   component: Component;
   ingressPortId: PortId;
   egressPortId: PortId;
 } {
-  const component = compRegistry.create("cdn", { x: 0, y: 0 }, null);
+  const component = compRegistry.create("cdn", { x: 0, y: 0 }, zone ?? null);
   return { component, ...singlePortIds(component) };
 }
 
@@ -195,12 +195,12 @@ export function buildCDN(compRegistry: ComponentRegistry): {
  * Build an API Gateway component from the TD registry (Auth + forwarding-pipe + Monitoring).
  * The auth capability is configured with terminateAuthRequired: true via registerTDDefaults.
  */
-export function buildAPIGateway(compRegistry: ComponentRegistry): {
+export function buildAPIGateway(compRegistry: ComponentRegistry, zone?: string): {
   component: Component;
   ingressPortId: PortId;
   egressPortId: PortId;
 } {
-  const component = compRegistry.create("api_gateway", { x: 0, y: 0 }, null);
+  const component = compRegistry.create("api_gateway", { x: 0, y: 0 }, zone ?? null);
   return { component, ...singlePortIds(component) };
 }
 
@@ -208,12 +208,12 @@ export function buildAPIGateway(compRegistry: ComponentRegistry): {
  * Build a Queue component from the TD registry (QueueCapability + forwarding-pipe + Monitoring).
  * Tier-1 capacity: 32 slots. Buffers backpressured requests via EngineBufferable.
  */
-export function buildQueue(compRegistry: ComponentRegistry): {
+export function buildQueue(compRegistry: ComponentRegistry, zone?: string): {
   component: Component;
   ingressPortId: PortId;
   egressPortId: PortId;
 } {
-  const component = compRegistry.create("queue", { x: 0, y: 0 }, null);
+  const component = compRegistry.create("queue", { x: 0, y: 0 }, zone ?? null);
   return { component, ...singlePortIds(component) };
 }
 
@@ -221,12 +221,12 @@ export function buildQueue(compRegistry: ComponentRegistry): {
  * Build a Worker component from the TD registry (BatchProcessingCapability + Monitoring).
  * Processes "batch" requests at tier×5 per tick via PROCESS phase.
  */
-export function buildWorker(compRegistry: ComponentRegistry): {
+export function buildWorker(compRegistry: ComponentRegistry, zone?: string): {
   component: Component;
   ingressPortId: PortId;
   egressPortId: PortId;
 } {
-  const component = compRegistry.create("worker", { x: 0, y: 0 }, null);
+  const component = compRegistry.create("worker", { x: 0, y: 0 }, zone ?? null);
   return { component, ...singlePortIds(component) };
 }
 
@@ -235,12 +235,12 @@ export function buildWorker(compRegistry: ComponentRegistry): {
  * INTERCEPT phase: CLOSED passes through, OPEN fast-fails (DROP/circuit_open).
  * Tier-1: threshold 5 failures, cooldown 10 ticks.
  */
-export function buildCircuitBreaker(compRegistry: ComponentRegistry): {
+export function buildCircuitBreaker(compRegistry: ComponentRegistry, zone?: string): {
   component: Component;
   ingressPortId: PortId;
   egressPortId: PortId;
 } {
-  const component = compRegistry.create("circuit_breaker", { x: 0, y: 0 }, null);
+  const component = compRegistry.create("circuit_breaker", { x: 0, y: 0 }, zone ?? null);
   return { component, ...singlePortIds(component) };
 }
 
@@ -313,12 +313,12 @@ export function buildWorkerWithForwarding(): {
  * forwarding-pipe + Monitoring). Handles "stream" requests inline (RESPOND) and
  * forwards all other traffic types downstream. Inline filter pattern.
  */
-export function buildStreamingServer(compRegistry: ComponentRegistry): {
+export function buildStreamingServer(compRegistry: ComponentRegistry, zone?: string): {
   component: Component;
   ingressPortId: PortId;
   egressPortId: PortId;
 } {
-  const component = compRegistry.create("streaming_media_server", { x: 0, y: 0 }, null);
+  const component = compRegistry.create("streaming_media_server", { x: 0, y: 0 }, zone ?? null);
   return { component, ...singlePortIds(component) };
 }
 
@@ -327,12 +327,26 @@ export function buildStreamingServer(compRegistry: ComponentRegistry): {
  * Handles "static_asset" requests. Decorative in the streaming path — Streaming Server
  * does the actual stream processing.
  */
-export function buildBlobStorage(compRegistry: ComponentRegistry): {
+export function buildBlobStorage(compRegistry: ComponentRegistry, zone?: string): {
   component: Component;
   ingressPortId: PortId;
   egressPortId: PortId;
 } {
-  const component = compRegistry.create("blob_storage", { x: 0, y: 0 }, null);
+  const component = compRegistry.create("blob_storage", { x: 0, y: 0 }, zone ?? null);
+  return { component, ...singlePortIds(component) };
+}
+
+/**
+ * Build a DNS/GTM component from the TD registry (GeoRoutingCapability +
+ * forwarding-pipe + Monitoring). Routes requests to nearest zone via
+ * EngineConsultable.selectConnection(). Zone-agnostic — sits at entry point.
+ */
+export function buildDNSGTM(compRegistry: ComponentRegistry): {
+  component: Component;
+  ingressPortId: PortId;
+  egressPortId: PortId;
+} {
+  const component = compRegistry.create("dns_gtm", { x: 0, y: 0 }, null);
   return { component, ...singlePortIds(component) };
 }
 
