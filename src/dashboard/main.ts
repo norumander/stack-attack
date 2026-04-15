@@ -651,69 +651,132 @@ function tdOnTick(controller: TDModeController, state: SimulationState): void {
   tdDashboard?.updateRunningStatus(tickInWave, wave.duration, resolvedThisWave);
   tdDashboard?.applyTick(state, tdLoop?.tickInterval ?? 200);
 
-  if (!controller.isWaveDrained(state)) return;
+  // Slice B: push live campaign state into the cyberpunk HUD.
+  {
+    const hud = getCyberpunkHudController();
+    if (hud) {
+      hud.updateViability(controller.getViability());
+      if (controller.getPhase() === "build") {
+        hud.updateNextBill(controller.getRentBill(state));
+      } else {
+        hud.updateNextBill(null);
+      }
+    }
+  }
 
+  const terminalState = controller.getTerminalState(state);
+  if (terminalState === "running") return;
+
+  // Either "dead" (viability hit 0 mid-wave) or "wave_passed" (drained with
+  // viability > 0). Both end the tick loop.
+  tdLoop?.stop();
+
+  if (terminalState === "dead") {
+    // eslint-disable-next-line no-console
+    console.warn(`[td-dead] viability=${controller.getViability().value}`);
+    showDeathModal();
+    tdTickSeq = 0;
+    tdDashboard?.refreshHud();
+    tdDashboard?.rerenderTopology();
+    return;
+  }
+
+  // terminalState === "wave_passed"
   // eslint-disable-next-line no-console
   console.warn(
     `[td-wave-end] wave ${controller.getCurrentWaveIndex() + 1} drained at tick=${state.currentTick}`,
   );
-  tdLoop?.stop();
   controller.advancePhase(state); // simulate → assess
-  const outcome = controller.evaluateOutcome(
-    controller.getCurrentWaveMetrics(state),
-  );
+
+  // Snapshot the action log for retry semantics (same as before).
+  tdSnapshotIndex = tdActionLog.length;
   // eslint-disable-next-line no-console
-  console.warn(
-    `[td-outcome] verdict=${outcome.verdict} notes=${outcome.notes.join(" | ")}`,
-  );
-  showWaveResultToast(outcome);
+  console.warn(`[td-snapshot] saved at action ${tdSnapshotIndex}`);
 
-  if (outcome.verdict === "win") {
-    // === WIN: snapshot the action log and advance to next wave ===
-    tdSnapshotIndex = tdActionLog.length;
-    // eslint-disable-next-line no-console
-    console.warn(`[td-snapshot] saved at action ${tdSnapshotIndex}`);
+  showWinModal();
 
-    const nextIdx = controller.getCurrentWaveIndex() + 1;
-    if (nextIdx < controller.getWaveCount()) {
-      const nextWave = TD_WAVES[nextIdx]!;
-      controller.setEconomy(
-        new TDEconomy({
-          startingBudget: nextWave.startingBudget ?? 0,
-          revenuePerRequestType: nextWave.revenuePerRequestType,
-        }),
-      );
-      for (const id of state.components.keys()) {
-        state.setCondition(id, 1.0);
-      }
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[td-next-wave] advancing to wave ${nextIdx + 1} of ${controller.getWaveCount()}, fresh economy budget=${nextWave.startingBudget}`,
-      );
-    } else {
-      // eslint-disable-next-line no-console
-      console.warn(`[td-campaign-end] all ${controller.getWaveCount()} waves complete`);
+  const nextIdx = controller.getCurrentWaveIndex() + 1;
+  if (nextIdx < controller.getWaveCount()) {
+    // Condition reset; economy carries over under the rent model — no
+    // per-wave budget reset.
+    for (const id of state.components.keys()) {
+      state.setCondition(id, 1.0);
     }
-    // advancePhase handles terminal case: bumps waveIndex and stays in assess
-    // when there is no next wave, so isCampaignComplete() becomes true.
-    controller.advancePhase(state);
-    tdTickSeq = 0;
-    tdDashboard?.refreshHud();
-    tdDashboard?.rerenderTopology();
-  } else {
-    // === LOSS: stay in assess phase, show retry/reset modal ===
     // eslint-disable-next-line no-console
     console.warn(
-      `[td-loss] wave ${controller.getCurrentWaveIndex() + 1} lost; awaiting Retry or Reset`,
+      `[td-next-wave] advancing to wave ${nextIdx + 1} of ${controller.getWaveCount()}`,
     );
-    showLossModal(outcome);
-    tdTickSeq = 0;
-    tdDashboard?.refreshHud();
-    tdDashboard?.rerenderTopology();
   }
+  controller.advancePhase(state); // assess → build (or end of campaign)
+  tdTickSeq = 0;
+  tdDashboard?.refreshHud();
+  tdDashboard?.rerenderTopology();
 }
 
 // === Loss modal helpers ===
+
+function showDeathModal(): void {
+  const modal = document.getElementById("td-loss-modal");
+  const title = document.getElementById("td-loss-modal-title");
+  const detail = document.getElementById("td-loss-modal-detail");
+  if (!modal || !title || !detail || !tdController || !tdState) return;
+
+  title.textContent = "YOUR OPPORTUNITY WINDOW HAS CLOSED";
+  while (detail.firstChild) detail.removeChild(detail.firstChild);
+
+  const flavor = document.createElement("div");
+  flavor.textContent = "The market moved on. Your service couldn't keep up.";
+  flavor.style.fontStyle = "italic";
+  flavor.style.marginBottom = "10px";
+  detail.appendChild(flavor);
+
+  // Reuse the diagnose-wave hint for an actionable line.
+  const metrics = tdController.getCurrentWaveMetrics(tdState);
+  const diagnosis = diagnoseWave({
+    wave: tdController.getCurrentWave(),
+    metrics,
+    components: tdState.components,
+    connections: tdState.connections,
+  });
+  if (diagnosis.hint) {
+    const hintEl = document.createElement("div");
+    hintEl.textContent = diagnosis.hint;
+    hintEl.style.color = "#8b8fa3";
+    detail.appendChild(hintEl);
+  }
+
+  const retryBtn = document.getElementById("td-retry-btn");
+  // Deaths are persistent — the button is a campaign restart, not a wave retry.
+  if (retryBtn) retryBtn.textContent = "RESTART CAMPAIGN";
+  modal.hidden = false;
+}
+
+function showWinModal(): void {
+  if (!tdController || !tdState) return;
+  const waveNum = tdController.getCurrentWaveIndex() + 1;
+  const v = tdController.getViability();
+  const budget = tdController.economy.getBudget();
+  // Reuse the existing wave-result toast DOM for visual continuity.
+  const outcome: OutcomeReport = {
+    verdict: "win",
+    score: { cost: budget, performance: 1, reliability: 1, composite: 1 },
+    slaResults: {
+      availability: { target: 0, actual: 1, passed: true },
+      latency: { target: Infinity, actual: 0, passed: true },
+      budget: { target: 0, actual: budget, passed: true },
+      allPassed: true,
+    },
+    notes: [
+      `Viability ${Math.round(v.fraction * 100)}%`,
+      `Budget $${budget}`,
+    ],
+  };
+  showWaveResultToast(outcome);
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[td-win] wave ${waveNum} passed; viability=${v.value} budget=${budget}`,
+  );
+}
 
 function gatherPerTypeCacheStats(
   state: { components: ReadonlyMap<ComponentId, Component> },
@@ -1289,7 +1352,14 @@ $speedSlider.addEventListener("input", () => {
 // Loss modal buttons (one-time wiring; modal HTML is static).
 const $tdRetryBtn = document.getElementById("td-retry-btn") as HTMLButtonElement | null;
 const $tdResetBtn = document.getElementById("td-reset-btn") as HTMLButtonElement | null;
-$tdRetryBtn?.addEventListener("click", () => retryTDWave());
+$tdRetryBtn?.addEventListener("click", () => {
+  // Death modal repurposes this button as "RESTART CAMPAIGN".
+  // Loss-without-death is no longer a path in the Slice B terminal model,
+  // so the old retryTDWave flow is unreachable in normal gameplay. The
+  // `retryTDWave` function and its helpers remain defined in case we need
+  // them for a mercy-mode roadmap item (Slice C §6).
+  resetTDCampaign();
+});
 $tdResetBtn?.addEventListener("click", () => resetTDCampaign());
 
 // ─── Boot ─────────────────────────────────────────────────────────────
