@@ -358,12 +358,21 @@ export function describeReward(
 }
 
 export function renderBriefing(wave: TDWaveDefinition): BriefingDisplay {
+  // Filter revenue to only the traffic types that actually appear in this
+  // wave's composition. WAVE_1's revenuePerRequestType holds both api_read
+  // and api_write rates even though composition is 100% api_read; passing
+  // the raw map would show "$1–$2 per user served" instead of "$1 per user
+  // served". describeReward itself stays general-purpose.
+  const activeRevenue = new Map<string, number>();
+  for (const [type, rate] of wave.revenuePerRequestType) {
+    if (wave.composition.has(type)) activeRevenue.set(type, rate);
+  }
   return {
     title: wave.name.toUpperCase(),
     load: computeLoad(wave.intensity),
     traffic: describeTraffic(wave.composition),
     objective: describeObjective(wave),
-    reward: describeReward(wave.revenuePerRequestType),
+    reward: describeReward(activeRevenue),
   };
 }
 ```
