@@ -344,7 +344,7 @@ export class TDModeController implements ModeController {
     const composite =
       0.4 * performance +
       0.4 * reliability +
-      0.2 * (cost / (wave.startingBudget ?? 1));
+      0.2 * (cost / ((wave.startingBudget ?? 0) + 1));
 
     const notes: string[] = [
       `availability: ${(sla.availability.actual * 100).toFixed(1)}% (target: ${(sla.availability.target * 100).toFixed(0)}%)`,
