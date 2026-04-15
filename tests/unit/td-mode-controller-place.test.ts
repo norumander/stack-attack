@@ -7,14 +7,16 @@ import { bootTDRegistry, makeRng, makeTDController } from "@harness/td-fixtures"
 import type { ComponentId } from "@core/types/ids";
 
 describe("TDModeController.tryPlace", () => {
-  it("places a server, debits the economy, mutates state", () => {
+  it("places a server, mutates state, leaves budget unchanged", () => {
     const { state, tdc, economy } = makeTDController();
     const before = economy.getBudget();
     const result = tdc.tryPlace(state, "server", { x: 1, y: 0 }, null);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error();
     expect(state.components.has(result.componentId)).toBe(true);
-    expect(economy.getBudget()).toBeLessThan(before);
+    // Under the rent-at-READY model, tryPlace no longer debits.
+    // The bill is paid atomically in payRent() at build→simulate.
+    expect(economy.getBudget()).toBe(before);
   });
 
   it("rejects with disallowed_by_mode in simulate phase", () => {
@@ -59,13 +61,4 @@ describe("TDModeController.tryPlace", () => {
     expect(result.reason).toBe("registry_unknown_type");
   });
 
-  it("rejects with insufficient_budget when balance is too low", () => {
-    const { state, tdc, economy } = makeTDController({ startingBudget: 50 }); // SERVER_ENTRY costs 100
-    const result = tdc.tryPlace(state, "server", { x: 1, y: 0 }, null);
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error();
-    expect(result.reason).toBe("insufficient_budget");
-    expect(economy.getBudget()).toBe(50); // unchanged
-    expect(state.components.size).toBe(0);
-  });
 });
