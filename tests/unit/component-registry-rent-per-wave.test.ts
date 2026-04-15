@@ -32,7 +32,8 @@ describe("ComponentRegistryEntry.rentPerWave", () => {
 
     registry.register(entry);
     const fetched = registry.get("test-type");
-    expect(fetched?.rentPerWave).toBe(80);
+    expect(fetched).toBeDefined();
+    expect(fetched!.rentPerWave).toBe(80);
   });
 
   it("allows rentPerWave to be undefined (backward compat)", () => {
@@ -60,6 +61,8 @@ describe("ComponentRegistryEntry.rentPerWave", () => {
 
     registry.register(entry);
     const fetched = registry.get("legacy-type");
-    expect(fetched?.rentPerWave).toBeUndefined();
+    expect(fetched).toBeDefined();
+    expect(fetched!.rentPerWave).toBeUndefined();
+    expect(fetched!.placementCost).toBe(100);
   });
 });
