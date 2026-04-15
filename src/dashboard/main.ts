@@ -435,6 +435,7 @@ function cumulativeStartingBudget(waveIndex: number): number {
 }
 
 const dossierStore = new ComponentDossierStore();
+let dossierInterceptionAbort: AbortController | null = null;
 
 let tdDashboard: TDDashboard | null = null;
 let tdLoop: SimLoop<TDModeController> | null = null;
@@ -1136,6 +1137,11 @@ async function bootTDMode(): Promise<void> {
 
   // Slice B: NEW badges + first-click dossier interception.
   {
+    // Abort prior boot's listeners so they don't stack on repeat bootTDMode calls.
+    dossierInterceptionAbort?.abort();
+    dossierInterceptionAbort = new AbortController();
+    const { signal } = dossierInterceptionAbort;
+
     const hud = getCyberpunkHudController();
     if (hud) {
       const paletteButtonsMap = hud.getPaletteButtons();
@@ -1164,20 +1170,22 @@ async function bootTDMode(): Promise<void> {
             }
             e.preventDefault();
             e.stopImmediatePropagation();
+            // Mark seen synchronously BEFORE the await so a rapid second click
+            // short-circuits on the hasSeen guard and doesn't stack a second modal.
+            dossierStore.markSeen(type);
+            cell.classList.remove("cp-palette-cell--new");
             const entry = compRegistry.get(type);
             const rent = entry?.rentPerWave ?? 0;
             await showDossier(type, rent);
-            dossierStore.markSeen(type);
-            cell.classList.remove("cp-palette-cell--new");
-            // Forward manually to the classic palette button so the place-mode
-            // state machine kicks in. This mirrors what cyberpunk-hud's normal
-            // forwarding would have done.
+            // Forward manually to the classic palette button so place-mode
+            // kicks in. This mirrors what cyberpunk-hud's normal forwarding
+            // would have done.
             const classicBtn = document.querySelector<HTMLButtonElement>(
               `.td-palette-btn[data-type="${type}"]`,
             );
             classicBtn?.click();
           },
-          { capture: true },
+          { capture: true, signal },
         );
       }
     }
