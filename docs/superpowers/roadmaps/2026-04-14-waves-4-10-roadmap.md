@@ -16,7 +16,7 @@ Legend: ⬜ Planned · 🟡 In Progress · ✅ Shipped
 | 7 | The Outage      | 3e | ✅ Shipped | 2026-04-14 (augmented) |
 | 8 | Video Launch | 4a | ✅ Shipped | 2026-04-14 |
 | 9 | Going Global | 4b | ✅ Shipped | 2026-04-14 |
-| 10 | The Viral Moment | 4c | ⬜ Planned | — |
+| 10 | The Viral Moment | 4c | ✅ Shipped | 2026-04-14 |
 
 When a wave ships, update its row: status → ✅ Shipped, Shipped → the merge date. When a wave is actively in flight, status → 🟡 In Progress and add a link to the branch/PR in the Shipped column. One cell per wave, updated in the same PR that ships it.
 
@@ -40,7 +40,7 @@ Before brainstorming any wave, assume these are **type-level complete**. Each pe
 
 **What's NOT in place** and will surface as a real blocker sooner or later:
 
-- **Dynamic `instanceCount`.** Components currently have fixed scale. Wave 10's AutoScale needs tick-mutable `instanceCount` with upkeep/throughput recomputed. Unknown whether the `auto-scale` capability file already mutates state or is a stub.
+- **Dynamic `instanceCount`.** ✅ Verified in Stage 4c. AutoScaleCapability emits SCALE side effects based on utilization. `instanceCount` is mutable, throughput and upkeep scale linearly. Server maxInstances: 10, Database maxInstances: 5.
 - **Multi-tick connection-bandwidth reservation.** `stream` requests need to reserve `streamBandwidth` on a connection for `streamDuration` ticks. `state.activeStreams` exists but end-to-end behavior — does the connection actually refuse new traffic while a stream holds it? — is unverified. Wave 8 first-brainstorm question.
 - **Cross-zone latency applied to request completion time.** ✅ Verified in Stage 4b. `getEffectiveLatency()` adds `getZonePairLatency(state.zoneTopology, fromComp.zone, toComp.zone)` after the condition multiplier. Additive, not affected by component health.
 - **Mid-wave chaos event execution.** ✅ Verified in Stage 3e. `getScheduledChaos` populates from `wave.chaosSchedule`, `injectChaos` (step 6b) applies `component_failure` condition zeroing. Wave 7 tests confirm chaos fires at wave-relative ticks 15 and 22. **However:** `CircuitBreakerCapability.reportFailure()` is NOT auto-called by the engine — CB state machine requires external invocation.

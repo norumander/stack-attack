@@ -111,3 +111,14 @@ Surfaced during Stage 3d playtest and left unresolved when the branch pivoted to
 - **SimulationState zone topology is set by the test caller.** `runWave` receives `state` as a parameter. Wave 9 tests construct `new SimulationState({ zones: [...], pairLatency: ... })` with the correct topology.
 - **DNS/GTM as entry point (no Client).** Wave 9 win test uses DNS/GTM directly as the entry point because Client's forwarding-pipe caps at 500/tick (tier 1) while Wave 9 intensity is 800/tick. DNS/GTM forwarding-pipe at tier 2 handles 1000/tick.
 - **Each zone needs a complete stack including StreamingServer.** Stream requests are 30% of traffic. Without per-zone StreamingServer, streams pass through to Servers (which PASS them), causing drops.
+
+## Stage 4c gotchas
+
+- **AutoScaleCapability uses previous-tick utilization.** The capability snapshots utilization at the end of each tick and evaluates the snapshot on the next tick. This avoids the "processed=0 at tick start" problem where utilization would always be 0% when evaluated on the first OBSERVE invocation.
+- **OBSERVE-phase sideEffects are now collected.** Stage 4c fixed `Component.process()` to collect sideEffects from OBSERVE-phase capabilities (previously only events were collected). This is required for SCALE side effects to reach `deliverStaged`.
+- **Auto-scale is defaultTier 1 on Server and Database.** When placed, auto-scale runs immediately. To disable in tests, set `maxInstances = 1` (SCALE clamped to no-op).
+- **Auto-scale cooldown prevents oscillation.** Tier 1: 5-tick cooldown, Tier 2: 2-tick cooldown. After emitting SCALE, the capability won't emit again until cooldown expires.
+- **Wave 10 intermediary throughput requires high tiers.** At 3000/tick per zone (~1200 NA, ~1050 EU, ~750 AP), forwarding-pipe at default tier 1 (500/tick) is insufficient. Win test uses tier 3+ on CDN/Cache/StreamServer/Worker/LB intermediaries.
+- **Wave 10 stream bandwidth reservation is massive.** 35% of 3000 = 1050 stream/tick. Cache→StreamServer connections need 50,000+ bandwidth to avoid BACKPRESSURED drops from stream reservations.
+- **chaosSchedule now supports all 4 chaos kinds.** `connection_sever` and `latency_injection` require `connectionId` in the schedule entry. `getScheduledChaos` maps them to `ChaosEvent` objects.
+- **Wave 10 test suite is slow (~50s).** 3000/tick × 40 ticks + drain = massive simulation. Expected behavior — the boss wave is computationally heavy.

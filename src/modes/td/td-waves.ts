@@ -34,11 +34,13 @@ export interface TDWaveDefinition {
    */
   readonly chaosSchedule?: readonly {
     readonly tick: number;
-    readonly chaosKind: "component_failure" | "zone_outage";
+    readonly chaosKind: "component_failure" | "zone_outage" | "connection_sever" | "latency_injection";
     readonly targetType?: string;
     readonly targetIndex?: number;
     readonly zone?: string;
     readonly durationTicks?: number;
+    readonly connectionId?: string;
+    readonly extraLatency?: number;
   }[];
   /** Stream request config for waves with stream traffic. */
   readonly streamConfig?: {
@@ -337,5 +339,66 @@ export const WAVE_9: TDWaveDefinition = {
     maxAvgLatency: 4,
     minBudget: 0,
     penaltyPerTick: 8,
+  },
+};
+
+export const WAVE_10: TDWaveDefinition = {
+  id: 10,
+  name: "The Viral Moment",
+  startingBudget: 5000,
+  intensity: 3000,
+  composition: new Map([
+    ["api_read", 0.25],
+    ["api_write", 0.05],
+    ["static_asset", 0.10],
+    ["auth_required", 0.10],
+    ["batch", 0.15],
+    ["stream", 0.35],
+  ]),
+  duration: 40,
+  ttl: 15,
+  availableComponents: [
+    "server", "database", "cache", "load_balancer", "cdn", "api_gateway",
+    "queue", "worker", "circuit_breaker", "streaming_media_server", "blob_storage",
+    "dns_gtm",
+  ],
+  dropThreshold: 0.05,
+  revenuePerRequestType: new Map([
+    ["api_read", 1],
+    ["api_write", 2],
+    ["static_asset", 0.3],
+    ["auth_required", 1.5],
+    ["batch", 5],
+    ["stream", 8],
+  ]),
+  keyPoolSize: 15,
+  connectionBandwidth: 3000,
+  streamConfig: {
+    duration: 20,
+    bandwidth: 3,
+  },
+  zoneTopology: {
+    zones: ["na-east", "eu-west", "ap-south"],
+    pairLatency: new Map([
+      ["ap-south|na-east", 5],
+      ["eu-west|na-east", 3],
+      ["ap-south|eu-west", 4],
+    ]),
+  },
+  zoneDistribution: new Map([
+    ["na-east", 0.40],
+    ["eu-west", 0.35],
+    ["ap-south", 0.25],
+  ]),
+  chaosSchedule: [
+    { tick: 10, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
+    { tick: 20, chaosKind: "component_failure", targetType: "server", targetIndex: 1 },
+    { tick: 25, chaosKind: "zone_outage", zone: "ap-south", durationTicks: 5 },
+  ],
+  sla: {
+    availabilityTarget: 0.85,
+    maxAvgLatency: 5,
+    minBudget: -500,
+    penaltyPerTick: 10,
   },
 };

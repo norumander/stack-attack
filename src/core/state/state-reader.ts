@@ -5,6 +5,7 @@ import type { ZoneTopology } from "../types/zone.js";
 import type { RequestEvent } from "../types/request.js";
 import type { ActiveStream } from "../types/stream.js";
 import type { ActiveChaosEntry } from "../types/chaos.js";
+import type { PerComponentTickCounters } from "../engine/per-component-counters.js";
 
 export interface SimulationStateReader {
   readonly components: ReadonlyMap<ComponentId, ComponentReader>;
@@ -12,6 +13,7 @@ export interface SimulationStateReader {
   readonly zoneTopology: ZoneTopology;
   readonly currentTick: number;
   readonly phase: "build" | "simulate" | "assess";
+  readonly perComponentThisTick: ReadonlyMap<ComponentId, Readonly<PerComponentTickCounters>>;
   getEventsFor(requestId: RequestId): readonly RequestEvent[];
   getActiveStreamsOnConnection(connectionId: ConnectionId): readonly ActiveStream[];
   getActiveChaos(): readonly ActiveChaosEntry[];

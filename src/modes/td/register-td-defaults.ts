@@ -14,6 +14,7 @@ import { CircuitBreakerCapability } from "@capabilities/circuit-breaker/circuit-
 import { StreamingCapability } from "@capabilities/streaming/streaming-capability.js";
 import { BlobStorageCapability } from "@capabilities/blob-storage/blob-storage-capability.js";
 import { GeoRoutingCapability } from "@capabilities/geo-routing/geo-routing-capability.js";
+import { AutoScaleCapability } from "@capabilities/auto-scale/auto-scale-capability.js";
 import {
   SERVER_ENTRY,
   DATABASE_ENTRY,
@@ -153,6 +154,10 @@ export function registerTDDefaults(
     id: "geo-routing" as CapabilityId,
     factory: () => new GeoRoutingCapability("geo-routing" as CapabilityId),
     documentsSubInterfaces: ["EngineConsultable"],
+  });
+  capRegistry.register({
+    id: "auto-scale" as CapabilityId,
+    factory: () => new AutoScaleCapability("auto-scale" as CapabilityId),
   });
 
   compRegistry.register(CLIENT_ENTRY);

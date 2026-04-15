@@ -581,6 +581,21 @@ export class TDModeController implements ModeController {
           durationTicks: entry.durationTicks ?? 5,
         };
       }
+      if (entry.chaosKind === "connection_sever") {
+        return {
+          kind: "connection_sever",
+          connectionId: (entry.connectionId ?? "unknown") as ConnectionId,
+          durationTicks: entry.durationTicks ?? 3,
+        };
+      }
+      if (entry.chaosKind === "latency_injection") {
+        return {
+          kind: "latency_injection",
+          connectionId: (entry.connectionId ?? "unknown") as ConnectionId,
+          extraLatency: entry.extraLatency ?? 10,
+          durationTicks: entry.durationTicks ?? 5,
+        };
+      }
 
       // Resolve symbolic target: find the Nth component of the given type
       if (entry.chaosKind === "component_failure" && entry.targetType) {

@@ -5,6 +5,7 @@ import { SERVER_ENTRY } from "@modes/td/td-component-entries.js";
 import { ProcessingCapability } from "@capabilities/processing/processing-capability.js";
 import { ForwardingCapability } from "@capabilities/forwarding/forwarding-capability.js";
 import { MonitoringCapability } from "@capabilities/monitoring/monitoring-capability.js";
+import { AutoScaleCapability } from "@capabilities/auto-scale/auto-scale-capability.js";
 import type { CapabilityId } from "@core/types/ids.js";
 
 function freshRegistry(): { capRegistry: CapabilityRegistry; compRegistry: ComponentRegistry } {
@@ -12,6 +13,7 @@ function freshRegistry(): { capRegistry: CapabilityRegistry; compRegistry: Compo
   capRegistry.register({ id: "processing" as CapabilityId, factory: () => new ProcessingCapability("processing" as CapabilityId) });
   capRegistry.register({ id: "forwarding" as CapabilityId, factory: () => new ForwardingCapability("forwarding" as CapabilityId, { handledTypes: ["api_read", "api_write"] }) });
   capRegistry.register({ id: "monitoring" as CapabilityId, factory: () => new MonitoringCapability("monitoring" as CapabilityId) });
+  capRegistry.register({ id: "auto-scale" as CapabilityId, factory: () => new AutoScaleCapability("auto-scale" as CapabilityId) });
   const compRegistry = new ComponentRegistry(capRegistry);
   compRegistry.register(SERVER_ENTRY);
   compRegistry.validate();

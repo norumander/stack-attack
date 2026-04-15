@@ -190,13 +190,15 @@ export class Component implements ComponentReader {
       }
     }
 
-    // OBSERVE — always runs, read-only by convention; side effects/outcomes ignored in Stage 1.
+    // OBSERVE — always runs; outcomes ignored but side effects (e.g. SCALE
+    // from AutoScaleCapability) are collected so they reach deliverStaged.
     {
       const caps = this.getCapabilitiesByPhase("OBSERVE");
       for (const cap of caps) {
         if (!context.activeCapabilityIds.has(cap.id)) continue;
         const result = cap.process(request, context);
         for (const ev of result.events) events.push(ev);
+        for (const se of result.sideEffects) sideEffects.push(se);
       }
     }
 

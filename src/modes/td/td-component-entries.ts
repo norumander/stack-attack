@@ -47,6 +47,7 @@ export const SERVER_ENTRY: ComponentRegistryEntry = {
     { id: "processing" as CapabilityId, defaultTier: 1, maxTier: 3 },
     { id: "forwarding" as CapabilityId, defaultTier: 1, maxTier: 3 },
     { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+    { id: "auto-scale" as CapabilityId, defaultTier: 1, maxTier: 2 },
   ],
   ports: [
     { id: "p-in" as PortId, direction: "ingress", dataType: "http", capacity: 2, connections: [] },
@@ -75,6 +76,7 @@ export const DATABASE_ENTRY: ComponentRegistryEntry = {
   capabilities: [
     { id: "storage" as CapabilityId, defaultTier: 1, maxTier: 3 },
     { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
+    { id: "auto-scale" as CapabilityId, defaultTier: 1, maxTier: 2 },
   ],
   ports: [
     { id: "p-in" as PortId, direction: "ingress", dataType: "data", capacity: 3, connections: [] },
