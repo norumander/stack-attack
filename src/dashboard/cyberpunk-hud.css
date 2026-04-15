@@ -1,0 +1,918 @@
+/*
+ * Cyberpunk HUD — full-screen game overlay for the iso TD renderer.
+ *
+ * All rules scoped under body.renderer-iso. Activated by cyberpunk-hud.ts
+ * when ?renderer=iso is set on the URL. The classic dashboard DOM stays in
+ * place but is hidden via display: none so game wiring keeps updating it.
+ * Mirror observers in cyberpunk-hud.ts copy state into the new HUD DOM.
+ */
+
+body.renderer-iso {
+  --sc-bg: #050816;
+  --sc-bg-deep: #020410;
+  --sc-ink: #5ef0ff;
+  --sc-ink-bright: #aef7ff;
+  --sc-ink-dim: rgba(94, 240, 255, 0.55);
+  --sc-ink-faint: rgba(94, 240, 255, 0.2);
+  --sc-panel: rgba(6, 14, 36, 0.78);
+  --sc-panel-hi: rgba(18, 36, 72, 0.82);
+  --sc-border: rgba(94, 240, 255, 0.32);
+  --sc-border-bright: rgba(94, 240, 255, 0.9);
+  --sc-glow: 0 0 24px rgba(94, 240, 255, 0.18);
+  --sc-text-shadow: 0 0 12px rgba(94, 240, 255, 0.55);
+  --sc-danger: #ff4d6a;
+  --font-display: "Chakra Petch", ui-sans-serif, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  margin: 0;
+  padding: 0;
+  background: var(--sc-bg);
+  color: var(--sc-ink);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+  overflow: hidden;
+}
+
+/* ================================================================
+   Hide ALL classic dashboard chrome
+   ================================================================ */
+
+body.renderer-iso .header,
+body.renderer-iso .grid,
+body.renderer-iso #td-hud,
+body.renderer-iso #td-briefing,
+body.renderer-iso #td-info-panel,
+body.renderer-iso #td-loss-modal,
+body.renderer-iso .td-status {
+  display: none !important;
+}
+
+/* ================================================================
+   Full-screen iso canvas
+   ================================================================ */
+
+body.renderer-iso #topology-visual.topology-visual {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: var(--sc-bg) !important;
+  z-index: 1;
+}
+
+body.renderer-iso #topology-visual canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* ================================================================
+   HUD root container
+   ================================================================ */
+
+body.renderer-iso #cp-hud-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  font-family: var(--font-display);
+}
+
+body.renderer-iso #cp-hud-root button,
+body.renderer-iso #cp-hud-root .cp-palette-cell,
+body.renderer-iso #cp-hud-root .cp-info-close {
+  pointer-events: auto;
+}
+
+/* ================================================================
+   Panel base (shared by wave pill, resources, briefing, info, loss)
+   ================================================================ */
+
+body.renderer-iso .cp-panel {
+  position: absolute;
+  background: var(--sc-panel);
+  backdrop-filter: blur(10px) saturate(1.25);
+  -webkit-backdrop-filter: blur(10px) saturate(1.25);
+  border: 1px solid var(--sc-border);
+  box-shadow: var(--sc-glow), inset 0 1px 0 rgba(94, 240, 255, 0.12);
+  padding: 14px 20px;
+}
+
+/* Top hairline accent */
+body.renderer-iso .cp-panel::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 14px;
+  right: 14px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--sc-border-bright) 30%,
+    var(--sc-border-bright) 70%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+/* L-shaped corner brackets */
+body.renderer-iso .cp-corner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+}
+body.renderer-iso .cp-corner-tl {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid var(--sc-border-bright);
+  border-left: 2px solid var(--sc-border-bright);
+}
+body.renderer-iso .cp-corner-tr {
+  top: -1px;
+  right: -1px;
+  border-top: 2px solid var(--sc-border-bright);
+  border-right: 2px solid var(--sc-border-bright);
+}
+body.renderer-iso .cp-corner-bl {
+  bottom: -1px;
+  left: -1px;
+  border-bottom: 2px solid var(--sc-border-bright);
+  border-left: 2px solid var(--sc-border-bright);
+}
+body.renderer-iso .cp-corner-br {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid var(--sc-border-bright);
+  border-right: 2px solid var(--sc-border-bright);
+}
+
+body.renderer-iso .cp-hidden {
+  display: none !important;
+}
+
+body.renderer-iso .cp-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+body.renderer-iso .cp-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--sc-ink-dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+body.renderer-iso .cp-label::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: var(--sc-ink);
+  box-shadow: 0 0 8px var(--sc-ink);
+  animation: cp-blip 2.4s ease-in-out infinite;
+}
+
+@keyframes cp-blip {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ================================================================
+   Wave pill — top-left
+   ================================================================ */
+
+body.renderer-iso .cp-wave-pill {
+  top: 28px;
+  left: 28px;
+  min-width: 240px;
+}
+
+body.renderer-iso .cp-wave-value {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--sc-ink);
+  text-shadow: var(--sc-text-shadow);
+  letter-spacing: 0.04em;
+  margin-top: 6px;
+}
+
+body.renderer-iso .cp-wave-phase {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  color: var(--sc-ink-dim);
+  text-transform: uppercase;
+  margin-top: 6px;
+}
+
+body.renderer-iso .cp-wave-progress-label {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--sc-ink-faint);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  color: var(--sc-ink-dim);
+  text-transform: uppercase;
+}
+
+body.renderer-iso .cp-wave-progress-bar {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  margin-top: 6px;
+  background: rgba(94, 240, 255, 0.1);
+  border: 1px solid rgba(94, 240, 255, 0.28);
+  overflow: hidden;
+}
+
+body.renderer-iso .cp-wave-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0%;
+  background: var(--sc-ink);
+  box-shadow: 0 0 12px rgba(94, 240, 255, 0.75);
+  transition: width 180ms linear;
+}
+
+body.renderer-iso .cp-wave-progress-fill--drain {
+  animation: cp-drain-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes cp-drain-pulse {
+  0%, 100% { opacity: 0.75; box-shadow: 0 0 10px rgba(94, 240, 255, 0.55); }
+  50%      { opacity: 1; box-shadow: 0 0 18px rgba(94, 240, 255, 0.95); }
+}
+
+/* ================================================================
+   Resources panel — top-right
+   ================================================================ */
+
+body.renderer-iso .cp-resources {
+  top: 28px;
+  right: 28px;
+  min-width: 220px;
+  padding: 12px 20px 14px;
+}
+
+body.renderer-iso .cp-res-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+body.renderer-iso .cp-res-row + .cp-res-row {
+  border-top: 1px dashed var(--sc-ink-faint);
+  margin-top: 2px;
+  padding-top: 8px;
+}
+
+body.renderer-iso .cp-res-key {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  color: var(--sc-ink-dim);
+  text-transform: uppercase;
+  min-width: 72px;
+}
+
+body.renderer-iso .cp-res-val {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--sc-ink);
+  text-shadow: var(--sc-text-shadow);
+  margin-left: auto;
+}
+
+/* ================================================================
+   Briefing panel — right side, below resources
+   ================================================================ */
+
+body.renderer-iso .cp-briefing {
+  top: 150px;
+  right: 28px;
+  min-width: 300px;
+  padding: 16px 20px;
+}
+
+body.renderer-iso .cp-briefing-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--sc-ink);
+  text-shadow: var(--sc-text-shadow);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--sc-ink-faint);
+}
+
+body.renderer-iso .cp-briefing-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+body.renderer-iso .cp-brief-row {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+body.renderer-iso .cp-brief-key {
+  color: var(--sc-ink-dim);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  min-width: 90px;
+  padding-top: 2px;
+}
+
+body.renderer-iso .cp-brief-val {
+  color: var(--sc-ink);
+  font-size: 11px;
+  flex: 1;
+}
+
+/* ================================================================
+   Info panel — right side, appears on component click
+   ================================================================ */
+
+body.renderer-iso .cp-info-panel {
+  top: 190px;
+  left: 28px;
+  min-width: 320px;
+  max-width: 360px;
+  padding: 18px 22px 20px;
+}
+
+body.renderer-iso .cp-info-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid var(--sc-border);
+  color: var(--sc-ink);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+body.renderer-iso .cp-info-close:hover {
+  background: rgba(94, 240, 255, 0.18);
+  border-color: var(--sc-border-bright);
+  color: var(--sc-ink-bright);
+}
+
+body.renderer-iso .cp-info-header {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--sc-ink);
+  text-shadow: var(--sc-text-shadow);
+  margin-bottom: 10px;
+  padding-right: 32px;
+}
+
+body.renderer-iso .cp-info-desc {
+  color: var(--sc-ink-dim);
+  font-size: 11px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+body.renderer-iso .cp-section-title {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  color: var(--sc-ink-dim);
+  text-transform: uppercase;
+  margin: 14px 0 6px 0;
+  padding-top: 8px;
+  border-top: 1px dashed var(--sc-ink-faint);
+}
+
+body.renderer-iso .cp-info-caps {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+  line-height: 1.7;
+  color: var(--sc-ink);
+  font-size: 11px;
+}
+
+body.renderer-iso .cp-info-caps li {
+  position: relative;
+  padding-left: 14px;
+}
+
+body.renderer-iso .cp-info-caps li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 9px;
+  width: 4px;
+  height: 4px;
+  background: var(--sc-ink);
+  box-shadow: 0 0 6px var(--sc-ink);
+}
+
+body.renderer-iso .cp-info-stats {
+  font-size: 11px;
+  color: var(--sc-ink);
+  line-height: 1.7;
+}
+
+/* ================================================================
+   Palette strip — bottom-center
+   ================================================================ */
+
+body.renderer-iso .cp-palette {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--sc-panel);
+  backdrop-filter: blur(10px) saturate(1.25);
+  -webkit-backdrop-filter: blur(10px) saturate(1.25);
+  border: 1px solid var(--sc-border);
+  box-shadow: var(--sc-glow), inset 0 1px 0 rgba(94, 240, 255, 0.12);
+  padding: 18px 20px 14px;
+}
+
+body.renderer-iso .cp-palette::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 24px;
+  right: 24px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--sc-border-bright), transparent);
+}
+
+body.renderer-iso .cp-palette-header {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.4em;
+  color: var(--sc-ink-dim);
+  background: var(--sc-bg);
+  padding: 0 10px;
+}
+
+body.renderer-iso .cp-palette-cells {
+  display: flex;
+  gap: 6px;
+}
+
+body.renderer-iso .cp-palette-cell {
+  width: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px 6px;
+  background: rgba(10, 20, 51, 0.55);
+  border: 1px solid var(--sc-border);
+  color: var(--sc-ink);
+  cursor: pointer;
+  border-radius: 0;
+  font-family: var(--font-display);
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+body.renderer-iso .cp-palette-cell + .cp-palette-cell::before {
+  content: "";
+  position: absolute;
+}
+
+body.renderer-iso .cp-palette-cell:hover:not(:disabled) {
+  background: var(--sc-panel-hi);
+  border-color: var(--sc-border-bright);
+  transform: translateY(-2px);
+}
+
+body.renderer-iso .cp-palette-cell.cp-placing {
+  background: rgba(94, 240, 255, 0.2);
+  border-color: var(--sc-border-bright);
+  box-shadow: 0 0 16px rgba(94, 240, 255, 0.32);
+}
+
+body.renderer-iso .cp-palette-cell.cp-disabled,
+body.renderer-iso .cp-palette-cell:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+body.renderer-iso .cp-palette-icon {
+  width: 56px;
+  height: 56px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  filter: drop-shadow(0 0 6px rgba(94, 240, 255, 0.3));
+}
+
+body.renderer-iso .cp-palette-icon[data-type="server"] {
+  background-image: url("./assets/server.png");
+}
+body.renderer-iso .cp-palette-icon[data-type="database"] {
+  background-image: url("./assets/database.png");
+}
+body.renderer-iso .cp-palette-icon[data-type="cache"] {
+  background-image: url("./assets/cache.png");
+}
+body.renderer-iso .cp-palette-icon[data-type="load_balancer"] {
+  background-image: url("./assets/load_balancer.png");
+}
+body.renderer-iso .cp-palette-icon[data-type="cdn"] {
+  background-image: url("./assets/cdn.png");
+}
+body.renderer-iso .cp-palette-icon[data-type="api_gateway"] {
+  background-image: url("./assets/api_gateway.png");
+}
+
+body.renderer-iso .cp-palette-name {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--sc-ink-dim);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+body.renderer-iso .cp-palette-cost {
+  font-size: 10px;
+  color: var(--sc-ink);
+  text-shadow: var(--sc-text-shadow);
+}
+
+/* ================================================================
+   READY button — bottom-right
+   ================================================================ */
+
+body.renderer-iso .cp-ready-btn {
+  position: absolute;
+  bottom: 40px;
+  right: 28px;
+  padding: 14px 28px;
+  background: rgba(94, 240, 255, 0.14);
+  border: 1px solid var(--sc-border-bright);
+  color: var(--sc-ink);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-shadow: var(--sc-text-shadow);
+  box-shadow:
+    inset 0 1px 0 rgba(94, 240, 255, 0.3),
+    0 0 16px rgba(94, 240, 255, 0.2);
+  border-radius: 0;
+  animation: cp-ready-pulse 2.4s ease-in-out infinite;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+body.renderer-iso .cp-ready-btn:hover:not(.cp-disabled):not(:disabled) {
+  background: rgba(94, 240, 255, 0.24);
+}
+
+body.renderer-iso .cp-ready-btn.cp-disabled,
+body.renderer-iso .cp-ready-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  animation: none;
+}
+
+@keyframes cp-ready-pulse {
+  0%, 100% {
+    box-shadow: inset 0 1px 0 rgba(94, 240, 255, 0.3), 0 0 16px rgba(94, 240, 255, 0.18);
+  }
+  50% {
+    box-shadow: inset 0 1px 0 rgba(94, 240, 255, 0.5), 0 0 26px rgba(94, 240, 255, 0.36);
+  }
+}
+
+/* ================================================================
+   Loss modal
+   ================================================================ */
+
+body.renderer-iso .cp-loss-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 8, 22, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 100;
+  pointer-events: auto;
+}
+
+body.renderer-iso .cp-loss-content {
+  position: relative;
+  min-width: 380px;
+  padding: 32px 36px;
+  background: rgba(40, 10, 20, 0.92);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  border: 1px solid rgba(255, 77, 106, 0.5);
+  box-shadow: 0 0 32px rgba(255, 77, 106, 0.34), inset 0 1px 0 rgba(255, 77, 106, 0.22);
+}
+
+body.renderer-iso .cp-loss-content::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 30px;
+  right: 30px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--sc-danger), transparent);
+}
+
+/* Override corner bracket colors for loss state */
+body.renderer-iso .cp-loss-content .cp-corner-tl,
+body.renderer-iso .cp-loss-content .cp-corner-tr,
+body.renderer-iso .cp-loss-content .cp-corner-bl,
+body.renderer-iso .cp-loss-content .cp-corner-br {
+  border-color: var(--sc-danger);
+}
+
+body.renderer-iso .cp-loss-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--sc-danger);
+  text-shadow: 0 0 14px rgba(255, 77, 106, 0.6);
+  margin: 0 0 12px 0;
+}
+
+body.renderer-iso .cp-loss-detail {
+  color: rgba(255, 200, 210, 0.85);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 22px 0;
+}
+
+body.renderer-iso .cp-loss-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+body.renderer-iso .cp-btn {
+  flex: 1;
+  padding: 12px 18px;
+  background: transparent;
+  border: 1px solid rgba(255, 77, 106, 0.45);
+  color: rgba(255, 200, 210, 0.95);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+body.renderer-iso .cp-btn:hover {
+  background: rgba(255, 77, 106, 0.14);
+  border-color: var(--sc-danger);
+}
+
+body.renderer-iso .cp-btn-primary {
+  background: rgba(94, 240, 255, 0.14);
+  border-color: var(--sc-border-bright);
+  color: var(--sc-ink);
+  text-shadow: var(--sc-text-shadow);
+}
+
+body.renderer-iso .cp-btn-primary:hover {
+  background: rgba(94, 240, 255, 0.24);
+  border-color: var(--sc-border-bright);
+}
+
+/* ================================================================
+   TD wave-result toast — compact panel with stats + next-wave preview
+   ================================================================ */
+
+body.renderer-iso .td-toast {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 340px !important;
+  padding: 18px 22px 20px !important;
+  background: var(--sc-panel) !important;
+  backdrop-filter: blur(12px) saturate(1.3) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(1.3) !important;
+  border: 1px solid var(--sc-border) !important;
+  border-radius: 0 !important;
+  color: var(--sc-ink) !important;
+  font-family: var(--font-display) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  box-shadow: var(--sc-glow), inset 0 1px 0 rgba(94, 240, 255, 0.18) !important;
+  z-index: 200 !important;
+  cursor: pointer !important;
+  text-align: left !important;
+  animation: cp-toast-in 220ms ease-out;
+}
+
+body.renderer-iso .td-toast::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 20px;
+  right: 20px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--sc-border-bright) 30%,
+    var(--sc-border-bright) 70%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+body.renderer-iso .td-toast__title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--sc-ink);
+  text-shadow: var(--sc-text-shadow);
+  margin-bottom: 2px;
+}
+
+body.renderer-iso .td-toast__subtitle {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--sc-ink-dim);
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--sc-ink-faint);
+}
+
+body.renderer-iso .td-toast__block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+body.renderer-iso .td-toast__stat {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 11px;
+}
+
+body.renderer-iso .td-toast__stat-key {
+  flex: 0 0 auto;
+  min-width: 74px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--sc-ink-dim);
+}
+
+body.renderer-iso .td-toast__stat-val {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--sc-ink);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+body.renderer-iso .td-toast__notes {
+  margin-top: 8px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--sc-ink-dim);
+  font-style: italic;
+}
+
+body.renderer-iso .td-toast__divider {
+  margin: 14px 0 10px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--sc-border), transparent);
+}
+
+body.renderer-iso .td-toast__next-header {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--sc-ink);
+  text-shadow: var(--sc-text-shadow);
+  margin-bottom: 8px;
+}
+
+body.renderer-iso .td-toast__btn {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: rgba(94, 240, 255, 0.14);
+  border: 1px solid var(--sc-border-bright);
+  border-radius: 0;
+  color: var(--sc-ink);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-shadow: var(--sc-text-shadow);
+  box-shadow: inset 0 1px 0 rgba(94, 240, 255, 0.3);
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+body.renderer-iso .td-toast__btn:hover {
+  background: rgba(94, 240, 255, 0.24);
+}
+
+/* Win variant: cyan border + glow */
+body.renderer-iso .td-toast.td-toast--win {
+  border-color: var(--sc-border-bright) !important;
+  box-shadow:
+    0 0 28px rgba(94, 240, 255, 0.32),
+    inset 0 1px 0 rgba(94, 240, 255, 0.22) !important;
+}
+
+/* Loss variant: red panel, red accents */
+body.renderer-iso .td-toast.td-toast--loss {
+  border-color: rgba(255, 77, 106, 0.6) !important;
+  background: rgba(40, 10, 20, 0.88) !important;
+  box-shadow:
+    0 0 28px rgba(255, 77, 106, 0.32),
+    inset 0 1px 0 rgba(255, 77, 106, 0.2) !important;
+}
+
+body.renderer-iso .td-toast.td-toast--loss::before {
+  background: linear-gradient(90deg, transparent, var(--sc-danger), transparent);
+}
+
+body.renderer-iso .td-toast.td-toast--loss .td-toast__title {
+  color: var(--sc-danger);
+  text-shadow: 0 0 14px rgba(255, 77, 106, 0.6);
+}
+
+body.renderer-iso .td-toast.td-toast--loss .td-toast__subtitle {
+  color: rgba(255, 200, 210, 0.7);
+  border-bottom-color: rgba(255, 77, 106, 0.25);
+}
+
+body.renderer-iso .td-toast.td-toast--loss .td-toast__stat-val {
+  color: rgba(255, 200, 210, 0.95);
+}
+
+body.renderer-iso .td-toast.td-toast--loss .td-toast__btn {
+  background: rgba(255, 77, 106, 0.14);
+  border-color: var(--sc-danger);
+  color: rgba(255, 200, 210, 0.98);
+  text-shadow: 0 0 10px rgba(255, 77, 106, 0.6);
+}
+
+body.renderer-iso .td-toast.td-toast--loss .td-toast__btn:hover {
+  background: rgba(255, 77, 106, 0.24);
+}
+
+@keyframes cp-toast-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% - 10px)); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
+}
