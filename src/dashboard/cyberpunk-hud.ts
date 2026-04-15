@@ -1,15 +1,24 @@
 /**
  * Cyberpunk HUD — full-screen overlay for the iso TD renderer.
  *
- * Activates on ?renderer=iso. Builds a new HUD DOM tree that overlays the iso
- * canvas and hides the classic dashboard chrome via body.renderer-iso CSS.
- *
- * State wiring strategy: the classic TD DOM stays in place (hidden via CSS)
- * and the game loop continues to write to #td-hud-wave, #td-hud-budget, etc.
- * We mirror text content + hidden/disabled attributes from classic → new HUD
- * via MutationObserver. Click events on new buttons forward to the classic
- * counterparts via element.click(), so all existing game wiring runs.
+ * Activates on ?renderer=iso. Slice B exposes a CyberpunkHudController
+ * handle for pushing structured state (briefing, viability, next bill,
+ * toast) from main.ts; the older mirror-observer pattern is retained for
+ * the simple text fields (wave pill, phase, budget) that haven't been
+ * migrated yet.
  */
+
+import type { BriefingDisplay } from "./td/briefing-text.js";
+
+export interface CyberpunkHudController {
+  updateBriefing(display: BriefingDisplay): void;
+  hideBriefing(): void;
+  updateViability(v: { value: number; fraction: number }): void;
+  updateNextBill(bill: number | null): void;
+  showToast(message: string): void;
+  /** Returns palette button elements keyed by component type — used for NEW badges and click interception. */
+  getPaletteButtons(): ReadonlyMap<string, HTMLButtonElement>;
+}
 
 interface PaletteEntry {
   readonly type: string;
@@ -24,6 +33,13 @@ const PALETTE: readonly PaletteEntry[] = [
   { type: "cdn", label: "CDN" },
   { type: "api_gateway", label: "Gateway" },
 ];
+
+let hudController: CyberpunkHudController | null = null;
+
+/** Returns the HUD controller once the HUD has been built. Null before activation. */
+export function getCyberpunkHudController(): CyberpunkHudController | null {
+  return hudController;
+}
 
 /** True when the current URL opts into the iso renderer + cyberpunk HUD. */
 export function isCyberpunkHudActive(): boolean {
@@ -49,11 +65,22 @@ function buildHud(): void {
 
   buildWavePill(root);
   buildResourcesPanel(root);
+  buildViabilityPanel(root);
   buildBriefingPanel(root);
   buildInfoPanel(root);
   buildPaletteStrip(root);
   buildReadyButton(root);
   buildLossModal(root);
+  buildToast(root);
+
+  hudController = {
+    updateBriefing,
+    hideBriefing,
+    updateViability,
+    updateNextBill,
+    showToast,
+    getPaletteButtons: () => paletteButtons,
+  };
 }
 
 // ─── Wave pill (top-left) ─────────────────────────────────────────────
@@ -127,6 +154,13 @@ function buildResourcesPanel(root: HTMLElement): void {
   budgetRow.append(budgetVal);
   p.append(budgetRow);
 
+  nextBillRow = div("cp-res-row cp-res-next-bill cp-hidden");
+  nextBillRow.append(keyLabel("Next Bill"));
+  nextBillValue = div("cp-res-val cp-mono");
+  nextBillValue.textContent = "$0";
+  nextBillRow.append(nextBillValue);
+  p.append(nextBillRow);
+
   const phaseRow = div("cp-res-row");
   phaseRow.append(keyLabel("Phase"));
   const phaseVal = div("cp-res-val cp-mono");
@@ -140,33 +174,75 @@ function buildResourcesPanel(root: HTMLElement): void {
   mirrorText("td-hud-phase", phaseVal, (text) => text.toUpperCase());
 }
 
-// ─── Briefing panel (right, under resources) ──────────────────────────
+// ─── Viability panel (right, under resources) ─────────────────────────
 
-function buildBriefingPanel(root: HTMLElement): void {
-  const p = panel("cp-briefing");
-  p.classList.add("cp-hidden");
+function buildViabilityPanel(root: HTMLElement): void {
+  const p = panel("cp-viability");
+  viabilityPanel = p;
 
-  const title = div("cp-briefing-title");
-  title.textContent = "Wave";
-  p.append(title);
+  const label = div("cp-res-key");
+  label.textContent = "VIABILITY";
+  p.append(label);
 
-  const body = div("cp-briefing-body");
-  const traffic = briefingRow(body, "Traffic");
-  const budget = briefingRow(body, "Budget");
-  const threshold = briefingRow(body, "Threshold");
-  const components = briefingRow(body, "Components");
-  p.append(body);
+  const bar = div("cp-viability-bar");
+  viabilityFill = div("cp-viability-fill cp-viability-fill--green");
+  viabilityFill.style.width = "100%";
+  bar.append(viabilityFill);
+  p.append(bar);
+
+  viabilityReadout = div("cp-viability-readout cp-mono");
+  viabilityReadout.textContent = "100%";
+  p.append(viabilityReadout);
 
   root.append(p);
+}
 
-  mirrorText("td-briefing-title", title, (t) => t.toUpperCase());
-  mirrorText("td-briefing-traffic", traffic);
-  mirrorText("td-briefing-budget", budget);
-  mirrorText("td-briefing-threshold", threshold);
-  mirrorText("td-briefing-components", components);
-  mirrorAttribute("td-briefing", "hidden", (hidden) => {
-    p.classList.toggle("cp-hidden", hidden);
-  });
+// ─── Briefing panel (right, under viability) ──────────────────────────
+
+function buildBriefingPanel(root: HTMLElement): void {
+  const p = panel("cp-briefing cp-hidden");
+  p.id = "cp-briefing-panel";
+
+  briefingTitle = div("cp-briefing-title");
+  briefingTitle.textContent = "";
+  p.append(briefingTitle);
+
+  briefingNarrative = div("cp-briefing-narrative cp-hidden");
+  p.append(briefingNarrative);
+
+  const body = div("cp-briefing-body");
+
+  const loadRow = briefingCustomRow(body, "Incoming");
+  briefingLoadDots = div("cp-briefing-load-dots cp-mono");
+  briefingLoadLabel = div("cp-briefing-load-label");
+  loadRow.append(briefingLoadDots, briefingLoadLabel);
+
+  briefingTraffic = briefingValueRow(body, "Traffic");
+  briefingObjective = briefingValueRow(body, "Objective");
+  briefingReward = briefingValueRow(body, "Reward");
+
+  p.append(body);
+  root.append(p);
+}
+
+function briefingValueRow(parent: HTMLElement, label: string): HTMLElement {
+  const r = div("cp-brief-row");
+  const k = div("cp-brief-key");
+  k.textContent = label;
+  r.append(k);
+  const v = div("cp-brief-val");
+  r.append(v);
+  parent.append(r);
+  return v;
+}
+
+function briefingCustomRow(parent: HTMLElement, label: string): HTMLElement {
+  const r = div("cp-brief-row");
+  const k = div("cp-brief-key");
+  k.textContent = label;
+  r.append(k);
+  parent.append(r);
+  return r;
 }
 
 // ─── Info panel (right side, appears on component click) ──────────────
@@ -216,6 +292,8 @@ function buildInfoPanel(root: HTMLElement): void {
 
 // ─── Palette strip (bottom-center) ────────────────────────────────────
 
+const paletteButtons = new Map<string, HTMLButtonElement>();
+
 function buildPaletteStrip(root: HTMLElement): void {
   const strip = div("cp-palette");
 
@@ -227,7 +305,9 @@ function buildPaletteStrip(root: HTMLElement): void {
   strip.append(cells);
 
   for (const entry of PALETTE) {
-    cells.append(paletteCell(entry));
+    const cell = paletteCell(entry);
+    cells.append(cell);
+    paletteButtons.set(entry.type, cell as HTMLButtonElement);
   }
 
   root.append(strip);
@@ -298,6 +378,15 @@ function buildReadyButton(root: HTMLElement): void {
   });
 }
 
+// ─── Toast (bottom-center, above palette) ─────────────────────────────
+
+function buildToast(root: HTMLElement): void {
+  toastEl = div("cp-toast");
+  toastEl.setAttribute("role", "status");
+  toastEl.setAttribute("aria-live", "polite");
+  root.append(toastEl);
+}
+
 // ─── Loss modal (centered overlay) ────────────────────────────────────
 
 function buildLossModal(root: HTMLElement): void {
@@ -337,6 +426,81 @@ function buildLossModal(root: HTMLElement): void {
   forwardClick(reset, "td-reset-btn");
 }
 
+// ─── Slice B — controller state + setters ─────────────────────────────
+
+let briefingTitle: HTMLElement;
+let briefingNarrative: HTMLElement;
+let briefingLoadDots: HTMLElement;
+let briefingLoadLabel: HTMLElement;
+let briefingTraffic: HTMLElement;
+let briefingObjective: HTMLElement;
+let briefingReward: HTMLElement;
+
+let viabilityPanel: HTMLElement;
+let viabilityFill: HTMLElement;
+let viabilityReadout: HTMLElement;
+
+let nextBillRow: HTMLElement;
+let nextBillValue: HTMLElement;
+
+let toastEl: HTMLElement;
+let toastTimer: number | null = null;
+
+function updateBriefing(display: BriefingDisplay): void {
+  briefingTitle.textContent = display.title;
+  briefingNarrative.textContent = display.narrative ?? "";
+  briefingNarrative.classList.toggle("cp-hidden", !display.narrative);
+  briefingLoadDots.textContent =
+    "●".repeat(display.load.dots) + "○".repeat(5 - display.load.dots);
+  briefingLoadLabel.textContent = display.load.label;
+  briefingTraffic.textContent = display.traffic;
+  briefingObjective.textContent = display.objective;
+  briefingReward.textContent = display.reward;
+  document.getElementById("cp-briefing-panel")?.classList.remove("cp-hidden");
+}
+
+function hideBriefing(): void {
+  document.getElementById("cp-briefing-panel")?.classList.add("cp-hidden");
+}
+
+function updateViability(v: { value: number; fraction: number }): void {
+  const pct = Math.max(0, Math.min(1, v.fraction));
+  viabilityFill.style.width = `${(pct * 100).toFixed(1)}%`;
+  viabilityFill.classList.remove(
+    "cp-viability-fill--green",
+    "cp-viability-fill--amber",
+    "cp-viability-fill--red",
+  );
+  if (pct >= 0.5) {
+    viabilityFill.classList.add("cp-viability-fill--green");
+  } else if (pct >= 0.25) {
+    viabilityFill.classList.add("cp-viability-fill--amber");
+  } else {
+    viabilityFill.classList.add("cp-viability-fill--red");
+  }
+  viabilityPanel.classList.toggle("cp-viability--low", pct < 0.25);
+  viabilityReadout.textContent = `${Math.round(pct * 100)}%`;
+}
+
+function updateNextBill(bill: number | null): void {
+  if (bill === null) {
+    nextBillRow.classList.add("cp-hidden");
+    return;
+  }
+  nextBillRow.classList.remove("cp-hidden");
+  nextBillValue.textContent = `$${bill}`;
+}
+
+function showToast(message: string): void {
+  toastEl.textContent = message;
+  toastEl.classList.add("cp-toast--visible");
+  if (toastTimer !== null) window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toastEl.classList.remove("cp-toast--visible");
+    toastTimer = null;
+  }, 3000);
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 function div(className: string): HTMLDivElement {
@@ -360,17 +524,6 @@ function keyLabel(text: string): HTMLElement {
   const k = div("cp-res-key");
   k.textContent = text;
   return k;
-}
-
-function briefingRow(parent: HTMLElement, label: string): HTMLElement {
-  const r = div("cp-brief-row");
-  const k = div("cp-brief-key");
-  k.textContent = label;
-  r.append(k);
-  const v = div("cp-brief-val cp-mono");
-  r.append(v);
-  parent.append(r);
-  return v;
 }
 
 function mirrorText(

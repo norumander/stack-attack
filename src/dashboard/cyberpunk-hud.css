@@ -1008,3 +1008,109 @@ body.renderer-iso .cp-dossier-cta {
 body.renderer-iso .cp-dossier-cta:hover {
   filter: brightness(1.1);
 }
+
+/* ─── Viability meter ───────────────────────────────────────────── */
+body.renderer-iso .cp-viability {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+}
+body.renderer-iso .cp-viability-bar {
+  height: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+body.renderer-iso .cp-viability-fill {
+  height: 100%;
+  width: 100%;
+  transition: width 180ms ease-out;
+}
+body.renderer-iso .cp-viability-fill--green { background: var(--cp-green, #22c55e); }
+body.renderer-iso .cp-viability-fill--amber { background: var(--cp-amber, #f59e0b); }
+body.renderer-iso .cp-viability-fill--red   { background: var(--cp-red, #ef4444); }
+body.renderer-iso .cp-viability-readout {
+  color: var(--cp-text, #e1e4ed);
+  font-size: 12px;
+  min-width: 36px;
+  text-align: right;
+}
+@keyframes cp-viability-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+body.renderer-iso .cp-viability--low .cp-viability-fill {
+  animation: cp-viability-pulse 0.8s ease-in-out infinite;
+}
+
+/* ─── NEXT BILL row ─────────────────────────────────────────────── */
+body.renderer-iso .cp-res-next-bill .cp-res-val {
+  color: var(--cp-amber, #f59e0b);
+}
+
+/* ─── Briefing panel (Slice B) ──────────────────────────────────── */
+body.renderer-iso .cp-briefing-narrative {
+  font-style: italic;
+  color: var(--cp-text-dim, #8b8fa3);
+  margin-bottom: 8px;
+}
+body.renderer-iso .cp-briefing-load-dots {
+  letter-spacing: 0.2em;
+  color: var(--cp-accent, #22d3ee);
+}
+body.renderer-iso .cp-briefing-load-label {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--cp-text-dim, #8b8fa3);
+  margin-left: 10px;
+}
+
+/* ─── Toast ─────────────────────────────────────────────────────── */
+body.renderer-iso .cp-toast {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translate(-50%, 20px);
+  padding: 12px 22px;
+  background: rgba(3, 7, 18, 0.94);
+  border: 1px solid var(--cp-accent, #22d3ee);
+  color: var(--cp-text, #e1e4ed);
+  font-family: var(--cp-mono, ui-monospace, monospace);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+  z-index: 900;
+  max-width: 560px;
+  text-align: center;
+}
+body.renderer-iso .cp-toast--visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ─── NEW badge on palette cells ────────────────────────────────── */
+body.renderer-iso .cp-palette-cell--new {
+  position: relative;
+}
+body.renderer-iso .cp-palette-cell--new::after {
+  content: "NEW";
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  padding: 1px 5px;
+  background: var(--cp-accent, #22d3ee);
+  color: #031017;
+  font-family: var(--cp-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  animation: cp-new-pulse 1.4s ease-in-out infinite;
+}
+@keyframes cp-new-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.08); opacity: 0.85; }
+}
