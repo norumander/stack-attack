@@ -23,6 +23,9 @@ describe("Wave 3 — Traffic Spikes (lone-server)", () => {
     const result = runWave(state, WAVE_3, server.component.id);
 
     expect(result.outcome.verdict).toBe("lose");
+    // TODO(T16): tune viability to actually fire on this lose path
+    // viability stays at 100 even though SLA verdict is "lose" — migrate once tuned:
+    // expect(result.finalViability).toBeLessThan(100);
     const dropRate =
       (result.droppedCount + result.timedOutCount) / Math.max(result.totalRequests, 1);
     expect(dropRate).toBeGreaterThanOrEqual(0.05);
