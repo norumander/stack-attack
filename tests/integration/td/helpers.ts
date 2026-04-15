@@ -67,6 +67,13 @@ export function runWave(
   wave: TDWaveDefinition,
   entryPointId: ComponentId,
 ): WaveRunResult {
+  // NOTE: runWave does NOT call mode.onTick() per tick. The engine doesn't
+  // call onTick internally, and runWave deliberately doesn't either.
+  // Viability damage (emitted by TDModeController.onTick) is covered by
+  // unit tests in tests/unit/td-mode-controller-viability-and-rent.test.ts.
+  // Wave integration tests validate request-routing and SLA verdict
+  // contracts — not the viability damage path. Only the dashboard SimLoop
+  // calls onTick during real play.
   const economy = new TDEconomy({
     startingBudget: 100000, // generous override — integration tests assert on request counts, not budget arithmetic
     revenuePerRequestType: wave.revenuePerRequestType,
