@@ -361,6 +361,13 @@ export class TDModeController implements ModeController {
   }
 
   getInitialZoneTopology(): ZoneTopology {
+    const wave = this.waves[this.currentWaveIndex]!;
+    if (wave.zoneTopology) {
+      return {
+        zones: [...wave.zoneTopology.zones],
+        pairLatency: wave.zoneTopology.pairLatency,
+      };
+    }
     return { zones: ["default"], pairLatency: new Map() };
   }
 
