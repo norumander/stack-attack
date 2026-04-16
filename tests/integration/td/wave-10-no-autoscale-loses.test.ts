@@ -4,7 +4,7 @@ import { bootTDRegistry } from "@harness/td-fixtures";
 import { WAVE_10 } from "@modes/td/td-waves";
 import { zonePairKey } from "@core/types/zone";
 import {
-  runWave, buildServer, buildDatabase, buildCache, buildCDN,
+  runWave, buildServer, buildDatabase, buildDataCache, buildCDN,
   buildLoadBalancer, buildStreamingServer, buildDNSGTM,
   buildWorker, wire,
 } from "./helpers";
@@ -32,15 +32,15 @@ describe("Wave 10 — static topology without auto-scale loses", () => {
     // --- DNS/GTM as entry point ---
     const dns = buildDNSGTM(compRegistry);
 
-    // --- Helper to build a zone's full stack ---
+    // --- Helper to build a zone's full stack (post Data Cache redesign) ---
     function buildZoneStack(zone: string, prefix: string, serverCount: number) {
       const cdn = buildCDN(compRegistry, zone);
-      const cache = buildCache(compRegistry, zone);
       const stream = buildStreamingServer(compRegistry, zone);
       const worker = buildWorker(compRegistry, zone);
       const lb = buildLoadBalancer(`${prefix}-lb`, serverCount);
       const servers: ReturnType<typeof buildServer>[] = [];
       for (let i = 0; i < serverCount; i++) servers.push(buildServer(compRegistry, zone));
+      const dataCache = buildDataCache(compRegistry, zone);
       const db = buildDatabase(compRegistry, zone);
 
       // Disable auto-scale: clamp maxInstances to 1 on servers and database
@@ -51,16 +51,15 @@ describe("Wave 10 — static topology without auto-scale loses", () => {
 
       // Place all
       state.placeComponent(cdn.component);
-      state.placeComponent(cache.component);
       state.placeComponent(stream.component);
       state.placeComponent(worker.component);
       state.placeComponent(lb.component);
       for (const s of servers) state.placeComponent(s.component);
+      state.placeComponent(dataCache.component);
       state.placeComponent(db.component);
 
-      // Wire: CDN → Cache → StreamServer → Worker → LB → Servers → DB
-      wire(state, { component: cdn.component, egressPortId: cdn.egressPortId }, { component: cache.component, ingressPortId: cache.ingressPortId }, `c-${prefix}-cdn-cache`, { bandwidth: 3000 });
-      wire(state, { component: cache.component, egressPortId: cache.egressPortId }, { component: stream.component, ingressPortId: stream.ingressPortId }, `c-${prefix}-cache-stream`, { bandwidth: 15000 });
+      // Wire: CDN -> StreamServer -> Worker -> LB -> Servers -> Data Cache -> DB
+      wire(state, { component: cdn.component, egressPortId: cdn.egressPortId }, { component: stream.component, ingressPortId: stream.ingressPortId }, `c-${prefix}-cdn-stream`, { bandwidth: 15000 });
       wire(state, { component: stream.component, egressPortId: stream.egressPortId }, { component: worker.component, ingressPortId: worker.ingressPortId }, `c-${prefix}-stream-worker`, { bandwidth: 3000 });
       wire(state, { component: worker.component, egressPortId: worker.egressPortId }, { component: lb.component, ingressPortId: lb.ingressPortId }, `c-${prefix}-worker-lb`, { bandwidth: 3000 });
 
@@ -68,8 +67,9 @@ describe("Wave 10 — static topology without auto-scale loses", () => {
         wire(state, { component: lb.component, egressPortId: lb.egressPortIds[i]! }, { component: servers[i]!.component, ingressPortId: servers[i]!.ingressPortId }, `c-${prefix}-lb-s${i}`, { bandwidth: 3000 });
       }
       for (let i = 0; i < serverCount; i++) {
-        wire(state, { component: servers[i]!.component, egressPortId: servers[i]!.egressPortId }, { component: db.component, ingressPortId: db.ingressPortId }, `c-${prefix}-s${i}-db`, { bandwidth: 3000 });
+        wire(state, { component: servers[i]!.component, egressPortId: servers[i]!.egressPortId }, { component: dataCache.component, ingressPortId: dataCache.ingressPortId }, `c-${prefix}-s${i}-dc`, { bandwidth: 3000 });
       }
+      wire(state, { component: dataCache.component, egressPortId: dataCache.egressPortId }, { component: db.component, ingressPortId: db.ingressPortId }, `c-${prefix}-dc-db`, { bandwidth: 3000 });
 
       return { cdn, servers, db };
     }

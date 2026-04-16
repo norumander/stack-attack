@@ -74,7 +74,9 @@ describe("registerTDDefaults: CDN registered", () => {
     expect(capIds).toContain("monitoring");
   });
 
-  it("Server processing accepts api_read and static_asset", () => {
+  it("Server processing accepts static_asset and auth_required (not api_read)", () => {
+    // Post Data Cache redesign: api_read moved from Server Processing to
+    // Server Forwarding so Data Cache can intercept between Server and DB.
     const cap = new CapabilityRegistry();
     const comp = new ComponentRegistry(cap);
     registerTDDefaults(cap, comp);
@@ -82,8 +84,9 @@ describe("registerTDDefaults: CDN registered", () => {
     expect(server).not.toBeNull();
     const processing = server!.capabilities.get("processing" as CapabilityId);
     expect(processing).toBeDefined();
-    expect(processing!.canHandle("api_read")).toBe(true);
     expect(processing!.canHandle("static_asset")).toBe(true);
+    expect(processing!.canHandle("auth_required")).toBe(true);
+    expect(processing!.canHandle("api_read")).toBe(false);
   });
 });
 

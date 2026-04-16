@@ -4,19 +4,21 @@ import { bootTDRegistry } from "@harness/td-fixtures";
 import type { CapabilityId } from "@core/types/ids";
 import { WAVE_7 } from "@modes/td/td-waves";
 import { QueueCapability } from "@capabilities/queue/queue-capability";
-import { runWave, buildServer, buildDatabase, buildCache, buildCDN, buildAPIGateway, buildLoadBalancer, buildQueue, buildCircuitBreaker, buildWorker, wire } from "./helpers";
+import { runWave, buildServer, buildDatabase, buildDataCache, buildCDN, buildAPIGateway, buildLoadBalancer, buildQueue, buildCircuitBreaker, buildWorker, wire } from "./helpers";
 
 describe("Wave 7 — CircuitBreaker rescue wins", () => {
   it("adding CircuitBreaker to the topology rescues Wave 7 from chaos-induced failure", () => {
     const compRegistry = bootTDRegistry();
     const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
 
-    // Rescue topology:
-    //   Client → CDN → Gateway → Cache → Worker → Queue → LB → CB → Server1 (chaos target) → DB
-    //                                                          → Server2 → DB
-    //                                                          → Server3 → DB
-    //                                                          → Server4 → DB
-    //                                                          → Server5 → DB
+    // Rescue topology (post Data Cache redesign):
+    //   Client → CDN → Gateway → Worker → Queue → LB → CB → Server1 (chaos target) → Data Cache → DB
+    //                                                    → Server2 → Data Cache → DB
+    //                                                    → Server3 → Data Cache → DB
+    //                                                    → Server4 → Data Cache → DB
+    //                                                    → Server5 → Data Cache → DB
+    //
+    // All 5 Servers fan in to a single shared Data Cache which flows to DB.
     //
     // Worker sits UPSTREAM of Queue so batch requests reach Worker first.
     // Worker's BatchProcessingCapability handles batch (RESPOND), absorbing
@@ -34,7 +36,6 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
     const client = compRegistry.create("client", { x: 0, y: 0 }, null);
     const cdn = buildCDN(compRegistry);
     const gateway = buildAPIGateway(compRegistry);
-    const cache = buildCache(compRegistry);
     const worker = buildWorker(compRegistry);
     const queue = buildQueue(compRegistry);
     const serverCount = 5;
@@ -44,6 +45,7 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
     // Build servers — server1 first so chaos targets it
     const servers: ReturnType<typeof buildServer>[] = [];
     for (let i = 0; i < serverCount; i++) servers.push(buildServer(compRegistry));
+    const dataCache = buildDataCache(compRegistry);
     const database = buildDatabase(compRegistry);
 
     // Place components — server1 must be placed before server2/3 so it is
@@ -51,21 +53,20 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
     state.placeComponent(client);
     state.placeComponent(cdn.component);
     state.placeComponent(gateway.component);
-    state.placeComponent(cache.component);
     state.placeComponent(worker.component);
     state.placeComponent(queue.component);
     state.placeComponent(lb.component);
     state.placeComponent(cb.component);
     for (const s of servers) state.placeComponent(s.component);
+    state.placeComponent(dataCache.component);
     state.placeComponent(database.component);
 
     const clientEgress = client.ports.find(p => p.direction === "egress")!;
 
-    // Client → CDN → Gateway → Cache → Worker → Queue → LB
+    // Client → CDN → Gateway → Worker → Queue → LB
     wire(state, { component: client, egressPortId: clientEgress.id }, { component: cdn.component, ingressPortId: cdn.ingressPortId }, "c-client-cdn", { bandwidth: 600 });
     wire(state, { component: cdn.component, egressPortId: cdn.egressPortId }, { component: gateway.component, ingressPortId: gateway.ingressPortId }, "c-cdn-gw", { bandwidth: 600 });
-    wire(state, { component: gateway.component, egressPortId: gateway.egressPortId }, { component: cache.component, ingressPortId: cache.ingressPortId }, "c-gw-cache", { bandwidth: 600 });
-    wire(state, { component: cache.component, egressPortId: cache.egressPortId }, { component: worker.component, ingressPortId: worker.ingressPortId }, "c-cache-worker", { bandwidth: 600 });
+    wire(state, { component: gateway.component, egressPortId: gateway.egressPortId }, { component: worker.component, ingressPortId: worker.ingressPortId }, "c-gw-worker", { bandwidth: 600 });
     wire(state, { component: worker.component, egressPortId: worker.egressPortId }, { component: queue.component, ingressPortId: queue.ingressPortId }, "c-worker-queue", { bandwidth: 600 });
     wire(state, { component: queue.component, egressPortId: queue.egressPortId }, { component: lb.component, ingressPortId: lb.ingressPortId }, "c-queue-lb", { bandwidth: 600 });
 
@@ -76,10 +77,17 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
       wire(state, { component: lb.component, egressPortId: lb.egressPortIds[i]! }, { component: servers[i]!.component, ingressPortId: servers[i]!.ingressPortId }, `c-lb-s${i}`, { bandwidth: 600 });
     }
 
-    // Servers → DB
+    // Servers fan in to Data Cache → DB
     for (let i = 0; i < serverCount; i++) {
-      wire(state, { component: servers[i]!.component, egressPortId: servers[i]!.egressPortId }, { component: database.component, ingressPortId: database.ingressPortId }, `c-s${i}-db`, { bandwidth: 600 });
+      wire(state, { component: servers[i]!.component, egressPortId: servers[i]!.egressPortId }, { component: dataCache.component, ingressPortId: dataCache.ingressPortId }, `c-s${i}-dc`, { bandwidth: 600 });
     }
+    wire(state, { component: dataCache.component, egressPortId: dataCache.egressPortId }, { component: database.component, ingressPortId: database.ingressPortId }, "c-dc-db", { bandwidth: 600 });
+
+    // Upgrade Data Cache + DB to tier 3 to absorb Wave 7's 350/tick intensity.
+    dataCache.component.upgrade("caching" as CapabilityId, 3);
+    dataCache.component.upgrade("caching" as CapabilityId, 3);
+    database.component.upgrade("storage" as CapabilityId, 3);
+    database.component.upgrade("storage" as CapabilityId, 3);
 
     const result = runWave(state, WAVE_7, client.id);
 

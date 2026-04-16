@@ -4,7 +4,7 @@ import { bootTDRegistry } from "@harness/td-fixtures";
 import { WAVE_9 } from "@modes/td/td-waves";
 import { zonePairKey } from "@core/types/zone";
 import {
-  runWave, buildServer, buildDatabase, buildCache, buildCDN, buildAPIGateway,
+  runWave, buildServer, buildDatabase, buildDataCache, buildCDN, buildAPIGateway,
   buildLoadBalancer, buildQueue, buildStreamingServer, buildWorker, wire,
 } from "./helpers";
 
@@ -20,9 +20,9 @@ describe("Wave 9 — single-zone topology loses on latency SLA", () => {
       ]),
     });
 
-    // Full Wave 8 rescue topology, but everything in zone "na-east":
-    //   Client(na-east) → CDN(na-east) → Gateway(na-east) → Cache(na-east) →
-    //   StreamingServer(na-east) → Queue(na-east) → Worker → LB → Server×5(na-east) → Database(na-east)
+    // Full Wave 8 rescue topology, but everything in zone "na-east" (post Data Cache redesign):
+    //   Client(na-east) → CDN(na-east) → Gateway(na-east) → StreamingServer(na-east) →
+    //   Queue(na-east) → Worker → LB → Server×5(na-east) → Data Cache(na-east) → Database(na-east)
     //
     // Why it loses: Wave 9 distributes traffic across zones (NA 40%, EU 35%, AP 25%).
     // EU requests (35%) add +3 latency per cross-zone connection hop.
@@ -33,7 +33,6 @@ describe("Wave 9 — single-zone topology loses on latency SLA", () => {
     const client = compRegistry.create("client", { x: 0, y: 0 }, "na-east");
     const cdn = buildCDN(compRegistry, "na-east");
     const gateway = buildAPIGateway(compRegistry, "na-east");
-    const cache = buildCache(compRegistry, "na-east");
     const streamServer = buildStreamingServer(compRegistry, "na-east");
     const queue = buildQueue(compRegistry, "na-east");
     const worker = buildWorker(compRegistry, "na-east");
@@ -42,29 +41,29 @@ describe("Wave 9 — single-zone topology loses on latency SLA", () => {
 
     const servers: ReturnType<typeof buildServer>[] = [];
     for (let i = 0; i < serverCount; i++) servers.push(buildServer(compRegistry, "na-east"));
+    const dataCache = buildDataCache(compRegistry, "na-east");
     const database = buildDatabase(compRegistry, "na-east");
 
     // Place all components
     state.placeComponent(client);
     state.placeComponent(cdn.component);
     state.placeComponent(gateway.component);
-    state.placeComponent(cache.component);
     state.placeComponent(streamServer.component);
     state.placeComponent(queue.component);
     state.placeComponent(worker.component);
     state.placeComponent(lb.component);
     for (const s of servers) state.placeComponent(s.component);
+    state.placeComponent(dataCache.component);
     state.placeComponent(database.component);
 
     const clientEgress = client.ports.find(p => p.direction === "egress")!;
 
-    // Client → CDN → Gateway → Cache
+    // Client → CDN → Gateway
     wire(state, { component: client, egressPortId: clientEgress.id }, { component: cdn.component, ingressPortId: cdn.ingressPortId }, "c-client-cdn", { bandwidth: 800 });
     wire(state, { component: cdn.component, egressPortId: cdn.egressPortId }, { component: gateway.component, ingressPortId: gateway.ingressPortId }, "c-cdn-gw", { bandwidth: 800 });
-    wire(state, { component: gateway.component, egressPortId: gateway.egressPortId }, { component: cache.component, ingressPortId: cache.ingressPortId }, "c-gw-cache", { bandwidth: 800 });
 
-    // Cache → StreamingServer (high bandwidth for stream reservations)
-    wire(state, { component: cache.component, egressPortId: cache.egressPortId }, { component: streamServer.component, ingressPortId: streamServer.ingressPortId }, "c-cache-stream", { bandwidth: 15000 });
+    // Gateway → StreamingServer (high bandwidth for stream reservations)
+    wire(state, { component: gateway.component, egressPortId: gateway.egressPortId }, { component: streamServer.component, ingressPortId: streamServer.ingressPortId }, "c-gw-stream", { bandwidth: 15000 });
 
     // StreamingServer → Queue → Worker → LB
     wire(state, { component: streamServer.component, egressPortId: streamServer.egressPortId }, { component: queue.component, ingressPortId: queue.ingressPortId }, "c-stream-queue", { bandwidth: 800 });
@@ -76,10 +75,11 @@ describe("Wave 9 — single-zone topology loses on latency SLA", () => {
       wire(state, { component: lb.component, egressPortId: lb.egressPortIds[i]! }, { component: servers[i]!.component, ingressPortId: servers[i]!.ingressPortId }, `c-lb-s${i}`, { bandwidth: 800 });
     }
 
-    // Servers → DB
+    // Servers fan in to Data Cache → DB
     for (let i = 0; i < serverCount; i++) {
-      wire(state, { component: servers[i]!.component, egressPortId: servers[i]!.egressPortId }, { component: database.component, ingressPortId: database.ingressPortId }, `c-s${i}-db`, { bandwidth: 800 });
+      wire(state, { component: servers[i]!.component, egressPortId: servers[i]!.egressPortId }, { component: dataCache.component, ingressPortId: dataCache.ingressPortId }, `c-s${i}-dc`, { bandwidth: 800 });
     }
+    wire(state, { component: dataCache.component, egressPortId: dataCache.egressPortId }, { component: database.component, ingressPortId: database.ingressPortId }, "c-dc-db", { bandwidth: 800 });
 
     const result = runWave(state, WAVE_9, client.id);
 

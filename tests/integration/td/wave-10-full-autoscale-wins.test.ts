@@ -12,7 +12,7 @@ import { RoutingCapability } from "@capabilities/routing/routing-capability";
 import type { Capability } from "@core/capability/capability";
 import type { CapabilityId, ComponentId } from "@core/types/ids";
 import {
-  runWave, buildServer, buildDatabase, buildCache, buildCDN,
+  runWave, buildServer, buildDatabase, buildDataCache, buildCDN,
   buildLoadBalancer, buildStreamingServer, buildDNSGTM,
   wire,
 } from "./helpers";
@@ -175,25 +175,27 @@ describe("Wave 10 — full auto-scale (Server + Database) wins the boss wave", (
       dns.component.upgrade("forwarding-pipe" as CapabilityId, 6);
     }
 
-    // --- Helper to build a zone's full stack ---
+    // --- Helper to build a zone's full stack (post Data Cache redesign) ---
     function buildZoneStack(zone: string, prefix: string, serverCount: number) {
       const cdn = buildCDN(compRegistry, zone);
-      const cache = buildCache(compRegistry, zone);
       const stream = buildStreamingServer(compRegistry, zone);
       // Custom high-throughput Worker and LB with unique IDs per zone
       const worker = buildHighThroughputWorker(`${prefix}-worker`, 3);
       const lb = buildHighThroughputLB(`${prefix}-lb`, serverCount, 3);
       const servers: ReturnType<typeof buildServer>[] = [];
       for (let i = 0; i < serverCount; i++) servers.push(buildServer(compRegistry, zone));
+      const dataCache = buildDataCache(compRegistry, zone);
       const db = buildDatabase(compRegistry, zone);
 
       // Upgrade CDN forwarding-pipe to tier 3 (1500/tick)
       cdn.component.upgrade("forwarding-pipe" as CapabilityId, 3);
       cdn.component.upgrade("forwarding-pipe" as CapabilityId, 3);
 
-      // Upgrade Cache forwarding-pipe to tier 3 (1500/tick)
-      cache.component.upgrade("forwarding-pipe" as CapabilityId, 3);
-      cache.component.upgrade("forwarding-pipe" as CapabilityId, 3);
+      // Upgrade Data Cache to tier 3 (caching capacity 100, forwarding 1500/tick)
+      dataCache.component.upgrade("caching" as CapabilityId, 3);
+      dataCache.component.upgrade("caching" as CapabilityId, 3);
+      dataCache.component.upgrade("forwarding-pipe" as CapabilityId, 3);
+      dataCache.component.upgrade("forwarding-pipe" as CapabilityId, 3);
 
       // Upgrade StreamServer forwarding-pipe to tier 3 (1500/tick)
       // StreamServer maxTier is 2 for forwarding-pipe, but we pass 3 to override.
@@ -210,32 +212,32 @@ describe("Wave 10 — full auto-scale (Server + Database) wins the boss wave", (
       for (const s of servers) {
         (s.component as any).maxInstances = 10;
         s.component.upgrade("auto-scale" as CapabilityId, 2);
-        // Upgrade server processing+forwarding to tier 2 (60/tick vs 30/tick)
+        // Upgrade server processing+forwarding to tier 3 (75/tick vs 25/tick)
         // to better handle per-instance throughput at scale.
         s.component.upgrade("processing" as CapabilityId, 3);
         s.component.upgrade("forwarding" as CapabilityId, 3);
       }
       (db.component as any).maxInstances = 5;
       db.component.upgrade("auto-scale" as CapabilityId, 2);
-      // Upgrade database storage to tier 2 (100/tick vs 50/tick)
+      // Upgrade database storage to tier 3 (100/tick vs 25/tick)
+      db.component.upgrade("storage" as CapabilityId, 3);
       db.component.upgrade("storage" as CapabilityId, 3);
 
       // Place all
       state.placeComponent(cdn.component);
-      state.placeComponent(cache.component);
       state.placeComponent(stream.component);
       state.placeComponent(worker.component);
       state.placeComponent(lb.component);
       for (const s of servers) state.placeComponent(s.component);
+      state.placeComponent(dataCache.component);
       state.placeComponent(db.component);
 
-      // Wire: CDN → Cache → StreamServer → Worker → LB → Servers → DB
-      wire(state, { component: cdn.component, egressPortId: cdn.egressPortId }, { component: cache.component, ingressPortId: cache.ingressPortId }, `c-${prefix}-cdn-cache`, { bandwidth: 3000 });
+      // Wire: CDN -> StreamServer -> Worker -> LB -> Servers -> Data Cache -> DB
       // Stream reservation gotcha: each active stream reserves bandwidth for
       // streamConfig.duration (20 ticks) at streamConfig.bandwidth (3 units).
       // Peak: 420 streams/tick (NA) × 20 ticks × 3 = 25,200 reserved bandwidth.
       // Need 50,000+ to handle both stream reservations and regular traffic.
-      wire(state, { component: cache.component, egressPortId: cache.egressPortId }, { component: stream.component, ingressPortId: stream.ingressPortId }, `c-${prefix}-cache-stream`, { bandwidth: 50000 });
+      wire(state, { component: cdn.component, egressPortId: cdn.egressPortId }, { component: stream.component, ingressPortId: stream.ingressPortId }, `c-${prefix}-cdn-stream`, { bandwidth: 50000 });
       wire(state, { component: stream.component, egressPortId: stream.egressPortId }, { component: worker.component, ingressPortId: worker.ingressPortId }, `c-${prefix}-stream-worker`, { bandwidth: 3000 });
       wire(state, { component: worker.component, egressPortId: worker.egressPortId }, { component: lb.component, ingressPortId: lb.ingressPortId }, `c-${prefix}-worker-lb`, { bandwidth: 3000 });
 
@@ -243,10 +245,11 @@ describe("Wave 10 — full auto-scale (Server + Database) wins the boss wave", (
         wire(state, { component: lb.component, egressPortId: lb.egressPortIds[i]! }, { component: servers[i]!.component, ingressPortId: servers[i]!.ingressPortId }, `c-${prefix}-lb-s${i}`, { bandwidth: 3000 });
       }
       for (let i = 0; i < serverCount; i++) {
-        wire(state, { component: servers[i]!.component, egressPortId: servers[i]!.egressPortId }, { component: db.component, ingressPortId: db.ingressPortId }, `c-${prefix}-s${i}-db`, { bandwidth: 3000 });
+        wire(state, { component: servers[i]!.component, egressPortId: servers[i]!.egressPortId }, { component: dataCache.component, ingressPortId: dataCache.ingressPortId }, `c-${prefix}-s${i}-dc`, { bandwidth: 3000 });
       }
+      wire(state, { component: dataCache.component, egressPortId: dataCache.egressPortId }, { component: db.component, ingressPortId: db.ingressPortId }, `c-${prefix}-dc-db`, { bandwidth: 3000 });
 
-      return { cdn, cache, stream, worker, lb, servers, db };
+      return { cdn, dataCache, stream, worker, lb, servers, db };
     }
 
     // --- Place DNS ---

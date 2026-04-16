@@ -5,7 +5,7 @@ import { WAVE_9 } from "@modes/td/td-waves";
 import { zonePairKey } from "@core/types/zone";
 import type { CapabilityId } from "@core/types/ids";
 import {
-  runWave, buildServer, buildDatabase, buildCache, buildCDN,
+  runWave, buildServer, buildDatabase, buildDataCache, buildCDN,
   buildLoadBalancer, buildStreamingServer, buildDNSGTM,
   buildWorker, wire,
 } from "./helpers";
@@ -44,29 +44,35 @@ describe("Wave 9 — multi-zone DNS/GTM rescue wins with latency SLA", () => {
     dns.component.upgrade("forwarding-pipe" as CapabilityId, 2);
 
     // --- Helper to build a zone's full stack ---
+    // Post Data Cache redesign: per-zone Data Cache between Servers and DB.
     function buildZoneStack(zone: string, prefix: string, serverCount: number) {
       const cdn = buildCDN(compRegistry, zone);
-      const cache = buildCache(compRegistry, zone);
       const stream = buildStreamingServer(compRegistry, zone);
       const worker = buildWorker(compRegistry, zone);
       const lb = buildLoadBalancer(`${prefix}-lb`, serverCount);
       const servers: ReturnType<typeof buildServer>[] = [];
       for (let i = 0; i < serverCount; i++) servers.push(buildServer(compRegistry, zone));
+      const dataCache = buildDataCache(compRegistry, zone);
       const db = buildDatabase(compRegistry, zone);
+
+      // Upgrade per-zone Data Cache and DB to handle Wave 9 intensity.
+      dataCache.component.upgrade("caching" as CapabilityId, 3);
+      dataCache.component.upgrade("caching" as CapabilityId, 3);
+      db.component.upgrade("storage" as CapabilityId, 3);
+      db.component.upgrade("storage" as CapabilityId, 3);
 
       // Place all
       state.placeComponent(cdn.component);
-      state.placeComponent(cache.component);
       state.placeComponent(stream.component);
       state.placeComponent(worker.component);
       state.placeComponent(lb.component);
       for (const s of servers) state.placeComponent(s.component);
+      state.placeComponent(dataCache.component);
       state.placeComponent(db.component);
 
-      // Wire: CDN → Cache → StreamServer → Worker → LB → Servers → DB
+      // Wire: CDN -> StreamServer -> Worker -> LB -> Servers -> Data Cache -> DB
       // Worker handles batch (BatchProcessing RESPOND) and forwards the rest.
-      wire(state, { component: cdn.component, egressPortId: cdn.egressPortId }, { component: cache.component, ingressPortId: cache.ingressPortId }, `c-${prefix}-cdn-cache`, { bandwidth: 800 });
-      wire(state, { component: cache.component, egressPortId: cache.egressPortId }, { component: stream.component, ingressPortId: stream.ingressPortId }, `c-${prefix}-cache-stream`, { bandwidth: 15000 });
+      wire(state, { component: cdn.component, egressPortId: cdn.egressPortId }, { component: stream.component, ingressPortId: stream.ingressPortId }, `c-${prefix}-cdn-stream`, { bandwidth: 15000 });
       wire(state, { component: stream.component, egressPortId: stream.egressPortId }, { component: worker.component, ingressPortId: worker.ingressPortId }, `c-${prefix}-stream-worker`, { bandwidth: 800 });
       wire(state, { component: worker.component, egressPortId: worker.egressPortId }, { component: lb.component, ingressPortId: lb.ingressPortId }, `c-${prefix}-worker-lb`, { bandwidth: 800 });
 
@@ -74,8 +80,9 @@ describe("Wave 9 — multi-zone DNS/GTM rescue wins with latency SLA", () => {
         wire(state, { component: lb.component, egressPortId: lb.egressPortIds[i]! }, { component: servers[i]!.component, ingressPortId: servers[i]!.ingressPortId }, `c-${prefix}-lb-s${i}`, { bandwidth: 800 });
       }
       for (let i = 0; i < serverCount; i++) {
-        wire(state, { component: servers[i]!.component, egressPortId: servers[i]!.egressPortId }, { component: db.component, ingressPortId: db.ingressPortId }, `c-${prefix}-s${i}-db`, { bandwidth: 800 });
+        wire(state, { component: servers[i]!.component, egressPortId: servers[i]!.egressPortId }, { component: dataCache.component, ingressPortId: dataCache.ingressPortId }, `c-${prefix}-s${i}-dc`, { bandwidth: 800 });
       }
+      wire(state, { component: dataCache.component, egressPortId: dataCache.egressPortId }, { component: db.component, ingressPortId: db.ingressPortId }, `c-${prefix}-dc-db`, { bandwidth: 800 });
 
       return { cdn, servers };
     }

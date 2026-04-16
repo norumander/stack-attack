@@ -10,7 +10,7 @@ import type { CapabilityId, ComponentId } from "@core/types/ids";
 import type { Capability } from "@core/capability/capability";
 import type { ConditionProfile } from "@core/types/condition";
 import { WAVE_4 } from "@modes/td/td-waves";
-import { runWave, buildServer, buildDatabase, buildCDN, buildCache, wire } from "./helpers";
+import { runWave, buildServer, buildDatabase, buildCDN, buildDataCache, wire } from "./helpers";
 
 const DEFAULT_CONDITION: ConditionProfile = {
   degradedThreshold: 0.7,
@@ -53,20 +53,20 @@ function buildClient(): Component {
 }
 
 describe("Wave 4 — CDN rescue wins", () => {
-  it("Client → CDN → Cache → Server → Database wins and CDN absorbs static_asset", () => {
+  it("Client → CDN → Server → Data Cache → Database wins and CDN absorbs static_asset", () => {
     const compRegistry = bootTDRegistry();
     const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
 
     const client = buildClient();
     const cdn = buildCDN(compRegistry);
-    const cache = buildCache(compRegistry);
     const server = buildServer(compRegistry);
+    const dataCache = buildDataCache(compRegistry);
     const database = buildDatabase(compRegistry);
 
     state.placeComponent(client);
     state.placeComponent(cdn.component);
-    state.placeComponent(cache.component);
     state.placeComponent(server.component);
+    state.placeComponent(dataCache.component);
     state.placeComponent(database.component);
 
     // Client → CDN
@@ -76,26 +76,26 @@ describe("Wave 4 — CDN rescue wins", () => {
       { component: cdn.component, ingressPortId: cdn.ingressPortId },
       "c-client-cdn",
     );
-    // CDN → Cache
+    // CDN → Server
     wire(
       state,
       { component: cdn.component, egressPortId: cdn.egressPortId },
-      { component: cache.component, ingressPortId: cache.ingressPortId },
-      "c-cdn-cache",
-    );
-    // Cache → Server
-    wire(
-      state,
-      { component: cache.component, egressPortId: cache.egressPortId },
       { component: server.component, ingressPortId: server.ingressPortId },
-      "c-cache-server",
+      "c-cdn-server",
     );
-    // Server → Database
+    // Server → Data Cache
     wire(
       state,
       { component: server.component, egressPortId: server.egressPortId },
+      { component: dataCache.component, ingressPortId: dataCache.ingressPortId },
+      "c-server-dc",
+    );
+    // Data Cache → Database
+    wire(
+      state,
+      { component: dataCache.component, egressPortId: dataCache.egressPortId },
       { component: database.component, ingressPortId: database.ingressPortId },
-      "c-server-database",
+      "c-dc-database",
     );
 
     const result = runWave(state, WAVE_4, "client" as ComponentId);

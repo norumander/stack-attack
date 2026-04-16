@@ -13,7 +13,7 @@ import {
   runWave,
   buildServer,
   buildDatabase,
-  buildCache,
+  buildDataCache,
   buildCDN,
   buildAPIGateway,
   buildLoadBalancer,
@@ -61,26 +61,26 @@ function buildClient(): Component {
 }
 
 describe("Wave 5 — gateway + scale rescue wins", () => {
-  it("Client → CDN → Gateway → Cache → LB → [Server×2] → DB wins", () => {
+  it("Client → CDN → Gateway → LB → [Server×2] → Data Cache → DB wins", () => {
     const compRegistry = bootTDRegistry();
     const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
 
     const client = buildClient();
     const cdn = buildCDN(compRegistry);
     const gateway = buildAPIGateway(compRegistry);
-    const cache = buildCache(compRegistry);
     const lb = buildLoadBalancer("lb", 2);
     const server1 = buildServer(compRegistry);
     const server2 = buildServer(compRegistry);
+    const dataCache = buildDataCache(compRegistry);
     const database = buildDatabase(compRegistry);
 
     state.placeComponent(client);
     state.placeComponent(cdn.component);
     state.placeComponent(gateway.component);
-    state.placeComponent(cache.component);
     state.placeComponent(lb.component);
     state.placeComponent(server1.component);
     state.placeComponent(server2.component);
+    state.placeComponent(dataCache.component);
     state.placeComponent(database.component);
 
     // Wave 5 injects 150 req/tick — connections must carry at least that
@@ -106,15 +106,8 @@ describe("Wave 5 — gateway + scale rescue wins", () => {
     wire(
       state,
       { component: gateway.component, egressPortId: gateway.egressPortId },
-      { component: cache.component, ingressPortId: cache.ingressPortId },
-      "c-gw-cache",
-      hi,
-    );
-    wire(
-      state,
-      { component: cache.component, egressPortId: cache.egressPortId },
       { component: lb.component, ingressPortId: lb.ingressPortId },
-      "c-cache-lb",
+      "c-gw-lb",
       hi,
     );
     // LB has 2 egress ports — wire each to a different server
@@ -132,18 +125,26 @@ describe("Wave 5 — gateway + scale rescue wins", () => {
       "c-lb-s2",
       hi,
     );
+    // Both Servers fan in to a single Data Cache, then to DB
     wire(
       state,
       { component: server1.component, egressPortId: server1.egressPortId },
-      { component: database.component, ingressPortId: database.ingressPortId },
-      "c-s1-db",
+      { component: dataCache.component, ingressPortId: dataCache.ingressPortId },
+      "c-s1-dc",
       hi,
     );
     wire(
       state,
       { component: server2.component, egressPortId: server2.egressPortId },
+      { component: dataCache.component, ingressPortId: dataCache.ingressPortId },
+      "c-s2-dc",
+      hi,
+    );
+    wire(
+      state,
+      { component: dataCache.component, egressPortId: dataCache.egressPortId },
       { component: database.component, ingressPortId: database.ingressPortId },
-      "c-s2-db",
+      "c-dc-db",
       hi,
     );
 

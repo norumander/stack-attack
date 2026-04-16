@@ -108,7 +108,7 @@ export const WAVE_3: TDWaveDefinition = {
   composition: new Map([["api_read", 0.7], ["api_write", 0.3]]),
   duration: 30,
   ttl: 8,
-  availableComponents: ["server", "database", "cache", "load_balancer"],
+  availableComponents: ["server", "database", "data_cache", "load_balancer"],
   dropThreshold: 0.10,
   viabilityPerFailure: 0.15,
   viabilityRampPenalty: 1.0,
@@ -129,7 +129,7 @@ export const WAVE_4: TDWaveDefinition = {
   ]),
   duration: 30,
   ttl: 8,
-  availableComponents: ["server", "database", "cache", "load_balancer", "cdn"],
+  availableComponents: ["server", "database", "data_cache", "load_balancer", "cdn"],
   dropThreshold: 0.10,
   viabilityPerFailure: 0.18,
   viabilityRampPenalty: 1.2,
@@ -163,7 +163,7 @@ export const WAVE_5: TDWaveDefinition = {
   availableComponents: [
     "server",
     "database",
-    "cache",
+    "data_cache",
     "load_balancer",
     "cdn",
     "api_gateway",
@@ -201,7 +201,7 @@ export const WAVE_6: TDWaveDefinition = {
   duration: 30,
   ttl: 12,
   availableComponents: [
-    "server", "database", "cache", "load_balancer", "cdn", "api_gateway",
+    "server", "database", "data_cache", "load_balancer", "cdn", "api_gateway",
     "queue", "worker",
   ],
   dropThreshold: 0.08,
@@ -239,7 +239,7 @@ export const WAVE_7: TDWaveDefinition = {
   duration: 30,
   ttl: 12,
   availableComponents: [
-    "server", "database", "cache", "load_balancer", "cdn", "api_gateway",
+    "server", "database", "data_cache", "load_balancer", "cdn", "api_gateway",
     "queue", "worker", "circuit_breaker",
   ],
   dropThreshold: 0.07,
@@ -284,7 +284,7 @@ export const WAVE_8: TDWaveDefinition = {
   duration: 40,
   ttl: 15,
   availableComponents: [
-    "server", "database", "cache", "load_balancer", "cdn", "api_gateway",
+    "server", "database", "data_cache", "load_balancer", "cdn", "api_gateway",
     "queue", "worker", "circuit_breaker", "streaming_media_server", "blob_storage",
   ],
   dropThreshold: 0.07,
@@ -328,7 +328,7 @@ export const WAVE_9: TDWaveDefinition = {
   duration: 40,
   ttl: 15,
   availableComponents: [
-    "server", "database", "cache", "load_balancer", "cdn", "api_gateway",
+    "server", "database", "data_cache", "load_balancer", "cdn", "api_gateway",
     "queue", "worker", "circuit_breaker", "streaming_media_server", "blob_storage",
     "dns_gtm",
   ],
@@ -386,7 +386,7 @@ export const WAVE_10: TDWaveDefinition = {
   duration: 40,
   ttl: 15,
   availableComponents: [
-    "server", "database", "cache", "load_balancer", "cdn", "api_gateway",
+    "server", "database", "data_cache", "load_balancer", "cdn", "api_gateway",
     "queue", "worker", "circuit_breaker", "streaming_media_server", "blob_storage",
     "dns_gtm",
   ],

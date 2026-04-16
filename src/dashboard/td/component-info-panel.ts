@@ -7,7 +7,7 @@ import {
   CLIENT_ENTRY,
   SERVER_ENTRY,
   DATABASE_ENTRY,
-  CACHE_ENTRY,
+  DATA_CACHE_ENTRY,
   LOAD_BALANCER_ENTRY,
 } from "@modes/td/td-component-entries.js";
 
@@ -15,7 +15,7 @@ const ENTRY_BY_TYPE: Record<string, ComponentRegistryEntry> = {
   client: CLIENT_ENTRY,
   server: SERVER_ENTRY,
   database: DATABASE_ENTRY,
-  cache: CACHE_ENTRY,
+  data_cache: DATA_CACHE_ENTRY,
   load_balancer: LOAD_BALANCER_ENTRY,
 };
 

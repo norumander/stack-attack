@@ -90,20 +90,21 @@ export const DATABASE_ENTRY: ComponentRegistryEntry = {
   conditionProfile: DEFAULT_CONDITION_PROFILE,
 };
 
-export const CACHE_ENTRY: ComponentRegistryEntry = {
-  type: "cache",
-  name: "Cache",
-  description: "Remembers recent responses so your database doesn't get hammered twice.",
+export const DATA_CACHE_ENTRY: ComponentRegistryEntry = {
+  type: "data_cache",
+  name: "Data Cache",
+  description:
+    "Caches repeated reads between your Server and Database. Like Redis or Memcached — absorbs duplicate queries so the Database isn't hammered for the same data twice.",
   longDescription:
-    "A Cache intercepts reads before they reach your server. If the cache has seen the same " +
-    "read recently (a 'hit'), it responds immediately — no load on your server. If it hasn't " +
-    "(a 'miss'), it forwards the request downstream and remembers the response for next time. " +
-    "Caches help most when reads repeat; they help least when every read is unique.",
+    "A Data Cache sits between your Server and Database, intercepting forwarded reads. " +
+    "On a hit it responds directly, sparing the Database. On a miss it forwards to the " +
+    "Database and remembers the result for next time. Acts like Redis or Memcached in a " +
+    "real backend — best when reads have hot keys, useless for write traffic.",
   capabilitiesHuman: [
-    "Responds directly on cache hit (fast path)",
-    "Forwards misses to downstream server",
-    "Absorbs repeated reads — effective when traffic has hot keys",
-    "Does not help write traffic",
+    "Responds directly on cache hit (skips Database)",
+    "Forwards misses to downstream Database",
+    "Best when reads have hot keys",
+    "Doesn't accelerate writes",
   ],
   capabilities: [
     { id: "caching-api" as CapabilityId, defaultTier: 1, maxTier: 3 },
@@ -117,7 +118,7 @@ export const CACHE_ENTRY: ComponentRegistryEntry = {
   placementCost: 0,
   rentPerWave: 120,
   upgradeCostCurve: [150, 300, 600],
-  visual: { icon: "cache", color: "#F5A623", shape: "diamond" },
+  visual: { icon: "data_cache", color: "#F5A623", shape: "diamond" },
   conditionProfile: DEFAULT_CONDITION_PROFILE,
 };
 

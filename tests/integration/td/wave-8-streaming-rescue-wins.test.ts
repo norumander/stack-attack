@@ -3,20 +3,21 @@ import { SimulationState } from "@core/state/simulation-state";
 import { bootTDRegistry } from "@harness/td-fixtures";
 import { WAVE_8 } from "@modes/td/td-waves";
 import {
-  runWave, buildServer, buildDatabase, buildCache, buildCDN, buildAPIGateway,
+  runWave, buildServer, buildDatabase, buildDataCache, buildCDN, buildAPIGateway,
   buildLoadBalancer, buildQueue, buildCircuitBreaker, buildStreamingServer,
   buildWorker, wire,
 } from "./helpers";
+import type { CapabilityId } from "@core/types/ids";
 
 describe("Wave 8 — streaming isolation rescue wins", () => {
   it("adding Streaming Server + high-bandwidth ingress to isolate stream traffic rescues Wave 8", () => {
     const compRegistry = bootTDRegistry();
     const state = new SimulationState({ zones: ["default"], pairLatency: new Map() });
 
-    // Rescue topology (inline filter pattern):
-    //   Client → CDN → Gateway → Cache → StreamingServer → Worker → Queue → LB → CB → [Server×5] → DB
+    // Rescue topology (inline filter pattern, post Data Cache redesign):
+    //   Client → CDN → Gateway → StreamingServer → Worker → Queue → LB → CB → [Server×5] → Data Cache → DB
     //
-    // StreamingServer sits inline between Cache and Worker:
+    // StreamingServer sits inline between Gateway and Worker:
     // - "stream" requests: StreamingCapability (PROCESS) → RESPOND (engine registers
     //   active stream with bandwidth reservation on the last TRAVERSED connection)
     // - all other types: ForwardingCapability (PROCESS) → FORWARD downstream to Worker
@@ -30,7 +31,7 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
     // Placing Worker upstream avoids the Queue-capacity bottleneck: at tier-cap 1,
     // Queue holds only 32 items while Wave 8 generates 75 batch/tick (500 × 15%).
     //
-    // Tuning decision: the cache→StreamingServer connection needs high bandwidth (15,000)
+    // Tuning decision: the gateway→StreamingServer connection needs high bandwidth (15,000)
     // because pickStreamConnection reserves stream bandwidth on the last TRAVERSED
     // connection (the ingress). At peak: up to 150 streams/tick * 20 tick duration *
     // 3 bandwidth/stream = 9,000 bandwidth reserved by active streams, plus ~326
@@ -40,7 +41,6 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
     const client = compRegistry.create("client", { x: 0, y: 0 }, null);
     const cdn = buildCDN(compRegistry);
     const gateway = buildAPIGateway(compRegistry);
-    const cache = buildCache(compRegistry);
     const streamServer = buildStreamingServer(compRegistry);
     const worker = buildWorker(compRegistry);
     const queue = buildQueue(compRegistry);
@@ -50,30 +50,30 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
 
     const servers: ReturnType<typeof buildServer>[] = [];
     for (let i = 0; i < serverCount; i++) servers.push(buildServer(compRegistry));
+    const dataCache = buildDataCache(compRegistry);
     const database = buildDatabase(compRegistry);
 
     // Place all components
     state.placeComponent(client);
     state.placeComponent(cdn.component);
     state.placeComponent(gateway.component);
-    state.placeComponent(cache.component);
     state.placeComponent(streamServer.component);
     state.placeComponent(worker.component);
     state.placeComponent(queue.component);
     state.placeComponent(lb.component);
     state.placeComponent(cb.component);
     for (const s of servers) state.placeComponent(s.component);
+    state.placeComponent(dataCache.component);
     state.placeComponent(database.component);
 
     const clientEgress = client.ports.find(p => p.direction === "egress")!;
 
-    // Client → CDN → Gateway → Cache
+    // Client → CDN → Gateway
     wire(state, { component: client, egressPortId: clientEgress.id }, { component: cdn.component, ingressPortId: cdn.ingressPortId }, "c-client-cdn", { bandwidth: 700 });
     wire(state, { component: cdn.component, egressPortId: cdn.egressPortId }, { component: gateway.component, ingressPortId: gateway.ingressPortId }, "c-cdn-gw", { bandwidth: 700 });
-    wire(state, { component: gateway.component, egressPortId: gateway.egressPortId }, { component: cache.component, ingressPortId: cache.ingressPortId }, "c-gw-cache", { bandwidth: 700 });
 
-    // Cache → StreamingServer (high bandwidth to absorb stream bandwidth reservations)
-    wire(state, { component: cache.component, egressPortId: cache.egressPortId }, { component: streamServer.component, ingressPortId: streamServer.ingressPortId }, "c-cache-stream", { bandwidth: 15000 });
+    // Gateway → StreamingServer (high bandwidth to absorb stream bandwidth reservations)
+    wire(state, { component: gateway.component, egressPortId: gateway.egressPortId }, { component: streamServer.component, ingressPortId: streamServer.ingressPortId }, "c-gw-stream", { bandwidth: 15000 });
 
     // StreamingServer → Worker → Queue → LB
     wire(state, { component: streamServer.component, egressPortId: streamServer.egressPortId }, { component: worker.component, ingressPortId: worker.ingressPortId }, "c-stream-worker", { bandwidth: 700 });
@@ -87,10 +87,17 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
       wire(state, { component: lb.component, egressPortId: lb.egressPortIds[i]! }, { component: servers[i]!.component, ingressPortId: servers[i]!.ingressPortId }, `c-lb-s${i}`, { bandwidth: 700 });
     }
 
-    // Servers → DB
+    // Servers fan in to Data Cache → DB
     for (let i = 0; i < serverCount; i++) {
-      wire(state, { component: servers[i]!.component, egressPortId: servers[i]!.egressPortId }, { component: database.component, ingressPortId: database.ingressPortId }, `c-s${i}-db`, { bandwidth: 700 });
+      wire(state, { component: servers[i]!.component, egressPortId: servers[i]!.egressPortId }, { component: dataCache.component, ingressPortId: dataCache.ingressPortId }, `c-s${i}-dc`, { bandwidth: 700 });
     }
+    wire(state, { component: dataCache.component, egressPortId: dataCache.egressPortId }, { component: database.component, ingressPortId: database.ingressPortId }, "c-dc-db", { bandwidth: 700 });
+
+    // Upgrade Data Cache + DB to absorb Wave 8 intensity (post Data Cache redesign).
+    dataCache.component.upgrade("caching" as CapabilityId, 3);
+    dataCache.component.upgrade("caching" as CapabilityId, 3);
+    database.component.upgrade("storage" as CapabilityId, 3);
+    database.component.upgrade("storage" as CapabilityId, 3);
 
     const result = runWave(state, WAVE_8, client.id);
 

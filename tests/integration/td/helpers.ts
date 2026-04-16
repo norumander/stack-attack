@@ -191,14 +191,15 @@ export function buildDatabase(compRegistry: ComponentRegistry, zone?: string): {
 }
 
 /**
- * Build a Cache component from the TD registry (Caching + forwarding-pipe 200/tick).
+ * Build a Data Cache component from the TD registry (Caching + forwarding-pipe 200/tick).
+ * Wires between Server and Database in the canonical TD topology.
  */
-export function buildCache(compRegistry: ComponentRegistry, zone?: string): {
+export function buildDataCache(compRegistry: ComponentRegistry, zone?: string): {
   component: Component;
   ingressPortId: PortId;
   egressPortId: PortId;
 } {
-  const component = compRegistry.create("cache", { x: 0, y: 0 }, zone ?? null);
+  const component = compRegistry.create("data_cache", { x: 0, y: 0 }, zone ?? null);
   return { component, ...singlePortIds(component) };
 }
 

@@ -25,7 +25,9 @@ describe("StorageCapability handledTypes option", () => {
 });
 
 describe("registerTDDefaults storage factory", () => {
-  it("produces a StorageCapability that only handles api_write", () => {
+  it("handles both api_read and api_write post Data Cache redesign", () => {
+    // Post Data Cache redesign: DB handles forwarded reads (on Data Cache
+    // miss, or directly from Server when no Data Cache is present).
     const capReg = new CapabilityRegistry();
     const compReg = new ComponentRegistry(capReg);
     registerTDDefaults(capReg, compReg);
@@ -34,6 +36,6 @@ describe("registerTDDefaults storage factory", () => {
     expect(entry).toBeDefined();
     const storage = entry!.factory();
     expect(storage.canHandle("api_write")).toBe(true);
-    expect(storage.canHandle("api_read")).toBe(false);
+    expect(storage.canHandle("api_read")).toBe(true);
   });
 });

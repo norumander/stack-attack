@@ -128,30 +128,31 @@ describe("TD campaign headless — full 3-wave registry path", () => {
     resetAllConditions(state);
     tdc.advancePhase(state); // assess → build, waveIndex → 2
 
-    // === Wave 3: Cache + second Server rescue ===
+    // === Wave 3: Data Cache + second Server rescue (post Data Cache redesign) ===
     // Server ingress capacity is 1 — already bound by w1 Client→Server.
-    // To introduce a cache on the read path we add a parallel branch:
-    //   Client → Cache → w3Server → w2Db
+    // To introduce a data cache on the read path we add a parallel branch:
+    //   Client → w3Server → Data Cache → w2Db
     // Client egress (capacity 4) round-robins reads/writes across the two
-    // branches. Cache absorbs ~67% of its branch's reads (pool 15 vs
-    // capacity 10); uncached reads and all writes forward to w3Server,
-    // which handles the half of wave-3 traffic it sees comfortably.
+    // branches. w3Server forwards reads to Data Cache which absorbs repeated
+    // reads (pool 15 vs tier-1 capacity 10 → partial hit rate). The w1Server
+    // branch continues Client → w1Server → w2Db. Data Cache in front of the
+    // DB relieves DB pressure from the rescue branch.
     expect(tdc.getCurrentWave()).toBe(WAVE_3);
-    const w3Cache = tdc.tryPlace(state, "cache", { x: 1, y: 1 }, null);
-    expect(w3Cache.ok).toBe(true);
-    if (!w3Cache.ok) throw new Error("w3Cache placement failed");
     const w3Server = tdc.tryPlace(state, "server", { x: 2, y: 1 }, null);
     expect(w3Server.ok).toBe(true);
     if (!w3Server.ok) throw new Error("w3Server placement failed");
+    const w3DataCache = tdc.tryPlace(state, "data_cache", { x: 3, y: 1 }, null);
+    expect(w3DataCache.ok).toBe(true);
+    if (!w3DataCache.ok) throw new Error("w3DataCache placement failed");
 
     expect(
-      tdc.tryConnect(state, client.id, w3Cache.componentId).ok,
+      tdc.tryConnect(state, client.id, w3Server.componentId).ok,
     ).toBe(true);
     expect(
-      tdc.tryConnect(state, w3Cache.componentId, w3Server.componentId).ok,
+      tdc.tryConnect(state, w3Server.componentId, w3DataCache.componentId).ok,
     ).toBe(true);
     expect(
-      tdc.tryConnect(state, w3Server.componentId, w2Db.componentId).ok,
+      tdc.tryConnect(state, w3DataCache.componentId, w2Db.componentId).ok,
     ).toBe(true);
 
     tdc.advancePhase(state); // build → simulate

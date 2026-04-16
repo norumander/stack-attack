@@ -31,7 +31,7 @@ describe("TDModeController.tryPlace", () => {
   it("rejects with disallowed_by_mode for type not in availableComponents", () => {
     const { state, tdc } = makeTDController();
     // Wave 1 only allows server + database
-    const result = tdc.tryPlace(state, "cache", { x: 1, y: 0 }, null);
+    const result = tdc.tryPlace(state, "data_cache", { x: 1, y: 0 }, null);
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error();
     expect(result.reason).toBe("disallowed_by_mode");

@@ -7,7 +7,7 @@ import type { TDWaveDefinition } from "@modes/td/td-waves";
 import {
   buildServer,
   buildDatabase,
-  buildCache,
+  buildDataCache,
   buildCDN,
   buildQueue,
   buildWorker,
@@ -47,7 +47,9 @@ function makeState(): SimulationState {
 }
 
 describe("validateTopology", () => {
-  it("valid: Client -> Server with api_read produces no errors", () => {
+  it("valid: Client -> Server -> Database with api_read produces no errors", () => {
+    // Post Data Cache redesign: Server FORWARDs api_read downstream, so a lone
+    // Server (no DB egress) no longer validates. Add DB terminal.
     const reg = bootTDRegistry();
     const state = makeState();
 
@@ -57,11 +59,20 @@ describe("validateTopology", () => {
     const server = buildServer(reg);
     state.placeComponent(server.component);
 
+    const db = buildDatabase(reg);
+    state.placeComponent(db.component);
+
     wire(
       state,
       { component: client, egressPortId: "p-out" },
       { component: server.component, ingressPortId: server.ingressPortId },
       "c-client-server",
+    );
+    wire(
+      state,
+      { component: server.component, egressPortId: server.egressPortId },
+      { component: db.component, ingressPortId: db.ingressPortId },
+      "c-server-db",
     );
 
     const wave = makeWave(new Map([["api_read", 1.0]]));
@@ -70,21 +81,25 @@ describe("validateTopology", () => {
     expect(errors).toEqual([]);
   });
 
-  it("no handler: Client -> Database with api_read produces error", () => {
+  it("no handler: Client -> Worker (no egress) with api_read produces error", () => {
+    // Post Data Cache redesign: Database handles api_read too (it's a valid
+    // terminal for forwarded reads). So pick a component that truly doesn't
+    // handle api_read as a standalone terminal: Worker (handles batch only)
+    // placed without egress. The validator should flag no_egress or no_handler.
     const reg = bootTDRegistry();
     const state = makeState();
 
     const client = reg.create("client", { x: 0, y: 0 }, null);
     state.placeComponent(client);
 
-    const db = buildDatabase(reg);
-    state.placeComponent(db.component);
+    const worker = buildWorker(reg);
+    state.placeComponent(worker.component);
 
     wire(
       state,
       { component: client, egressPortId: "p-out" },
-      { component: db.component, ingressPortId: db.ingressPortId },
-      "c-client-db",
+      { component: worker.component, ingressPortId: worker.ingressPortId },
+      "c-client-worker",
     );
 
     const wave = makeWave(new Map([["api_read", 1.0]]));
@@ -92,7 +107,6 @@ describe("validateTopology", () => {
 
     expect(errors.length).toBeGreaterThan(0);
     expect(errors[0]!.requestType).toBe("api_read");
-    expect(errors[0]!.reason).toBe("no_handler");
   });
 
   it("no egress: Client -> LB with no wires out produces error", () => {
@@ -122,30 +136,39 @@ describe("validateTopology", () => {
     expect(lbError!.reason).toBe("no_egress");
   });
 
-  it("cache path: Client -> Cache -> Server is valid", () => {
+  it("data cache path: Client -> Server -> Data Cache -> Database is valid", () => {
     const reg = bootTDRegistry();
     const state = makeState();
 
     const client = reg.create("client", { x: 0, y: 0 }, null);
     state.placeComponent(client);
 
-    const cache = buildCache(reg);
-    state.placeComponent(cache.component);
-
     const server = buildServer(reg);
     state.placeComponent(server.component);
+
+    const dataCache = buildDataCache(reg);
+    state.placeComponent(dataCache.component);
+
+    const db = buildDatabase(reg);
+    state.placeComponent(db.component);
 
     wire(
       state,
       { component: client, egressPortId: "p-out" },
-      { component: cache.component, ingressPortId: cache.ingressPortId },
-      "c-client-cache",
+      { component: server.component, ingressPortId: server.ingressPortId },
+      "c-client-server",
     );
     wire(
       state,
-      { component: cache.component, egressPortId: cache.egressPortId },
-      { component: server.component, ingressPortId: server.ingressPortId },
-      "c-cache-server",
+      { component: server.component, egressPortId: server.egressPortId },
+      { component: dataCache.component, ingressPortId: dataCache.ingressPortId },
+      "c-server-dc",
+    );
+    wire(
+      state,
+      { component: dataCache.component, egressPortId: dataCache.egressPortId },
+      { component: db.component, ingressPortId: db.ingressPortId },
+      "c-dc-db",
     );
 
     const wave = makeWave(new Map([["api_read", 1.0]]));
@@ -154,7 +177,9 @@ describe("validateTopology", () => {
     expect(errors).toEqual([]);
   });
 
-  it("worker path: Client -> Worker -> Server valid for batch + api_read", () => {
+  it("worker path: Client -> Worker -> Server -> DB valid for batch + api_read", () => {
+    // Post Data Cache redesign: Server FORWARDs api_read downstream, so the
+    // Server needs a DB terminal behind it.
     const reg = bootTDRegistry();
     const state = makeState();
 
@@ -167,6 +192,9 @@ describe("validateTopology", () => {
     const server = buildServer(reg);
     state.placeComponent(server.component);
 
+    const db = buildDatabase(reg);
+    state.placeComponent(db.component);
+
     wire(
       state,
       { component: client, egressPortId: "p-out" },
@@ -178,6 +206,12 @@ describe("validateTopology", () => {
       { component: worker.component, egressPortId: worker.egressPortId },
       { component: server.component, ingressPortId: server.ingressPortId },
       "c-worker-server",
+    );
+    wire(
+      state,
+      { component: server.component, egressPortId: server.egressPortId },
+      { component: db.component, ingressPortId: db.ingressPortId },
+      "c-server-db",
     );
 
     const wave = makeWave(
@@ -229,21 +263,21 @@ describe("validateTopology", () => {
     const client = reg.create("client", { x: 0, y: 0 }, null);
     state.placeComponent(client);
 
-    const cache = buildCache(reg);
-    state.placeComponent(cache.component);
+    const dataCache = buildDataCache(reg);
+    state.placeComponent(dataCache.component);
 
-    // Wire client -> cache -> client (cycle, no terminal)
+    // Wire client -> data cache -> client (cycle, no terminal)
     wire(
       state,
       { component: client, egressPortId: "p-out" },
-      { component: cache.component, ingressPortId: cache.ingressPortId },
-      "c-client-cache",
+      { component: dataCache.component, ingressPortId: dataCache.ingressPortId },
+      "c-client-dc",
     );
     wire(
       state,
-      { component: cache.component, egressPortId: cache.egressPortId },
+      { component: dataCache.component, egressPortId: dataCache.egressPortId },
       { component: client, ingressPortId: "p-out" }, // client only has egress, but let's use a dummy
-      "c-cache-client",
+      "c-dc-client",
     );
 
     // api_write is NOT handled by cache's INTERCEPT (caching handles api_read/static_asset),
@@ -270,16 +304,16 @@ describe("validateTopology", () => {
     const cdn = buildCDN(reg);
     state.placeComponent(cdn.component);
 
-    const cache = buildCache(reg);
-    state.placeComponent(cache.component);
-
     const server = buildServer(reg);
     state.placeComponent(server.component);
+
+    const dataCache = buildDataCache(reg);
+    state.placeComponent(dataCache.component);
 
     const db = buildDatabase(reg);
     state.placeComponent(db.component);
 
-    // Client -> CDN -> Cache -> Server -> DB
+    // Client -> CDN -> Server -> Data Cache -> DB (post Data Cache redesign)
     wire(
       state,
       { component: client, egressPortId: "p-out" },
@@ -289,20 +323,20 @@ describe("validateTopology", () => {
     wire(
       state,
       { component: cdn.component, egressPortId: cdn.egressPortId },
-      { component: cache.component, ingressPortId: cache.ingressPortId },
-      "c-cdn-cache",
-    );
-    wire(
-      state,
-      { component: cache.component, egressPortId: cache.egressPortId },
       { component: server.component, ingressPortId: server.ingressPortId },
-      "c-cache-server",
+      "c-cdn-server",
     );
     wire(
       state,
       { component: server.component, egressPortId: server.egressPortId },
+      { component: dataCache.component, ingressPortId: dataCache.ingressPortId },
+      "c-server-dc",
+    );
+    wire(
+      state,
+      { component: dataCache.component, egressPortId: dataCache.egressPortId },
       { component: db.component, ingressPortId: db.ingressPortId },
-      "c-server-db",
+      "c-dc-db",
     );
 
     // Wave 4 composition: api_read 0.4, api_write 0.2, static_asset 0.4

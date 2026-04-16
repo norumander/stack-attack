@@ -3,7 +3,7 @@ import {
   CLIENT_ENTRY,
   SERVER_ENTRY,
   DATABASE_ENTRY,
-  CACHE_ENTRY,
+  DATA_CACHE_ENTRY,
   LOAD_BALANCER_ENTRY,
 } from "@modes/td/td-component-entries.js";
 
@@ -11,7 +11,7 @@ const TD_ENTRIES = [
   CLIENT_ENTRY,
   SERVER_ENTRY,
   DATABASE_ENTRY,
-  CACHE_ENTRY,
+  DATA_CACHE_ENTRY,
   LOAD_BALANCER_ENTRY,
 ];
 

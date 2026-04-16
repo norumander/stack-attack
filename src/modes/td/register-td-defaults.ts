@@ -18,7 +18,7 @@ import { AutoScaleCapability } from "@capabilities/auto-scale/auto-scale-capabil
 import {
   SERVER_ENTRY,
   DATABASE_ENTRY,
-  CACHE_ENTRY,
+  DATA_CACHE_ENTRY,
   LOAD_BALANCER_ENTRY,
   CLIENT_ENTRY,
   CDN_ENTRY,
@@ -46,16 +46,21 @@ export function registerTDDefaults(
     id: "processing" as CapabilityId,
     factory: () =>
       new ProcessingCapability("processing" as CapabilityId, {
-        handledTypes: ["api_read", "static_asset", "auth_required"],
-        // Stage 3c one-type-per-tick re-tune (Processing + Forwarding
-        // contributions sum into a pooled component budget — see
-        // `src/core/engine/throughput.ts:componentThroughputPerTick`,
-        // they are NOT type-segmented per-cap limits). Server total
-        // budget = 15 + 15 = 30. Wave 2 (25/tick either all-reads or
-        // all-writes) fits under 30 comfortably. Wave 3 (50/tick) blows
-        // through 30 → lone Server loses on either tick type, which is
-        // the intended "needs horizontal scale" teaching moment.
-        throughputPerTier: 15,
+        // Data Cache redesign: Server no longer self-responds to api_read.
+        // Reads now FORWARD downstream (via the "forwarding" capability
+        // below) so Data Cache can intercept them between Server and DB.
+        // Processing keeps static_asset (CDN fallback) and auth_required
+        // (Gateway fallback) as RESPOND types.
+        handledTypes: ["static_asset", "auth_required"],
+        // Data Cache redesign re-tune: Processing 25 + Forwarding 25 = 50
+        // pooled budget (see `src/core/engine/throughput.ts:componentThroughputPerTick`
+        // — capability throughputs sum into a shared component budget).
+        // Wave 3 arrives at 50/tick so a single tier-1 Server can push all
+        // traffic downstream. The bottleneck then shifts to Database
+        // (tier-1 cap 25/tick) → lone Server → DB loses on DB saturation,
+        // Server → Data Cache → DB wins because Data Cache absorbs repeated
+        // reads and DB only sees misses + writes (≤ 25/tick).
+        throughputPerTier: 25,
         emitProcessedEvent: true,
         // auth_required on Server is expensive: +4 on top of base 1 = 5
         // ticks latency. Player feels "Server can serve auth, but it's so
@@ -67,11 +72,15 @@ export function registerTDDefaults(
     id: "forwarding" as CapabilityId,
     factory: () =>
       new ForwardingCapability("forwarding" as CapabilityId, {
-        handledTypes: ["api_write"],
-        // See note above — this is a budget contribution, not a write
-        // cap. Combined with Processing's 15 it gives Server a 30/tick
-        // total pooled budget.
-        throughputPerTier: 15,
+        // Data Cache redesign: api_read joins api_write here. Server
+        // forwards both to its downstream target (Database, or Data Cache
+        // → Database).
+        handledTypes: ["api_read", "api_write"],
+        // See note above — this is a budget contribution, not a per-type
+        // cap. Combined with Processing's 25 it gives Server a 50/tick
+        // pooled budget, matching Wave 3's 50/tick arrival so a single
+        // tier-1 Server can saturate its downstream link.
+        throughputPerTier: 25,
         emitForwardedEvent: true,
       }),
   });
@@ -95,16 +104,27 @@ export function registerTDDefaults(
     id: "storage" as CapabilityId,
     factory: () =>
       new StorageCapability("storage" as CapabilityId, {
-        // Stage 3c one-type-per-tick re-tune: Wave 3 writes-ticks drive
-        // up to 50 writes/tick into Database (via single Server with
-        // 50/tick forwarding, or via LB with two Servers each at 25).
-        // Bumped from 25 so Database isn't the Wave 3 bottleneck.
-        throughputPerTier: 50,
+        // Data Cache redesign: DB is now the Wave 3 bottleneck when no
+        // Data Cache is present (25/tick cap < 50/tick arrival). This is
+        // the new teaching moment — "your Database is saturated on reads,
+        // add a Data Cache between your Server and Database." With a
+        // Data Cache absorbing repeated reads, DB sees only cache misses
+        // + writes, well under cap. Pre-redesign the cap was 50 because
+        // the DB was write-only (Server self-RESPONDed to reads); now
+        // reads flow through, so reverting to 25 is the correct budget.
+        throughputPerTier: 25,
         emitProcessedEvent: true,
-        // TD-tuned: Database is a write sink only. A naked Client→Database
-        // must NOT trivially win Wave 1 (100% reads) — the Server tier is
-        // the only api_read primitive in the TD learning arc.
-        handledTypes: ["api_write"],
+        // Data Cache redesign: Database now handles api_read too (reads
+        // forwarded from Server on Data Cache miss, or directly from Server
+        // when no Data Cache is present). Pre-redesign the DB was a
+        // write-only sink because Server self-RESPONDed to api_read; now
+        // that reads FORWARD downstream, the terminal responder for reads
+        // is the DB (for misses) — spec's "engine flow with Data Cache in
+        // place" step 5: "Database's StorageCapability handles the read →
+        // RESPOND". Wave 1/2 naked-Server-Database paths still respect the
+        // teaching arc because at Wave 3 (50/tick) the DB saturates on its
+        // tier-1 25/tick read capacity without a Data Cache.
+        handledTypes: ["api_read", "api_write"],
       }),
   });
   capRegistry.register({
@@ -183,7 +203,7 @@ export function registerTDDefaults(
   compRegistry.register(CLIENT_ENTRY);
   compRegistry.register(SERVER_ENTRY);
   compRegistry.register(DATABASE_ENTRY);
-  compRegistry.register(CACHE_ENTRY);
+  compRegistry.register(DATA_CACHE_ENTRY);
   compRegistry.register(LOAD_BALANCER_ENTRY);
   compRegistry.register(CDN_ENTRY);
   compRegistry.register(API_GATEWAY_ENTRY);
