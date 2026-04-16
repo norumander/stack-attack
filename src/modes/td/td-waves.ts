@@ -255,13 +255,13 @@ export const WAVE_7: TDWaveDefinition = {
   keyPoolSize: 15,
   connectionBandwidth: 600,
   chaosSchedule: [
-    // Tick 15: one server goes down (the real outage)
-    { tick: 15, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
-    // Tick 22: second hit — same server fails again after partial recovery
-    { tick: 22, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
+    { tick: 10, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
+    { tick: 15, chaosKind: "component_failure", targetType: "server", targetIndex: 1 },
+    { tick: 20, chaosKind: "component_failure", targetType: "server", targetIndex: 2 },
+    { tick: 25, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
   ],
   sla: {
-    availabilityTarget: 0.90,
+    availabilityTarget: 0.92,
     maxAvgLatency: 8,
     minBudget: -200,
     penaltyPerTick: 8,
@@ -426,8 +426,8 @@ export const WAVE_10: TDWaveDefinition = {
     { tick: 25, chaosKind: "zone_outage", zone: "ap-south", durationTicks: 5 },
   ],
   sla: {
-    availabilityTarget: 0.85,
-    maxAvgLatency: 5,
+    availabilityTarget: 0.92,
+    maxAvgLatency: 4,
     minBudget: -500,
     penaltyPerTick: 10,
   },

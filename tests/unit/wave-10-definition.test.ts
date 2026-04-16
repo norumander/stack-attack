@@ -31,9 +31,10 @@ describe("WAVE_10 — The Viral Moment", () => {
     expect(WAVE_10.chaosSchedule![2]!.chaosKind).toBe("zone_outage");
   });
 
-  it("SLA targets 85% availability with negative min budget", () => {
+  it("SLA targets 92% availability with negative min budget", () => {
     expect(WAVE_10.sla).toBeDefined();
-    expect(WAVE_10.sla!.availabilityTarget).toBeCloseTo(0.85);
+    expect(WAVE_10.sla!.availabilityTarget).toBeCloseTo(0.92);
+    expect(WAVE_10.sla!.maxAvgLatency).toBe(4);
     expect(WAVE_10.sla!.minBudget).toBe(-500);
   });
 
