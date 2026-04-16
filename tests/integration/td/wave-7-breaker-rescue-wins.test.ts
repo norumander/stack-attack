@@ -31,8 +31,9 @@ describe("Wave 7 — CircuitBreaker rescue wins", () => {
     // CB sits between LB and Server1 to isolate chaos failures on the first server.
     // Server1 must be placed FIRST so resolveTargetByType("server", 0) targets it.
     // 5 servers needed: Wave 7 injects 350/tick (40% more than Wave 6's 250/tick),
-    // requiring extra server capacity to maintain 90% availability under chaos.
-    // Chaos schedule: tick 15 component_failure server[0], tick 22 component_failure server[0].
+    // requiring extra server capacity to maintain 90% availability under sustained chaos.
+    // Chaos schedule: server[0] fails ticks 10-14 (5-tick window), server[1] fails
+    // ticks 13-17 (overlap at 13-14), server[2] fails ticks 18-22 (5-tick window).
     const client = compRegistry.create("client", { x: 0, y: 0 }, null);
     const cdn = buildCDN(compRegistry);
     const gateway = buildAPIGateway(compRegistry);

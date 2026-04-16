@@ -255,10 +255,24 @@ export const WAVE_7: TDWaveDefinition = {
   keyPoolSize: 15,
   connectionBandwidth: 600,
   chaosSchedule: [
+    // Server[0] fails ticks 10-14 (sustained 5-tick window)
     { tick: 10, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
+    { tick: 11, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
+    { tick: 12, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
+    { tick: 13, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
+    { tick: 14, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
+    // Server[1] fails ticks 13-17 (overlaps with server[0] ticks 13-14 → 2 servers dead)
+    { tick: 13, chaosKind: "component_failure", targetType: "server", targetIndex: 1 },
+    { tick: 14, chaosKind: "component_failure", targetType: "server", targetIndex: 1 },
     { tick: 15, chaosKind: "component_failure", targetType: "server", targetIndex: 1 },
+    { tick: 16, chaosKind: "component_failure", targetType: "server", targetIndex: 1 },
+    { tick: 17, chaosKind: "component_failure", targetType: "server", targetIndex: 1 },
+    // Server[2] fails ticks 18-22
+    { tick: 18, chaosKind: "component_failure", targetType: "server", targetIndex: 2 },
+    { tick: 19, chaosKind: "component_failure", targetType: "server", targetIndex: 2 },
     { tick: 20, chaosKind: "component_failure", targetType: "server", targetIndex: 2 },
-    { tick: 25, chaosKind: "component_failure", targetType: "server", targetIndex: 0 },
+    { tick: 21, chaosKind: "component_failure", targetType: "server", targetIndex: 2 },
+    { tick: 22, chaosKind: "component_failure", targetType: "server", targetIndex: 2 },
   ],
   sla: {
     availabilityTarget: 0.92,
