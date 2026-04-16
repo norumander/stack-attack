@@ -25,6 +25,8 @@ import {
   showDossier,
 } from "./td/component-dossier.js";
 import { getCyberpunkHudController } from "./cyberpunk-hud.js";
+import { renderBriefing } from "./td/briefing-text.js";
+import { getNarrative } from "./td/wave-narrative.js";
 
 declare const Chart: any;
 
@@ -1123,6 +1125,7 @@ async function bootTDMode(): Promise<void> {
         );
       }
       tdDashboard?.refreshHud();
+      getCyberpunkHudController()?.updateNextBill(controller.getRentBill(state));
     },
     onConnect: (connectionId) => {
       // Record the connect action with logical refs (entry-point = -1, else
@@ -1138,6 +1141,7 @@ async function bootTDMode(): Promise<void> {
         );
       }
       tdDashboard?.refreshHud();
+      getCyberpunkHudController()?.updateNextBill(controller.getRentBill(state));
     },
     onDisconnect: ({ connectionId: _connectionId, sourceId, targetId }) => {
       // Look up logical refs for both endpoints and record a disconnect action.
@@ -1161,6 +1165,7 @@ async function bootTDMode(): Promise<void> {
         `[td-action] disconnect ${sourceRef}→${targetRef}; log=${tdActionLog.length}`,
       );
       tdDashboard?.refreshHud();
+      getCyberpunkHudController()?.updateNextBill(controller.getRentBill(state));
     },
     onRemove: (id) => {
       // Find the place-ref for the removed component and dead-mark the slot.
@@ -1178,9 +1183,36 @@ async function bootTDMode(): Promise<void> {
         console.warn(`[td-action] remove: id ${id} not found in tdPlaceActionIds (entry point removal blocked?)`);
       }
       tdDashboard?.refreshHud();
+      getCyberpunkHudController()?.updateNextBill(controller.getRentBill(state));
     },
     onPhaseChange: () => {
       tdDashboard?.refreshHud();
+      const hud = getCyberpunkHudController();
+      if (controller.isCampaignComplete()) {
+        hud?.hideBriefing();
+        hud?.updateNextBill(null);
+      } else if (controller.getPhase() === "build") {
+        const wave = controller.getCurrentWave();
+        const waveNarrative = getNarrative(wave.id);
+        hud?.updateBriefing({
+          ...renderBriefing(wave),
+          ...(waveNarrative !== undefined ? { narrative: waveNarrative } : {}),
+        });
+        hud?.updateNextBill(controller.getRentBill(state));
+        // Refresh NEW badges for the new wave's available components.
+        if (hud) {
+          const paletteButtonsMap = hud.getPaletteButtons();
+          for (const [type, cell] of paletteButtonsMap) {
+            const available = wave.availableComponents.includes(type);
+            cell.classList.toggle(
+              "cp-palette-cell--new",
+              available && !dossierStore.hasSeen(type),
+            );
+          }
+        }
+      } else if (controller.getPhase() === "simulate") {
+        hud?.updateNextBill(null);
+      }
       // eslint-disable-next-line no-console
       console.warn(
         `[td-phase] now ${controller.getPhase()} (wave ${controller.getCurrentWaveIndex() + 1} of ${controller.getWaveCount()})`,
@@ -1269,6 +1301,22 @@ async function bootTDMode(): Promise<void> {
   });
 
   tdDashboard.refreshHud();
+
+  // Slice B: initial HUD paint for the starting wave.
+  {
+    const hud = getCyberpunkHudController();
+    if (hud) {
+      const wave = controller.getCurrentWave();
+      // exactOptionalPropertyTypes: only set narrative if defined.
+      const waveNarrative = getNarrative(wave.id);
+      hud.updateBriefing({
+        ...renderBriefing(wave),
+        ...(waveNarrative !== undefined ? { narrative: waveNarrative } : {}),
+      });
+      hud.updateViability(controller.getViability());
+      hud.updateNextBill(controller.getRentBill(state));
+    }
+  }
 }
 
 function teardownTDMode(): void {
