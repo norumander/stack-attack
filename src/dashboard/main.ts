@@ -1102,6 +1102,13 @@ function repaintCyberpunkHudForPhase(
 async function bootTDMode(): Promise<void> {
   // eslint-disable-next-line no-console
   console.warn("[td-boot] bootTDMode start");
+  if (!isCyberpunkHudActive()) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[td-classic] DEPRECATED — classic TD dashboard is being phased out. " +
+      "Add ?renderer=iso to the URL for the supported experience.",
+    );
+  }
   // Reset action log on a fresh boot. (Retry uses bootTDMode then re-restores
   // the log post-replay; that's why we always start clean here.)
   tdActionLog = [];
