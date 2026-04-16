@@ -166,17 +166,31 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     return tick < frameCount ? tick : period - tick;
   }
 
+  // Component types whose highlight (cyan) layer pulses on a sin wave —
+  // gives a "screen blinking" feel without per-frame art.
+  const PULSE_TYPES = new Set<string>(["client"]);
+  const PULSE_PERIOD_MS = 1200;
+  const PULSE_MIN_ALPHA = 0.45;
+  const PULSE_MAX_ALPHA = 1.0;
+
   let elapsed = 0;
   Ticker.shared.add(() => {
     elapsed += Ticker.shared.deltaMS;
+    const pulseT = (Math.sin((elapsed / PULSE_PERIOD_MS) * Math.PI * 2) + 1) / 2;
+    const pulseAlpha = PULSE_MIN_ALPHA + pulseT * (PULSE_MAX_ALPHA - PULSE_MIN_ALPHA);
     for (const state of states.values()) {
-      if (state.frames.length <= 1) continue;
-      const idx = pingPongIndex(elapsed, state.frames.length);
-      if (idx === state.frameIndex) continue;
-      state.frameIndex = idx;
-      const frame = state.frames[idx]!;
-      state.baseSprite.texture = frame.base;
-      state.highlightSprite.texture = frame.highlight;
+      if (state.frames.length > 1) {
+        const idx = pingPongIndex(elapsed, state.frames.length);
+        if (idx !== state.frameIndex) {
+          state.frameIndex = idx;
+          const frame = state.frames[idx]!;
+          state.baseSprite.texture = frame.base;
+          state.highlightSprite.texture = frame.highlight;
+        }
+      }
+      if (PULSE_TYPES.has(state.type)) {
+        state.highlightSprite.alpha = pulseAlpha;
+      }
     }
   });
 
