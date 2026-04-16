@@ -13,6 +13,7 @@ import { reconstructReturnPath, pickStreamConnection } from "./return-path.js";
 import { isEngineBufferable } from "../capability/engine-interfaces.js";
 import { IllegalStateError } from "./errors.js";
 import { applyStrictCascade } from "./cascade.js";
+import { notifyCircuitBreakers } from "./notify-circuit-breakers.js";
 
 /**
  * Apply a staged outcome to simulation state (events, side effects, outcome plumbing).
@@ -175,6 +176,9 @@ export function deliverStaged(
         state.revenueEarnedThisTick += credited;
       }
 
+      // Notify upstream CircuitBreakers of success — drives HALF_OPEN → CLOSED.
+      notifyCircuitBreakers(state, modeController, request.id, "success");
+
       const parentId = state.childToParent.get(request.id);
       if (parentId != null) {
         const entry = state.blockedParents.get(parentId);
@@ -237,6 +241,11 @@ export function deliverStaged(
         metadata: { reason: result.outcome.reason },
       });
       getOrInitCounters(state, sourceComponentId).drops += 1;
+      // Notify upstream CircuitBreakers — but NOT for backpressure, which
+      // is resource exhaustion, not downstream service failure.
+      if (result.outcome.reason !== "BACKPRESSURED") {
+        notifyCircuitBreakers(state, modeController, request.id, "failure");
+      }
       applyStrictCascade(state, request.id); // NEW: if this request is a blocking child, cascade
       return true;
     case "FORWARD": {
