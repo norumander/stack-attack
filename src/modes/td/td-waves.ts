@@ -364,7 +364,13 @@ export const WAVE_9: TDWaveDefinition = {
   ]),
   sla: {
     availabilityTarget: 0.90,
-    maxAvgLatency: 4,
+    // Loosened from 4 → 5 post Data Cache redesign: the new topology
+    // adds one extra hop for reads (Server → Data Cache → DB instead
+    // of Server RESPOND), which on top of cross-zone latency pushes
+    // average latency marginally over 4. The DNS/GTM routing teaching
+    // still holds — per-zone infrastructure keeps traffic in-zone —
+    // the SLA just acknowledges the new topology depth.
+    maxAvgLatency: 5,
     minBudget: 0,
     penaltyPerTick: 8,
   },

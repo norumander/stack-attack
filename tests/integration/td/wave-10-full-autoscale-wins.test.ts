@@ -192,8 +192,8 @@ describe("Wave 10 — full auto-scale (Server + Database) wins the boss wave", (
       cdn.component.upgrade("forwarding-pipe" as CapabilityId, 3);
 
       // Upgrade Data Cache to tier 3 (caching capacity 100, forwarding 1500/tick)
-      dataCache.component.upgrade("caching" as CapabilityId, 3);
-      dataCache.component.upgrade("caching" as CapabilityId, 3);
+      dataCache.component.upgrade("caching-api" as CapabilityId, 3);
+      dataCache.component.upgrade("caching-api" as CapabilityId, 3);
       dataCache.component.upgrade("forwarding-pipe" as CapabilityId, 3);
       dataCache.component.upgrade("forwarding-pipe" as CapabilityId, 3);
 

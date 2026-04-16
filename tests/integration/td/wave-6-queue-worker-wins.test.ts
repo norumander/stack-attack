@@ -70,7 +70,7 @@ describe("Wave 6 — Queue + Worker rescue wins", () => {
     // and writes. Upgrade Data Cache to tier 2 (cache capacity 50, fits the
     // full 15 keys) and DB to tier 2 (50/tick storage) so the topology can
     // absorb Wave 6 intensity. These upgrades model realistic player choices.
-    dataCache.component.upgrade("caching" as CapabilityId, 3);
+    dataCache.component.upgrade("caching-api" as CapabilityId, 3);
     database.component.upgrade("storage" as CapabilityId, 3);
 
     const result = runWave(state, WAVE_6, client.id);

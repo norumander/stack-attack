@@ -56,8 +56,8 @@ describe("Wave 9 — multi-zone DNS/GTM rescue wins with latency SLA", () => {
       const db = buildDatabase(compRegistry, zone);
 
       // Upgrade per-zone Data Cache and DB to handle Wave 9 intensity.
-      dataCache.component.upgrade("caching" as CapabilityId, 3);
-      dataCache.component.upgrade("caching" as CapabilityId, 3);
+      dataCache.component.upgrade("caching-api" as CapabilityId, 3);
+      dataCache.component.upgrade("caching-api" as CapabilityId, 3);
       db.component.upgrade("storage" as CapabilityId, 3);
       db.component.upgrade("storage" as CapabilityId, 3);
 

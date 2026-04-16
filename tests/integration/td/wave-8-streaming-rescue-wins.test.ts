@@ -94,8 +94,8 @@ describe("Wave 8 — streaming isolation rescue wins", () => {
     wire(state, { component: dataCache.component, egressPortId: dataCache.egressPortId }, { component: database.component, ingressPortId: database.ingressPortId }, "c-dc-db", { bandwidth: 700 });
 
     // Upgrade Data Cache + DB to absorb Wave 8 intensity (post Data Cache redesign).
-    dataCache.component.upgrade("caching" as CapabilityId, 3);
-    dataCache.component.upgrade("caching" as CapabilityId, 3);
+    dataCache.component.upgrade("caching-api" as CapabilityId, 3);
+    dataCache.component.upgrade("caching-api" as CapabilityId, 3);
     database.component.upgrade("storage" as CapabilityId, 3);
     database.component.upgrade("storage" as CapabilityId, 3);
 

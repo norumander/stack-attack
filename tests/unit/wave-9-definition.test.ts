@@ -39,9 +39,10 @@ describe("WAVE_9 — Going Global", () => {
     expect(dist.get("ap-south")).toBeCloseTo(0.25);
   });
 
-  it("intensity is 800 and SLA maxAvgLatency is 4", () => {
+  it("intensity is 800 and SLA maxAvgLatency is 5", () => {
     expect(WAVE_9.intensity).toBe(800);
     expect(WAVE_9.sla).toBeDefined();
-    expect(WAVE_9.sla!.maxAvgLatency).toBe(4);
+    // Loosened from 4 → 5 post Data Cache redesign (see td-waves.ts WAVE_9 comment).
+    expect(WAVE_9.sla!.maxAvgLatency).toBe(5);
   });
 });
