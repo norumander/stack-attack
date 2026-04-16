@@ -715,6 +715,9 @@ function tdOnTick(controller: TDModeController, state: SimulationState): void {
     );
   }
   controller.advancePhase(state); // assess → build (or end of campaign)
+  // Slice B: engine-driven transition doesn't fire onPhaseChange, so
+  // repaint the HUD directly for the new phase (build or campaign-complete).
+  repaintCyberpunkHudForPhase(controller, state);
   tdTickSeq = 0;
   tdDashboard?.refreshHud();
   tdDashboard?.rerenderTopology();
@@ -1040,6 +1043,62 @@ function resetTDCampaign(): void {
   bootTDMode();
 }
 
+/**
+ * Push briefing, viability, next-bill, and NEW-badge state into the
+ * cyberpunk HUD based on the current controller phase. Called from
+ * three sites:
+ *  - bootTDMode, after the first createTDDashboard returns
+ *  - the Ready-button onPhaseChange callback in createTDDashboard
+ *  - tdOnTick, after wave_passed fires the two advancePhase calls
+ *
+ * Safe to call even when the HUD isn't activated — returns early.
+ */
+function repaintCyberpunkHudForPhase(
+  controller: TDModeController,
+  state: SimulationState,
+): void {
+  const hud = getCyberpunkHudController();
+  if (!hud) return;
+
+  if (controller.isCampaignComplete()) {
+    hud.hideBriefing();
+    hud.updateNextBill(null);
+    hud.updateViability(controller.getViability());
+    return;
+  }
+
+  const phase = controller.getPhase();
+  if (phase === "build") {
+    const wave = controller.getCurrentWave();
+    const waveNarrative = getNarrative(wave.id);
+    hud.updateBriefing({
+      ...renderBriefing(wave),
+      ...(waveNarrative !== undefined ? { narrative: waveNarrative } : {}),
+    });
+    hud.updateNextBill(controller.getRentBill(state));
+    hud.updateViability(controller.getViability());
+    // Refresh NEW badges for the new wave's available components.
+    const paletteButtonsMap = hud.getPaletteButtons();
+    for (const [type, cell] of paletteButtonsMap) {
+      const available = wave.availableComponents.includes(type);
+      cell.classList.toggle(
+        "cp-palette-cell--new",
+        available && !dossierStore.hasSeen(type),
+      );
+    }
+    return;
+  }
+
+  if (phase === "simulate") {
+    hud.updateNextBill(null);
+    hud.updateViability(controller.getViability());
+    return;
+  }
+
+  // phase === "assess" — transient, no player action possible.
+  // Leave HUD state as-is; the next build/wave_passed transition will repaint.
+}
+
 async function bootTDMode(): Promise<void> {
   // eslint-disable-next-line no-console
   console.warn("[td-boot] bootTDMode start");
@@ -1187,32 +1246,7 @@ async function bootTDMode(): Promise<void> {
     },
     onPhaseChange: () => {
       tdDashboard?.refreshHud();
-      const hud = getCyberpunkHudController();
-      if (controller.isCampaignComplete()) {
-        hud?.hideBriefing();
-        hud?.updateNextBill(null);
-      } else if (controller.getPhase() === "build") {
-        const wave = controller.getCurrentWave();
-        const waveNarrative = getNarrative(wave.id);
-        hud?.updateBriefing({
-          ...renderBriefing(wave),
-          ...(waveNarrative !== undefined ? { narrative: waveNarrative } : {}),
-        });
-        hud?.updateNextBill(controller.getRentBill(state));
-        // Refresh NEW badges for the new wave's available components.
-        if (hud) {
-          const paletteButtonsMap = hud.getPaletteButtons();
-          for (const [type, cell] of paletteButtonsMap) {
-            const available = wave.availableComponents.includes(type);
-            cell.classList.toggle(
-              "cp-palette-cell--new",
-              available && !dossierStore.hasSeen(type),
-            );
-          }
-        }
-      } else if (controller.getPhase() === "simulate") {
-        hud?.updateNextBill(null);
-      }
+      repaintCyberpunkHudForPhase(controller, state);
       // eslint-disable-next-line no-console
       console.warn(
         `[td-phase] now ${controller.getPhase()} (wave ${controller.getCurrentWaveIndex() + 1} of ${controller.getWaveCount()})`,
@@ -1303,20 +1337,7 @@ async function bootTDMode(): Promise<void> {
   tdDashboard.refreshHud();
 
   // Slice B: initial HUD paint for the starting wave.
-  {
-    const hud = getCyberpunkHudController();
-    if (hud) {
-      const wave = controller.getCurrentWave();
-      // exactOptionalPropertyTypes: only set narrative if defined.
-      const waveNarrative = getNarrative(wave.id);
-      hud.updateBriefing({
-        ...renderBriefing(wave),
-        ...(waveNarrative !== undefined ? { narrative: waveNarrative } : {}),
-      });
-      hud.updateViability(controller.getViability());
-      hud.updateNextBill(controller.getRentBill(state));
-    }
-  }
+  repaintCyberpunkHudForPhase(controller, state);
 }
 
 function teardownTDMode(): void {
