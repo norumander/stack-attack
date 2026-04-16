@@ -640,6 +640,12 @@ let waveStartTick = 0;
 /** The per-tick callback — hoisted so loop reconstruction can reuse it. */
 let tdTickSeq = 0;
 function tdOnTick(controller: TDModeController, state: SimulationState): void {
+  // Slice B: SimLoop doesn't call ModeController.onTick generically, so the
+  // TD dashboard drives it here. This is where viability damage accrues from
+  // the last engine tick's metrics — required for getTerminalState to ever
+  // return "dead" in real gameplay.
+  controller.onTick(state.asReader());
+
   tdTickSeq += 1;
 
   // Update the in-topology running status every tick (cheap text update).
@@ -651,16 +657,15 @@ function tdOnTick(controller: TDModeController, state: SimulationState): void {
   tdDashboard?.updateRunningStatus(tickInWave, wave.duration, resolvedThisWave);
   tdDashboard?.applyTick(state, tdLoop?.tickInterval ?? 200);
 
-  // Slice B: push live campaign state into the cyberpunk HUD.
+  // Slice B: push live campaign state into the cyberpunk HUD. tdOnTick only
+  // fires during simulate phase (SimLoop.shouldStop), so the next-bill counter
+  // is always hidden here; Task 13 will repaint it on the phase change back
+  // to build.
   {
     const hud = getCyberpunkHudController();
     if (hud) {
       hud.updateViability(controller.getViability());
-      if (controller.getPhase() === "build") {
-        hud.updateNextBill(controller.getRentBill(state));
-      } else {
-        hud.updateNextBill(null);
-      }
+      hud.updateNextBill(null);
     }
   }
 

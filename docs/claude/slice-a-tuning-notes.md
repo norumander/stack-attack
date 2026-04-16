@@ -21,7 +21,7 @@ The engine (`engine.tick(mode)`) does not invoke `ModeController.onTick` interna
 This is acceptable because:
 - Integration tests validate request-routing and SLA-verdict contracts (what drops, what forwards, what gets served).
 - Unit tests validate the viability damage math directly with synthetic metric histories.
-- The dashboard's `SimLoop` will fire `mode.onTick` during real play — that's where the player feels the damage.
+- Slice B's `tdOnTick` dashboard callback calls `controller.onTick(state)` at the start of each tick callback, so the player feels the damage during real play. Integration tests via `runWave` still bypass this path — see the paragraph above.
 
 **If a future task wants integration tests to exercise onTick damage**, they should either:
 1. Add `mode.onTick(state)` to the `runWave` tick loop AND retune `viabilityPerFailure` values downward (current values are too aggressive for high-volume waves — see below).
