@@ -1,3 +1,10 @@
+/**
+ * @deprecated Slice B (2026-04-16) — the cyberpunk HUD renders the briefing
+ * directly via `renderBriefing` + `CyberpunkHudController.updateBriefing`.
+ * This module is only used by the classic (non-iso) TD path, which now
+ * redirects to iso at boot. Kept compiling so sandbox mode and any
+ * programmatic callers still work; slated for removal in a Slice C cleanup.
+ */
 import type { TDWaveDefinition } from "@modes/td/td-waves.js";
 import {
   CLIENT_ENTRY,

@@ -19,8 +19,31 @@ import { createTDDashboard, type TDDashboard } from "./td-mode";
 import type { OutcomeReport } from "@core/types/outcome";
 import { diagnoseWave } from "./td/diagnose-wave";
 import { activateCyberpunkHud, isCyberpunkHudActive } from "./cyberpunk-hud";
+import {
+  ComponentDossierStore,
+  DOSSIERS,
+  showDossier,
+} from "./td/component-dossier.js";
+import { getCyberpunkHudController } from "./cyberpunk-hud.js";
+import { renderBriefing } from "./td/briefing-text.js";
+import { getNarrative } from "./td/wave-narrative.js";
 
 declare const Chart: any;
+
+// ─── Entry-point redirect: force iso HUD for TD mode ──────────────────
+// Slice B makes the iso cyberpunk HUD the canonical TD surface. Anyone
+// arriving with #mode=td but without ?renderer=iso gets silently rewritten.
+// Classic TD mode is deprecated and left only as a code-path for the sandbox
+// HUD's stale mirror targets; no bookmark-surface depends on it.
+(function forceIsoForTDMode(): void {
+  const hash = window.location.hash;
+  if (!hash.startsWith("#mode=td")) return;
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("renderer") === "iso") return;
+  url.searchParams.set("renderer", "iso");
+  // replaceState (not assign) so the user's history isn't polluted.
+  window.history.replaceState(null, "", url.toString());
+})();
 
 // Activate cyberpunk HUD at boot (before any TD DOM is shown) if the URL opts in.
 if (isCyberpunkHudActive()) {
@@ -413,6 +436,9 @@ function cumulativeStartingBudget(waveIndex: number): number {
   return sum;
 }
 
+const dossierStore = new ComponentDossierStore();
+let dossierInterceptionAbort: AbortController | null = null;
+
 let tdDashboard: TDDashboard | null = null;
 let tdLoop: SimLoop<TDModeController> | null = null;
 let tdEngine: Engine | null = null;
@@ -616,6 +642,16 @@ let waveStartTick = 0;
 /** The per-tick callback — hoisted so loop reconstruction can reuse it. */
 let tdTickSeq = 0;
 function tdOnTick(controller: TDModeController, state: SimulationState): void {
+  // Slice B: SimLoop doesn't call ModeController.onTick generically, so the
+  // TD dashboard drives it here. This is where viability damage accrues from
+  // the last engine tick's metrics — required for getTerminalState to ever
+  // return "dead" in real gameplay.
+  //
+  // Pass `state` directly: TDModeController.onTick internally casts back to
+  // SimulationState to read metricsHistory. The asReader() projection creates
+  // a narrowed object that omits metricsHistory, causing a runtime crash.
+  controller.onTick(state as unknown as import("@core/state/state-reader.js").SimulationStateReader);
+
   tdTickSeq += 1;
 
   // Update the in-topology running status every tick (cheap text update).
@@ -627,69 +663,210 @@ function tdOnTick(controller: TDModeController, state: SimulationState): void {
   tdDashboard?.updateRunningStatus(tickInWave, wave.duration, resolvedThisWave);
   tdDashboard?.applyTick(state, tdLoop?.tickInterval ?? 200);
 
-  if (!controller.isWaveDrained(state)) return;
+  // Slice B: push live campaign state into the cyberpunk HUD. tdOnTick only
+  // fires during simulate phase (SimLoop.shouldStop), so the next-bill counter
+  // is always hidden here; Task 13 will repaint it on the phase change back
+  // to build.
+  {
+    const hud = getCyberpunkHudController();
+    if (hud) {
+      hud.updateViability(controller.getViability());
+      hud.updateNextBill(null);
+    }
+  }
 
+  const terminalState = controller.getTerminalState(state);
+  if (terminalState === "running") return;
+
+  // Either "dead" (viability hit 0 mid-wave) or "wave_passed" (drained with
+  // viability > 0). Both end the tick loop.
+  tdLoop?.stop();
+
+  if (terminalState === "dead") {
+    // eslint-disable-next-line no-console
+    console.warn(`[td-dead] viability=${controller.getViability().value}`);
+    showDeathModal();
+    tdTickSeq = 0;
+    tdDashboard?.refreshHud();
+    tdDashboard?.rerenderTopology();
+    return;
+  }
+
+  // terminalState === "wave_passed"
   // eslint-disable-next-line no-console
   console.warn(
     `[td-wave-end] wave ${controller.getCurrentWaveIndex() + 1} drained at tick=${state.currentTick}`,
   );
-  tdLoop?.stop();
   controller.advancePhase(state); // simulate → assess
-  const outcome = controller.evaluateOutcome(
-    controller.getCurrentWaveMetrics(state),
-  );
+
+  // Snapshot the action log for retry semantics (same as before).
+  tdSnapshotIndex = tdActionLog.length;
   // eslint-disable-next-line no-console
-  console.warn(
-    `[td-outcome] verdict=${outcome.verdict} notes=${outcome.notes.join(" | ")}`,
-  );
-  showWaveResultToast(outcome);
+  console.warn(`[td-snapshot] saved at action ${tdSnapshotIndex}`);
 
-  if (outcome.verdict === "win") {
-    // === WIN: snapshot the action log and advance to next wave ===
-    tdSnapshotIndex = tdActionLog.length;
-    // eslint-disable-next-line no-console
-    console.warn(`[td-snapshot] saved at action ${tdSnapshotIndex}`);
+  showWinModal();
 
-    const nextIdx = controller.getCurrentWaveIndex() + 1;
-    if (nextIdx < controller.getWaveCount()) {
-      const nextWave = TD_WAVES[nextIdx]!;
-      controller.setEconomy(
-        new TDEconomy({
-          startingBudget: nextWave.startingBudget ?? 0,
-          revenuePerRequestType: nextWave.revenuePerRequestType,
-        }),
-      );
-      for (const id of state.components.keys()) {
-        state.setCondition(id, 1.0);
-      }
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[td-next-wave] advancing to wave ${nextIdx + 1} of ${controller.getWaveCount()}, fresh economy budget=${nextWave.startingBudget}`,
-      );
-    } else {
-      // eslint-disable-next-line no-console
-      console.warn(`[td-campaign-end] all ${controller.getWaveCount()} waves complete`);
+  const nextIdx = controller.getCurrentWaveIndex() + 1;
+  if (nextIdx < controller.getWaveCount()) {
+    // Condition reset; economy carries over under the rent model — no
+    // per-wave budget reset.
+    for (const id of state.components.keys()) {
+      state.setCondition(id, 1.0);
     }
-    // advancePhase handles terminal case: bumps waveIndex and stays in assess
-    // when there is no next wave, so isCampaignComplete() becomes true.
-    controller.advancePhase(state);
-    tdTickSeq = 0;
-    tdDashboard?.refreshHud();
-    tdDashboard?.rerenderTopology();
-  } else {
-    // === LOSS: stay in assess phase, show retry/reset modal ===
     // eslint-disable-next-line no-console
     console.warn(
-      `[td-loss] wave ${controller.getCurrentWaveIndex() + 1} lost; awaiting Retry or Reset`,
+      `[td-next-wave] advancing to wave ${nextIdx + 1} of ${controller.getWaveCount()}`,
     );
-    showLossModal(outcome);
-    tdTickSeq = 0;
-    tdDashboard?.refreshHud();
-    tdDashboard?.rerenderTopology();
   }
+  controller.advancePhase(state); // assess → build (or end of campaign)
+  // Slice B: engine-driven transition doesn't fire onPhaseChange, so
+  // repaint the HUD directly for the new phase (build or campaign-complete).
+  repaintCyberpunkHudForPhase(controller, state);
+  tdTickSeq = 0;
+  tdDashboard?.refreshHud();
+  tdDashboard?.rerenderTopology();
 }
 
 // === Loss modal helpers ===
+
+function showDeathModal(): void {
+  const modal = document.getElementById("td-loss-modal");
+  const title = document.getElementById("td-loss-modal-title");
+  const detail = document.getElementById("td-loss-modal-detail");
+  if (!modal || !title || !detail || !tdController || !tdState) return;
+
+  title.textContent = "YOUR OPPORTUNITY WINDOW HAS CLOSED";
+  while (detail.firstChild) detail.removeChild(detail.firstChild);
+
+  const flavor = document.createElement("div");
+  flavor.textContent = "The market moved on. Your service couldn't keep up.";
+  flavor.style.fontStyle = "italic";
+  flavor.style.marginBottom = "10px";
+  detail.appendChild(flavor);
+
+  // Reuse the diagnose-wave hint for an actionable line.
+  const metrics = tdController.getCurrentWaveMetrics(tdState);
+  const diagnosis = diagnoseWave({
+    wave: tdController.getCurrentWave(),
+    metrics,
+    components: tdState.components,
+    connections: tdState.connections,
+  });
+  if (diagnosis.hint) {
+    const hintEl = document.createElement("div");
+    hintEl.textContent = diagnosis.hint;
+    hintEl.style.color = "#8b8fa3";
+    detail.appendChild(hintEl);
+  }
+
+  const retryBtn = document.getElementById("td-retry-btn");
+  // Deaths are persistent — the button is a campaign restart, not a wave retry.
+  if (retryBtn) retryBtn.textContent = "RESTART CAMPAIGN";
+  modal.hidden = false;
+}
+
+function showWinModal(): void {
+  if (!tdController || !tdState) return;
+  const waveIdx = tdController.getCurrentWaveIndex();
+  const waveNum = waveIdx + 1;
+  const v = tdController.getViability();
+  const budget = tdController.economy.getBudget();
+  const nextWave = TD_WAVES[waveIdx + 1] ?? null;
+  const isFinal = nextWave === null;
+
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[td-win] wave ${waveNum} passed; viability=${v.value} budget=${budget}`,
+  );
+
+  const overlay = document.createElement("div");
+  overlay.className = "cp-win-overlay";
+
+  const modal = document.createElement("div");
+  modal.className = "cp-win-modal cp-panel";
+
+  const title = document.createElement("h2");
+  title.className = "cp-win-title";
+  title.textContent = isFinal ? "CAMPAIGN COMPLETE" : `WAVE ${waveNum} CLEAR`;
+  modal.appendChild(title);
+
+  const stats = document.createElement("div");
+  stats.className = "cp-win-stats";
+  const vRow = document.createElement("div");
+  vRow.className = "cp-win-stat";
+  vRow.textContent = `Viability  ${Math.round(v.fraction * 100)}%`;
+  const bRow = document.createElement("div");
+  bRow.className = "cp-win-stat";
+  bRow.textContent = `Budget  $${budget}`;
+  stats.appendChild(vRow);
+  stats.appendChild(bRow);
+  modal.appendChild(stats);
+
+  if (nextWave) {
+    const divider = document.createElement("div");
+    divider.className = "cp-win-divider";
+    modal.appendChild(divider);
+
+    const nextHeader = document.createElement("div");
+    nextHeader.className = "cp-win-next-header";
+    nextHeader.textContent = "INCOMING";
+    modal.appendChild(nextHeader);
+
+    const preview = renderBriefing(nextWave);
+    const narrative = getNarrative(nextWave.id);
+
+    const nextTitle = document.createElement("div");
+    nextTitle.className = "cp-win-next-title";
+    nextTitle.textContent = preview.title;
+    modal.appendChild(nextTitle);
+
+    if (narrative) {
+      const narr = document.createElement("div");
+      narr.className = "cp-win-narrative";
+      narr.textContent = narrative;
+      modal.appendChild(narr);
+    }
+
+    const rows = document.createElement("div");
+    rows.className = "cp-win-preview-rows";
+    rows.appendChild(winPreviewRow(
+      "Load",
+      "●".repeat(preview.load.dots) + "○".repeat(5 - preview.load.dots) + "  " + preview.load.label,
+    ));
+    rows.appendChild(winPreviewRow("Traffic", preview.traffic));
+    rows.appendChild(winPreviewRow("Objective", preview.objective));
+    rows.appendChild(winPreviewRow("Reward", preview.reward));
+    modal.appendChild(rows);
+  }
+
+  const cta = document.createElement("button");
+  cta.type = "button";
+  cta.className = "cp-win-cta";
+  cta.textContent = isFinal ? "FINISH" : "NEXT WAVE →";
+  modal.appendChild(cta);
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  cta.addEventListener("click", () => {
+    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  });
+  cta.focus();
+}
+
+function winPreviewRow(label: string, value: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "cp-win-preview-row";
+  const k = document.createElement("span");
+  k.className = "cp-win-preview-key";
+  k.textContent = label;
+  const v = document.createElement("span");
+  v.className = "cp-win-preview-val";
+  v.textContent = value;
+  row.appendChild(k);
+  row.appendChild(v);
+  return row;
+}
 
 function gatherPerTypeCacheStats(
   state: { components: ReadonlyMap<ComponentId, Component> },
@@ -946,9 +1123,72 @@ function resetTDCampaign(): void {
   bootTDMode();
 }
 
+/**
+ * Push briefing, viability, next-bill, and NEW-badge state into the
+ * cyberpunk HUD based on the current controller phase. Called from
+ * three sites:
+ *  - bootTDMode, after the first createTDDashboard returns
+ *  - the Ready-button onPhaseChange callback in createTDDashboard
+ *  - tdOnTick, after wave_passed fires the two advancePhase calls
+ *
+ * Safe to call even when the HUD isn't activated — returns early.
+ */
+function repaintCyberpunkHudForPhase(
+  controller: TDModeController,
+  state: SimulationState,
+): void {
+  const hud = getCyberpunkHudController();
+  if (!hud) return;
+
+  if (controller.isCampaignComplete()) {
+    hud.hideBriefing();
+    hud.updateNextBill(null);
+    hud.updateViability(controller.getViability());
+    return;
+  }
+
+  const phase = controller.getPhase();
+  if (phase === "build") {
+    const wave = controller.getCurrentWave();
+    const waveNarrative = getNarrative(wave.id);
+    hud.updateBriefing({
+      ...renderBriefing(wave),
+      ...(waveNarrative !== undefined ? { narrative: waveNarrative } : {}),
+    });
+    hud.updateNextBill(controller.getRentBill(state));
+    hud.updateViability(controller.getViability());
+    // Refresh NEW badges for the new wave's available components.
+    const paletteButtonsMap = hud.getPaletteButtons();
+    for (const [type, cell] of paletteButtonsMap) {
+      const available = wave.availableComponents.includes(type);
+      cell.classList.toggle(
+        "cp-palette-cell--new",
+        available && !dossierStore.hasSeen(type),
+      );
+    }
+    return;
+  }
+
+  if (phase === "simulate") {
+    hud.updateNextBill(null);
+    hud.updateViability(controller.getViability());
+    return;
+  }
+
+  // phase === "assess" — transient, no player action possible.
+  // Leave HUD state as-is; the next build/wave_passed transition will repaint.
+}
+
 async function bootTDMode(): Promise<void> {
   // eslint-disable-next-line no-console
   console.warn("[td-boot] bootTDMode start");
+  if (!isCyberpunkHudActive()) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[td-classic] DEPRECATED — classic TD dashboard is being phased out. " +
+      "Add ?renderer=iso to the URL for the supported experience.",
+    );
+  }
   // Reset action log on a fresh boot. (Retry uses bootTDMode then re-restores
   // the log post-replay; that's why we always start clean here.)
   tdActionLog = [];
@@ -1031,6 +1271,7 @@ async function bootTDMode(): Promise<void> {
         );
       }
       tdDashboard?.refreshHud();
+      getCyberpunkHudController()?.updateNextBill(controller.getRentBill(state));
     },
     onConnect: (connectionId) => {
       // Record the connect action with logical refs (entry-point = -1, else
@@ -1046,6 +1287,7 @@ async function bootTDMode(): Promise<void> {
         );
       }
       tdDashboard?.refreshHud();
+      getCyberpunkHudController()?.updateNextBill(controller.getRentBill(state));
     },
     onDisconnect: ({ connectionId: _connectionId, sourceId, targetId }) => {
       // Look up logical refs for both endpoints and record a disconnect action.
@@ -1069,6 +1311,7 @@ async function bootTDMode(): Promise<void> {
         `[td-action] disconnect ${sourceRef}→${targetRef}; log=${tdActionLog.length}`,
       );
       tdDashboard?.refreshHud();
+      getCyberpunkHudController()?.updateNextBill(controller.getRentBill(state));
     },
     onRemove: (id) => {
       // Find the place-ref for the removed component and dead-mark the slot.
@@ -1086,9 +1329,11 @@ async function bootTDMode(): Promise<void> {
         console.warn(`[td-action] remove: id ${id} not found in tdPlaceActionIds (entry point removal blocked?)`);
       }
       tdDashboard?.refreshHud();
+      getCyberpunkHudController()?.updateNextBill(controller.getRentBill(state));
     },
     onPhaseChange: () => {
       tdDashboard?.refreshHud();
+      repaintCyberpunkHudForPhase(controller, state);
       // eslint-disable-next-line no-console
       console.warn(
         `[td-phase] now ${controller.getPhase()} (wave ${controller.getCurrentWaveIndex() + 1} of ${controller.getWaveCount()})`,
@@ -1111,6 +1356,62 @@ async function bootTDMode(): Promise<void> {
     },
   });
 
+  // Slice B: NEW badges + first-click dossier interception.
+  {
+    // Abort prior boot's listeners so they don't stack on repeat bootTDMode calls.
+    dossierInterceptionAbort?.abort();
+    dossierInterceptionAbort = new AbortController();
+    const { signal } = dossierInterceptionAbort;
+
+    const hud = getCyberpunkHudController();
+    if (hud) {
+      const paletteButtonsMap = hud.getPaletteButtons();
+      const wave = controller.getCurrentWave();
+      for (const type of wave.availableComponents) {
+        const cell = paletteButtonsMap.get(type);
+        if (!cell) continue;
+        cell.classList.toggle(
+          "cp-palette-cell--new",
+          !dossierStore.hasSeen(type),
+        );
+      }
+
+      for (const [type, cell] of paletteButtonsMap) {
+        // Capture phase so we run BEFORE cyberpunk-hud's own forwarding click.
+        cell.addEventListener(
+          "click",
+          async (e: Event) => {
+            if (dossierStore.hasSeen(type)) return;
+            if (!(type in DOSSIERS)) {
+              // No content authored yet — mark seen silently so we don't block
+              // placement indefinitely on a roadmap component.
+              dossierStore.markSeen(type);
+              cell.classList.remove("cp-palette-cell--new");
+              return;
+            }
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            // Mark seen synchronously BEFORE the await so a rapid second click
+            // short-circuits on the hasSeen guard and doesn't stack a second modal.
+            dossierStore.markSeen(type);
+            cell.classList.remove("cp-palette-cell--new");
+            const entry = compRegistry.get(type);
+            const rent = entry?.rentPerWave ?? 0;
+            await showDossier(type, rent);
+            // Forward manually to the classic palette button so place-mode
+            // kicks in. This mirrors what cyberpunk-hud's normal forwarding
+            // would have done.
+            const classicBtn = document.querySelector<HTMLButtonElement>(
+              `.td-palette-btn[data-type="${type}"]`,
+            );
+            classicBtn?.click();
+          },
+          { capture: true, signal },
+        );
+      }
+    }
+  }
+
   tdLoop = new SimLoop<TDModeController>({
     engine,
     state,
@@ -1121,6 +1422,9 @@ async function bootTDMode(): Promise<void> {
   });
 
   tdDashboard.refreshHud();
+
+  // Slice B: initial HUD paint for the starting wave.
+  repaintCyberpunkHudForPhase(controller, state);
 }
 
 function teardownTDMode(): void {
@@ -1209,7 +1513,14 @@ $speedSlider.addEventListener("input", () => {
 // Loss modal buttons (one-time wiring; modal HTML is static).
 const $tdRetryBtn = document.getElementById("td-retry-btn") as HTMLButtonElement | null;
 const $tdResetBtn = document.getElementById("td-reset-btn") as HTMLButtonElement | null;
-$tdRetryBtn?.addEventListener("click", () => retryTDWave());
+$tdRetryBtn?.addEventListener("click", () => {
+  // Death modal repurposes this button as "RESTART CAMPAIGN".
+  // Loss-without-death is no longer a path in the Slice B terminal model,
+  // so the old retryTDWave flow is unreachable in normal gameplay. The
+  // `retryTDWave` function and its helpers remain defined in case we need
+  // them for a mercy-mode roadmap item (Slice C §6).
+  resetTDCampaign();
+});
 $tdResetBtn?.addEventListener("click", () => resetTDCampaign());
 
 // ─── Boot ─────────────────────────────────────────────────────────────
