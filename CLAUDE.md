@@ -26,6 +26,8 @@ This file is intentionally small. Pull the chunk you need:
 - **Never commit unless explicitly asked.** New commits over amending. Never `--no-verify`, never force-push to main.
 - **Pure TypeScript simulation in Phase 1.** No React, Next.js, or Vercel imports in `src/core/` or `src/capabilities/`. Enforced by `tests/unit/engine-pixi-isolation.test.ts`.
 - **Ignore Vercel plugin hook noise.** The plugin injects Next.js / verification skill reminders on `vite` / `pnpm dev|build` regex matches — this is a local Vite + Pixi project, not Vercel/Next. Those reminders are false positives.
+- **Pre-existing typecheck noise:** `tests/unit/pull-from-buffers.test.ts:81` has a known unrelated error (`requestsPerTick` on `FixedIntensityConfig`). Clean typecheck = just that one line.
+- **`tests/playtest/*` is research/analysis, not production tests.** Can be deleted or rewritten without blocking a feature — separate from the `tests/unit/` and `tests/integration/` contract surface.
 
 ## Quickstart
 

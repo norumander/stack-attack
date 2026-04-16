@@ -131,3 +131,11 @@ Surfaced during Stage 3d playtest and left unresolved when the branch pivoted to
 - **Topology order matters with pull semantics.** If Queue is upstream of Worker, batch requests are QUEUE_HOLD'd and Worker must pull them. If Worker is upstream of Queue, batch is processed directly and Queue only sees non-batch traffic. Wave 6/7/8 win tests use Worker-upstream topology for throughput reasons.
 - **pullFromBuffers runs once per tick (step 2.5).** Not inside the fixed-point loop. Pulled items are enqueued in Worker's pending queue before PROCESS phase starts.
 - **getTierCap() limits Queue capacity.** TD mode caps capability tiers at 1, giving Queue 32 slots. At high batch volumes (50+ per tick), Queue overflows before Worker can pull. Worker-upstream topology avoids this by processing batch before it reaches Queue.
+
+## Data Cache redesign gotchas (post Stage 5b)
+
+- **Three caching cap ids, not one.** `caching` (base, sandbox/general), `caching-static` (CDN, `cacheableTypes: Set(["static_asset"])`), `caching-api` (Data Cache, `cacheableTypes: Set(["api_read"])`). CDN_ENTRY and DATA_CACHE_ENTRY reference the specialized ids, not `caching`. Upgrade calls must match: `dataCache.component.upgrade("caching-api", 3)`, not `"caching"`.
+- **`Component.upgrade(capId, tier)` silently no-ops on unknown cap id.** No throw, no warning — component stays at tier 1. Sanity-check with `component.capabilities.has(capId)` before upgrade if renaming a cap.
+- **Data Cache sits between Server and DB, not upstream of Server.** Canonical TD topology is `Client → ... → Server → Data Cache → Database`. Cache hits RESPOND; misses PASS to forwarding-pipe → DB. Server forwards `api_read` downstream (Processing `handledTypes: ["static_asset", "auth_required"]`; Forwarding `handledTypes: ["api_read", "api_write"]`).
+- **Post-redesign reads take one extra hop** (Server → Data Cache → DB vs old Server RESPOND). Multi-zone latency SLAs in Wave 9/10 acknowledge this — Wave 9 maxAvgLatency is 5, not 4.
+- **Server tier-1 pooled budget is 50/tick** (Processing 25 + Forwarding 25). DB tier-1 cap is 25/tick (was 50 pre-redesign). Wave 3 teaching: lone `Server → DB` loses on DB saturation (35 reads/tick > 25 cap); `Server → Data Cache → DB` wins because DB only sees cache misses + writes.
