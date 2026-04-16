@@ -64,9 +64,17 @@ function buildHud(): void {
   document.body.appendChild(root);
 
   buildWavePill(root);
-  buildResourcesPanel(root);
-  buildViabilityPanel(root);
-  buildBriefingPanel(root);
+
+  // Right-side column: resources → viability → briefing stacked vertically.
+  // Without a shared container these panels overlap because each is
+  // position:absolute with hardcoded top values that don't account for
+  // each other's dynamic height (e.g. the NEXT BILL row).
+  const rightCol = div("cp-right-col");
+  root.append(rightCol);
+  buildResourcesPanel(rightCol);
+  buildViabilityPanel(rightCol);
+  buildBriefingPanel(rightCol);
+
   buildInfoPanel(root);
   buildPaletteStrip(root);
   buildReadyButton(root);

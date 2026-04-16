@@ -646,7 +646,11 @@ function tdOnTick(controller: TDModeController, state: SimulationState): void {
   // TD dashboard drives it here. This is where viability damage accrues from
   // the last engine tick's metrics — required for getTerminalState to ever
   // return "dead" in real gameplay.
-  controller.onTick(state.asReader());
+  //
+  // Pass `state` directly: TDModeController.onTick internally casts back to
+  // SimulationState to read metricsHistory. The asReader() projection creates
+  // a narrowed object that omits metricsHistory, causing a runtime crash.
+  controller.onTick(state as unknown as import("@core/state/state-reader.js").SimulationStateReader);
 
   tdTickSeq += 1;
 
@@ -763,29 +767,105 @@ function showDeathModal(): void {
 
 function showWinModal(): void {
   if (!tdController || !tdState) return;
-  const waveNum = tdController.getCurrentWaveIndex() + 1;
+  const waveIdx = tdController.getCurrentWaveIndex();
+  const waveNum = waveIdx + 1;
   const v = tdController.getViability();
   const budget = tdController.economy.getBudget();
-  // Reuse the existing wave-result toast DOM for visual continuity.
-  const outcome: OutcomeReport = {
-    verdict: "win",
-    score: { cost: budget, performance: 1, reliability: 1, composite: 1 },
-    slaResults: {
-      availability: { target: 0, actual: 1, passed: true },
-      latency: { target: Infinity, actual: 0, passed: true },
-      budget: { target: 0, actual: budget, passed: true },
-      allPassed: true,
-    },
-    notes: [
-      `Viability ${Math.round(v.fraction * 100)}%`,
-      `Budget $${budget}`,
-    ],
-  };
-  showWaveResultToast(outcome);
+  const nextWave = TD_WAVES[waveIdx + 1] ?? null;
+  const isFinal = nextWave === null;
+
   // eslint-disable-next-line no-console
   console.warn(
     `[td-win] wave ${waveNum} passed; viability=${v.value} budget=${budget}`,
   );
+
+  const overlay = document.createElement("div");
+  overlay.className = "cp-win-overlay";
+
+  const modal = document.createElement("div");
+  modal.className = "cp-win-modal cp-panel";
+
+  const title = document.createElement("h2");
+  title.className = "cp-win-title";
+  title.textContent = isFinal ? "CAMPAIGN COMPLETE" : `WAVE ${waveNum} CLEAR`;
+  modal.appendChild(title);
+
+  const stats = document.createElement("div");
+  stats.className = "cp-win-stats";
+  const vRow = document.createElement("div");
+  vRow.className = "cp-win-stat";
+  vRow.textContent = `Viability  ${Math.round(v.fraction * 100)}%`;
+  const bRow = document.createElement("div");
+  bRow.className = "cp-win-stat";
+  bRow.textContent = `Budget  $${budget}`;
+  stats.appendChild(vRow);
+  stats.appendChild(bRow);
+  modal.appendChild(stats);
+
+  if (nextWave) {
+    const divider = document.createElement("div");
+    divider.className = "cp-win-divider";
+    modal.appendChild(divider);
+
+    const nextHeader = document.createElement("div");
+    nextHeader.className = "cp-win-next-header";
+    nextHeader.textContent = "INCOMING";
+    modal.appendChild(nextHeader);
+
+    const preview = renderBriefing(nextWave);
+    const narrative = getNarrative(nextWave.id);
+
+    const nextTitle = document.createElement("div");
+    nextTitle.className = "cp-win-next-title";
+    nextTitle.textContent = preview.title;
+    modal.appendChild(nextTitle);
+
+    if (narrative) {
+      const narr = document.createElement("div");
+      narr.className = "cp-win-narrative";
+      narr.textContent = narrative;
+      modal.appendChild(narr);
+    }
+
+    const rows = document.createElement("div");
+    rows.className = "cp-win-preview-rows";
+    rows.appendChild(winPreviewRow(
+      "Load",
+      "●".repeat(preview.load.dots) + "○".repeat(5 - preview.load.dots) + "  " + preview.load.label,
+    ));
+    rows.appendChild(winPreviewRow("Traffic", preview.traffic));
+    rows.appendChild(winPreviewRow("Objective", preview.objective));
+    rows.appendChild(winPreviewRow("Reward", preview.reward));
+    modal.appendChild(rows);
+  }
+
+  const cta = document.createElement("button");
+  cta.type = "button";
+  cta.className = "cp-win-cta";
+  cta.textContent = isFinal ? "FINISH" : "NEXT WAVE →";
+  modal.appendChild(cta);
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  cta.addEventListener("click", () => {
+    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  });
+  cta.focus();
+}
+
+function winPreviewRow(label: string, value: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "cp-win-preview-row";
+  const k = document.createElement("span");
+  k.className = "cp-win-preview-key";
+  k.textContent = label;
+  const v = document.createElement("span");
+  v.className = "cp-win-preview-val";
+  v.textContent = value;
+  row.appendChild(k);
+  row.appendChild(v);
+  return row;
 }
 
 function gatherPerTypeCacheStats(
