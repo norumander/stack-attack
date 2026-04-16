@@ -39,10 +39,10 @@ export function createPlacementGhost(textures: ComponentTextureMap): PlacementGh
         container.removeChild(currentSprite);
         currentSprite.destroy();
       }
-      const split = textures[type] ?? textures.client!;
-      // Ghost uses only the base layer tinted ghost-cyan — keeps it legible
-      // and avoids the double-tint from stacking base + highlight.
-      currentSprite = new Sprite(split.base);
+      const frames = textures[type] ?? textures.client!;
+      // Ghost uses only the base layer (first frame) tinted ghost-cyan — keeps it
+      // legible and avoids the double-tint from stacking base + highlight.
+      currentSprite = new Sprite(frames[0]!.base);
       currentSprite.anchor.set(0.5, 0.75);
       currentSprite.scale.set(CYBERPUNK_TOKENS.scale.spriteScale);
       currentSprite.alpha = 0.55;

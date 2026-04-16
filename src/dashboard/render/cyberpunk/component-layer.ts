@@ -1,9 +1,10 @@
-import { Container, Sprite, Text, Texture } from "pixi.js";
+import { Container, Sprite, Text, Texture, Ticker } from "pixi.js";
 import type { ComponentId } from "@core/types/ids.js";
 import type { ComponentVisual, ComponentUpdate } from "../topology-renderer.js";
 import { CYBERPUNK_TOKENS } from "./tokens.js";
 import { gridToWorld } from "./iso-projection.js";
 import { utilizationColor } from "../utilization-color.js";
+import { frameRects } from "./sprite-sheet.js";
 
 const SPRITE_URLS: Record<string, string> = {
   client: new URL("../../assets/client.png", import.meta.url).href,
@@ -34,25 +35,30 @@ export interface ComponentSplitTextures {
   readonly highlight: Texture;
 }
 
-export type ComponentTextureMap = Record<string, ComponentSplitTextures>;
+/** A component's textures: 1 entry = static, >1 entries = animated frames in playback order. */
+export type ComponentFrames = readonly ComponentSplitTextures[];
+export type ComponentTextureMap = Record<string, ComponentFrames>;
 
-async function loadAndSplit(url: string): Promise<ComponentSplitTextures> {
+async function loadAndSplit(url: string): Promise<ComponentFrames> {
   const response = await fetch(url);
   const blob = await response.blob();
   const bitmap = await createImageBitmap(blob);
-  return splitBitmap(bitmap);
+  const rects = frameRects(bitmap.width, bitmap.height);
+  return rects.map((rect) => splitBitmapRect(bitmap, rect));
 }
 
-function splitBitmap(bitmap: ImageBitmap): ComponentSplitTextures {
-  const w = bitmap.width;
-  const h = bitmap.height;
+function splitBitmapRect(
+  bitmap: ImageBitmap,
+  rect: { x: number; y: number; w: number; h: number },
+): ComponentSplitTextures {
+  const { x, y, w, h } = rect;
 
   const srcCanvas = document.createElement("canvas");
   srcCanvas.width = w;
   srcCanvas.height = h;
   const srcCtx = srcCanvas.getContext("2d");
   if (!srcCtx) throw new Error("2d context unavailable");
-  srcCtx.drawImage(bitmap, 0, 0);
+  srcCtx.drawImage(bitmap, x, y, w, h, 0, 0, w, h);
   const src = srcCtx.getImageData(0, 0, w, h);
 
   const baseCanvas = document.createElement("canvas");
@@ -106,14 +112,14 @@ function splitBitmap(bitmap: ImageBitmap): ComponentSplitTextures {
 export async function loadComponentTextures(): Promise<ComponentTextureMap> {
   const entries = await Promise.all(
     Object.entries(SPRITE_URLS).map(async ([type, url]) => {
-      const split = await loadAndSplit(url);
-      return [type, split] as const;
+      const frames = await loadAndSplit(url);
+      return [type, frames] as const;
     }),
   );
   return Object.fromEntries(entries) as ComponentTextureMap;
 }
 
-function resolveTextures(textures: ComponentTextureMap, type: string): ComponentSplitTextures {
+function resolveTextures(textures: ComponentTextureMap, type: string): ComponentFrames {
   if (textures[type]) return textures[type]!;
   const fallback = FALLBACK_BY_TYPE[type];
   if (fallback && textures[fallback]) return textures[fallback]!;
@@ -129,6 +135,8 @@ export interface ComponentRenderState {
   readonly highlightSprite: Sprite;
   readonly label: Text;
   readonly pendingLabel: Text;
+  readonly frames: ComponentFrames;
+  frameIndex: number;
   type: string;
   gridX: number;
   gridY: number;
@@ -148,14 +156,39 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
   container.sortableChildren = true;
   const states = new Map<ComponentId, ComponentRenderState>();
 
-  const add = (id: ComponentId, visual: ComponentVisual): void => {
-    const tex = resolveTextures(textures, visual.type);
+  const FRAME_DURATION_MS = 250;
 
-    const baseSprite = new Sprite(tex.base);
+  // Ping-pong over N frames: 0,1,...,N-1,N-2,...,1, then repeats.
+  function pingPongIndex(elapsedMs: number, frameCount: number): number {
+    if (frameCount <= 1) return 0;
+    const period = (frameCount - 1) * 2;
+    const tick = Math.floor(elapsedMs / FRAME_DURATION_MS) % period;
+    return tick < frameCount ? tick : period - tick;
+  }
+
+  let elapsed = 0;
+  Ticker.shared.add(() => {
+    elapsed += Ticker.shared.deltaMS;
+    for (const state of states.values()) {
+      if (state.frames.length <= 1) continue;
+      const idx = pingPongIndex(elapsed, state.frames.length);
+      if (idx === state.frameIndex) continue;
+      state.frameIndex = idx;
+      const frame = state.frames[idx]!;
+      state.baseSprite.texture = frame.base;
+      state.highlightSprite.texture = frame.highlight;
+    }
+  });
+
+  const add = (id: ComponentId, visual: ComponentVisual): void => {
+    const frames = resolveTextures(textures, visual.type);
+    const frame0 = frames[0]!;
+
+    const baseSprite = new Sprite(frame0.base);
     baseSprite.anchor.set(0.5, 0.75);
     baseSprite.scale.set(CYBERPUNK_TOKENS.scale.spriteScale);
 
-    const highlightSprite = new Sprite(tex.highlight);
+    const highlightSprite = new Sprite(frame0.highlight);
     highlightSprite.anchor.set(0.5, 0.75);
     highlightSprite.scale.set(CYBERPUNK_TOKENS.scale.spriteScale);
     // Start untinted — green (healthy) when utilization is 0.
@@ -205,6 +238,8 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
       highlightSprite,
       label,
       pendingLabel,
+      frames,
+      frameIndex: 0,
       type: visual.type,
       gridX: visual.gridPosition.x,
       gridY: visual.gridPosition.y,
