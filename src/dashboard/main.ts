@@ -878,17 +878,24 @@ function gatherPerTypeCacheStats(
     componentName: string;
     hitRateByType: Record<string, { hits: number; misses: number; hitRate: number }>;
   }> = [];
+  const CACHING_IDS: CapabilityId[] = [
+    "caching" as CapabilityId,
+    "caching-static" as CapabilityId,
+    "caching-api" as CapabilityId,
+  ];
   for (const comp of state.components.values()) {
-    const caching = comp.capabilities.get("caching" as CapabilityId);
-    if (!caching) continue;
-    const stats = caching.getStats();
-    if (!stats.hitRateByType || Object.keys(stats.hitRateByType).length === 0) {
-      continue;
+    for (const cachingId of CACHING_IDS) {
+      const caching = comp.capabilities.get(cachingId);
+      if (!caching) continue;
+      const stats = caching.getStats();
+      if (!stats.hitRateByType || Object.keys(stats.hitRateByType).length === 0) {
+        continue;
+      }
+      results.push({
+        componentName: comp.name ?? comp.type,
+        hitRateByType: stats.hitRateByType,
+      });
     }
-    results.push({
-      componentName: comp.name ?? comp.type,
-      hitRateByType: stats.hitRateByType,
-    });
   }
   return results;
 }

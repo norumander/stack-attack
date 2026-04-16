@@ -103,9 +103,9 @@ describe("Wave 4 — CDN rescue wins", () => {
     expect(result.terminalState).toBe("wave_passed");
     expect(result.finalViability).toBeGreaterThan(0);
 
-    // CDN must absorb static_asset via caching
+    // CDN must absorb static_asset via caching (caching-static variant)
     const cdnCaching = cdn.component.capabilities.get(
-      "caching" as CapabilityId,
+      "caching-static" as CapabilityId,
     ) as CachingCapability;
     const stats = cdnCaching.getStats();
     expect(stats.hitRateByType).toBeDefined();

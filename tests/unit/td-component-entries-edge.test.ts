@@ -7,9 +7,9 @@ import type { CapabilityId } from "@core/types/ids";
 import { AuthCapability } from "@capabilities/auth/auth-capability";
 
 describe("TD_CDN_ENTRY", () => {
-  it("has caching, forwarding-pipe, monitoring capabilities", () => {
+  it("has caching-static, forwarding-pipe, monitoring capabilities", () => {
     const ids = CDN_ENTRY.capabilities.map((c) => c.id);
-    expect(ids).toContain("caching");
+    expect(ids).toContain("caching-static");
     expect(ids).toContain("forwarding-pipe");
     expect(ids).toContain("monitoring");
   });
@@ -69,7 +69,7 @@ describe("registerTDDefaults: CDN registered", () => {
     expect(created).not.toBeNull();
     expect(created!.type).toBe("cdn");
     const capIds = Array.from(created!.capabilities.keys());
-    expect(capIds).toContain("caching");
+    expect(capIds).toContain("caching-static");
     expect(capIds).toContain("forwarding-pipe");
     expect(capIds).toContain("monitoring");
   });

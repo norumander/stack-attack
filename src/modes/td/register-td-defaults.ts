@@ -111,6 +111,24 @@ export function registerTDDefaults(
     id: "caching" as CapabilityId,
     factory: () => new CachingCapability("caching" as CapabilityId),
   });
+  // Wave 4 teaching moment: CDN (edge) handles static_asset; Cache
+  // (application tier) handles api_read. Specializing the caching
+  // capability per component type forces the full CDN+Cache stack to be
+  // used — neither alone can cover both cacheable traffic types.
+  capRegistry.register({
+    id: "caching-static" as CapabilityId,
+    factory: () =>
+      new CachingCapability("caching-static" as CapabilityId, {
+        cacheableTypes: new Set(["static_asset"]),
+      }),
+  });
+  capRegistry.register({
+    id: "caching-api" as CapabilityId,
+    factory: () =>
+      new CachingCapability("caching-api" as CapabilityId, {
+        cacheableTypes: new Set(["api_read"]),
+      }),
+  });
   capRegistry.register({
     id: "routing" as CapabilityId,
     factory: () => new RoutingCapability("routing" as CapabilityId),

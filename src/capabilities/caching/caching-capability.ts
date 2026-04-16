@@ -8,6 +8,17 @@ const CACHEABLE_TYPES = new Set(["api_read", "static_asset"]);
 
 const CAPACITY_PER_TIER = [0, 10, 50, 100] as const;
 
+export interface CachingCapabilityOptions {
+  /**
+   * Optional restriction of which request types this capability instance
+   * will cache. When omitted, defaults to all cacheable types
+   * (`api_read`, `static_asset`) — preserves sandbox/general backward
+   * compatibility. When specified, canHandle returns false for any type
+   * outside this set.
+   */
+  cacheableTypes?: ReadonlySet<string>;
+}
+
 /**
  * INTERCEPT-phase capability implementing an LRU cache.
  *
@@ -32,11 +43,14 @@ export class CachingCapability implements Capability {
   private misses = 0;
   private hitsByType = new Map<string, number>();
   private missesByType = new Map<string, number>();
+  private readonly cacheableTypes: ReadonlySet<string>;
 
-  constructor(readonly id: CapabilityId) {}
+  constructor(readonly id: CapabilityId, options: CachingCapabilityOptions = {}) {
+    this.cacheableTypes = options.cacheableTypes ?? CACHEABLE_TYPES;
+  }
 
   canHandle(requestType: string): boolean {
-    return CACHEABLE_TYPES.has(requestType);
+    return this.cacheableTypes.has(requestType);
   }
 
   process(request: Request, context: ProcessContext): ProcessResult {

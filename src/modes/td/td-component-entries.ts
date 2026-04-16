@@ -106,7 +106,7 @@ export const CACHE_ENTRY: ComponentRegistryEntry = {
     "Does not help write traffic",
   ],
   capabilities: [
-    { id: "caching" as CapabilityId, defaultTier: 1, maxTier: 3 },
+    { id: "caching-api" as CapabilityId, defaultTier: 1, maxTier: 3 },
     { id: "forwarding-pipe" as CapabilityId, defaultTier: 1, maxTier: 3 },
     { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
   ],
@@ -196,7 +196,7 @@ export const CDN_ENTRY: ComponentRegistryEntry = {
     "Low upkeep — runs cheap once placed",
   ],
   capabilities: [
-    { id: "caching" as CapabilityId, defaultTier: 1, maxTier: 2 },
+    { id: "caching-static" as CapabilityId, defaultTier: 1, maxTier: 2 },
     { id: "forwarding-pipe" as CapabilityId, defaultTier: 1, maxTier: 2 },
     { id: "monitoring" as CapabilityId, defaultTier: 1, maxTier: 2 },
   ],
