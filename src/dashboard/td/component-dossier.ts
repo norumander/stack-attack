@@ -63,7 +63,15 @@ export const DOSSIERS: Readonly<Record<string, ComponentDossier>> = {
     handles: "Write requests forwarded from a Server",
     tip: "A Database alone can't serve users — it needs a Server in front of it to route reads.",
   },
-  // Roadmap: cache, load_balancer, cdn, api_gateway, queue, worker,
+  data_cache: {
+    title: "DATA CACHE",
+    body:
+      "Sits between your Server and Database to absorb repeated read queries — like Redis or Memcached in a real backend. Responds directly on a cache hit (skipping the Database) and forwards misses through.",
+    wire: "Server → Data Cache → Database",
+    handles: "Repeated read requests forwarded from a Server (best with hot keys; doesn't accelerate writes)",
+    tip: "When your Database is the bottleneck and reads repeat, drop a Data Cache in front of it to absorb the duplicates.",
+  },
+  // Roadmap: load_balancer, cdn, api_gateway, queue, worker,
   // circuit_breaker, dns_gtm, streaming_server, blob_storage. Slice C.
 };
 

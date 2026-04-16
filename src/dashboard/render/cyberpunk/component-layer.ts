@@ -9,7 +9,7 @@ const SPRITE_URLS: Record<string, string> = {
   client: new URL("../../assets/client.png", import.meta.url).href,
   server: new URL("../../assets/server.png", import.meta.url).href,
   database: new URL("../../assets/database.png", import.meta.url).href,
-  cache: new URL("../../assets/cache.png", import.meta.url).href,
+  data_cache: new URL("../../assets/data-cache.png", import.meta.url).href,
   load_balancer: new URL("../../assets/load_balancer.png", import.meta.url).href,
   cdn: new URL("../../assets/cdn.png", import.meta.url).href,
   api_gateway: new URL("../../assets/api_gateway.png", import.meta.url).href,

@@ -28,7 +28,7 @@ interface PaletteEntry {
 const PALETTE: readonly PaletteEntry[] = [
   { type: "server", label: "Server" },
   { type: "database", label: "Database" },
-  { type: "cache", label: "Cache" },
+  { type: "data_cache", label: "Data Cache" },
   { type: "load_balancer", label: "Balancer" },
   { type: "cdn", label: "CDN" },
   { type: "api_gateway", label: "Gateway" },

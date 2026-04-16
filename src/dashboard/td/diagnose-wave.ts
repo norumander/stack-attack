@@ -147,13 +147,17 @@ export function diagnoseWave(args: DiagnoseWaveArgs): Diagnosis {
       }
       if (maxStreak >= 5 && overallDropRate > 0.05) {
         const bname = titleOf(bottleneck.type);
+        const readWeight = wave.composition.get("api_read") ?? 0;
+        const hint =
+          bottleneck.type === "database" && readWeight > 0
+            ? "Your Database is saturated on read traffic. Add a Data Cache between your Server and Database to absorb repeated reads, or scale horizontally."
+            : "A single component can only do so much. Split the load or absorb reads before they reach it.";
         return {
           headline: `${bname} is overwhelmed.`,
           symptom:
             `Your ${bname.toLowerCase()} was processing at its throughput cap for ${maxStreak} consecutive ticks. ` +
             `Requests beyond the cap were shed — ${Math.round(overallDropRate * 100)}% of wave traffic dropped.`,
-          hint:
-            "A single component can only do so much. Split the load or absorb reads before they reach it.",
+          hint,
         };
       }
     }

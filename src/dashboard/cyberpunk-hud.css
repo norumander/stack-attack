@@ -557,8 +557,8 @@ body.renderer-iso .cp-palette-icon[data-type="server"] {
 body.renderer-iso .cp-palette-icon[data-type="database"] {
   background-image: url("./assets/database.png");
 }
-body.renderer-iso .cp-palette-icon[data-type="cache"] {
-  background-image: url("./assets/cache.png");
+body.renderer-iso .cp-palette-icon[data-type="data_cache"] {
+  background-image: url("./assets/data-cache.png");
 }
 body.renderer-iso .cp-palette-icon[data-type="load_balancer"] {
   background-image: url("./assets/load_balancer.png");
