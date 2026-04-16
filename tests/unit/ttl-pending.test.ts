@@ -3,8 +3,15 @@ import { checkTTL } from "@core/engine/check-ttl";
 import { SimulationState } from "@core/state/simulation-state";
 import { computeVisitOrder } from "@core/engine/visit-order";
 import { makeComponent } from "@harness/fixtures";
+import { NoOpModeController } from "@harness/noop-mode-controller";
 import type { ComponentId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
 
 function makeReq(opts: {
   id: string;
@@ -40,7 +47,7 @@ describe("checkTTL — pending location (§8.1/§8.2)", () => {
     state.enqueuePending(c.id, r);
 
     state.currentTick = 1; // 0 + 2 = 2 > 1 → still fresh
-    checkTTL(state);
+    checkTTL(state, mc);
 
     expect(state.pending.get(c.id)).toContain(r);
     expect(state.requestLog.get(r.id)!.some((e) => e.type === "TIMED_OUT")).toBe(false);
@@ -58,7 +65,7 @@ describe("checkTTL — pending location (§8.1/§8.2)", () => {
     state.enqueuePending(c.id, r);
 
     state.currentTick = 2; // 0 + 2 = 2 <= 2 → expired
-    checkTTL(state);
+    checkTTL(state, mc);
 
     expect(state.pending.get(c.id)).not.toContain(r);
     const timedOut = state.requestLog.get(r.id)!.find((e) => e.type === "TIMED_OUT");
@@ -84,7 +91,7 @@ describe("checkTTL — pending location (§8.1/§8.2)", () => {
     state.enqueuePending(c.id, r3);
 
     state.currentTick = 3;
-    checkTTL(state);
+    checkTTL(state, mc);
 
     const survivors = state.pending.get(c.id)!;
     expect(survivors).toEqual([r1, r3]);
@@ -108,7 +115,7 @@ describe("checkTTL — pending location (§8.1/§8.2)", () => {
     state.enqueuePending(c2.id, r2);
 
     state.currentTick = 5;
-    checkTTL(state);
+    checkTTL(state, mc);
 
     expect(state.pending.get(c1.id)).toHaveLength(0);
     expect(state.pending.get(c2.id)).toHaveLength(0);
@@ -137,7 +144,7 @@ describe("checkTTL — pending location (§8.1/§8.2)", () => {
     state.enqueuePending(c.id, child);
 
     state.currentTick = 1; // child expires (0 + 1 <= 1)
-    checkTTL(state);
+    checkTTL(state, mc);
 
     // Child is timed out.
     expect(state.requestLog.get(child.id)!.some((e) => e.type === "TIMED_OUT")).toBe(true);

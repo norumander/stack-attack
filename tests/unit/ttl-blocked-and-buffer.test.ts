@@ -3,8 +3,15 @@ import { checkTTL } from "@core/engine/check-ttl";
 import { SimulationState } from "@core/state/simulation-state";
 import { computeVisitOrder } from "@core/engine/visit-order";
 import { makeComponent } from "@harness/fixtures";
+import { NoOpModeController } from "@harness/noop-mode-controller";
 import type { ComponentId, RequestId } from "@core/types/ids";
 import type { Request } from "@core/types/request";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
 
 function makeReq(args: {
   id: string;
@@ -58,7 +65,7 @@ describe("checkTTL — blocked pool and down-cascade (§8.1/§8.2)", () => {
     state.enqueuePending(dbB.id, childB);
 
     state.currentTick = 5; // 0 + 5 <= 5 → parent expired
-    checkTTL(state);
+    checkTTL(state, mc);
 
     // Parent entry removed from blockedParents.
     expect(state.blockedParents.has(parent.id)).toBe(false);
@@ -108,7 +115,7 @@ describe("checkTTL — blocked pool and down-cascade (§8.1/§8.2)", () => {
     state.childToParent.set(child.id, parent.id);
 
     state.currentTick = 5; // 0 + 10 = 10 > 5 → still fresh
-    checkTTL(state);
+    checkTTL(state, mc);
 
     expect(state.blockedParents.has(parent.id)).toBe(true);
     expect(state.requestLog.get(parent.id)!.some((e) => e.type === "TIMED_OUT")).toBe(false);
@@ -147,7 +154,7 @@ describe("checkTTL — blocked pool and down-cascade (§8.1/§8.2)", () => {
     state.enqueuePending(cChild.id, grandchild);
 
     state.currentTick = 2; // 0 + 2 <= 2 → gp expired
-    checkTTL(state);
+    checkTTL(state, mc);
 
     // Both blocked entries removed.
     expect(state.blockedParents.has(gp.id)).toBe(false);

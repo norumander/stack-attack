@@ -6,6 +6,7 @@ import {
   TestQueueCapability,
   TestForwardingCapability,
 } from "@harness/test-capabilities";
+import { NoOpModeController } from "@harness/noop-mode-controller";
 import { computeVisitOrder } from "@core/engine/visit-order";
 import type { Request } from "@core/types/request";
 import type {
@@ -15,6 +16,12 @@ import type {
 } from "@core/types/ids";
 import type { ProcessResult } from "@core/types/result";
 import type { Capability } from "@core/capability/capability";
+
+const mc = new NoOpModeController({
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
+});
 
 function makeRequest(opts: {
   id: string;
@@ -62,7 +69,7 @@ describe("checkTTL Scan 3: bufferable partitions", () => {
 
     state.currentTick = 5; // createdAt(0) + ttl(5) <= 5 → expired
 
-    checkTTL(state);
+    checkTTL(state, mc);
 
     // Request removed from buffer
     expect(queueCap.peekBuffered()).toHaveLength(0);
@@ -87,7 +94,7 @@ describe("checkTTL Scan 3: bufferable partitions", () => {
 
     state.currentTick = 5; // createdAt(0) + ttl(10) = 10 > 5 → NOT expired
 
-    checkTTL(state);
+    checkTTL(state, mc);
 
     expect(queueCap.peekBuffered()).toHaveLength(1);
     const events = state.requestLog.get(req.id)!;
@@ -112,7 +119,7 @@ describe("checkTTL Scan 3: bufferable partitions", () => {
     queueCap.removeRequest(req.id);
 
     state.currentTick = 5;
-    checkTTL(state);
+    checkTTL(state, mc);
 
     // No TIMED_OUT event (was already removed)
     const events = state.requestLog.get(req.id)!;
@@ -134,7 +141,7 @@ describe("checkTTL Scan 3: bufferable partitions", () => {
     queueCap.enqueueForRetry(req, passResult);
     state.currentTick = 5;
 
-    checkTTL(state);
+    checkTTL(state, mc);
 
     const counters = state.perComponentThisTick.get("c1" as ComponentId);
     expect(counters?.timeouts).toBe(1);

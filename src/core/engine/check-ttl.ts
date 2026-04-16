@@ -1,7 +1,9 @@
 import type { SimulationState } from "../state/simulation-state.js";
+import type { ModeController } from "../mode/mode-controller.js";
 import { getOrInitCounters } from "./metrics-counters.js";
 import { applyStrictCascade, cascadeParentTimeoutToChildren } from "./cascade.js";
 import { isEngineBufferable } from "../capability/engine-interfaces.js";
+import { notifyCircuitBreakers } from "./notify-circuit-breakers.js";
 
 /**
  * Step 5 of the simulation tick: CHECK TTL.
@@ -28,7 +30,7 @@ import { isEngineBufferable } from "../capability/engine-interfaces.js";
  * order. The blocked-pool scan snapshots entries before iteration to avoid
  * mutation-during-iteration issues from the down-cascade deleting entries.
  */
-export function checkTTL(state: SimulationState): void {
+export function checkTTL(state: SimulationState, modeController: ModeController): void {
   for (const componentId of state.visitOrder) {
     const queue = state.pending.get(componentId);
     if (!queue || queue.length === 0) continue;
@@ -58,6 +60,7 @@ export function checkTTL(state: SimulationState): void {
         latencyAdded: 0,
       });
       getOrInitCounters(state, componentId).timeouts += 1;
+      notifyCircuitBreakers(state, modeController, req.id, "failure");
       applyStrictCascade(state, req.id);
     }
   }
@@ -89,6 +92,7 @@ export function checkTTL(state: SimulationState): void {
       latencyAdded: 0,
     });
     getOrInitCounters(state, originComponentId).timeouts += 1;
+    notifyCircuitBreakers(state, modeController, parentReq.id, "failure");
 
     cascadeParentTimeoutToChildren(state, childrenIds, originComponentId);
   }
@@ -121,6 +125,7 @@ export function checkTTL(state: SimulationState): void {
           latencyAdded: 0,
         });
         getOrInitCounters(state, componentId).timeouts += 1;
+        notifyCircuitBreakers(state, modeController, entry.request.id, "failure");
         applyStrictCascade(state, entry.request.id);
       }
     }
