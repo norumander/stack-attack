@@ -1,6 +1,6 @@
 # Implementation status
 
-**Current stage:** Phase 1, Stage 5b complete. TD mode is playable through Wave 10 — all 10 waves shipped. Wave 10 teaches elastic architecture via AutoScale on Server + Database under 3000/tick stress with multi-chaos. 762 tests, typecheck clean.
+**Current stage:** Phase 1, Stage 5b + Data Cache redesign complete. TD mode is playable through Wave 10 — all 10 waves shipped. Cache redesigned as a data-layer Data Cache between Server and Database. 825 tests, typecheck clean.
 
 ## What ships (merged into `main`)
 
@@ -32,6 +32,8 @@
 **Stage 4c: Wave 10 — The Viral Moment (AutoScale boss wave)** — AutoScaleCapability implemented with utilization-based scaling: scale-up at >80% utilization for 2 consecutive ticks, scale-down at <30% for 5 ticks. Uses previous-tick utilization snapshot (processed/capacity). Tier-based cooldown (tier 1: 5 ticks, tier 2: 2 ticks). SCALE side effects clamped by engine to [minInstances, maxInstances]. OBSERVE-phase sideEffects collection fixed in Component.process() to pipe SCALE to deliverStaged. Auto-scale added to Server (maxInstances: 10) and Database (maxInstances: 5) TD entries. chaosSchedule type extended for `connection_sever` and `latency_injection`. Three-test teaching arc: no autoscale loses, server-only loses (DB bottleneck), full autoscale wins. 740 tests total.
 
 **Stage 5b: EnginePullable pull semantics** — Queue now holds batch requests via QUEUE_HOLD outcome (split buffer: heldBuffer for intentional holds, overflowBuffer for backpressure). Worker actively pulls from connected Queue's heldBuffer via BatchProcessingCapability.pullPending(). New engine step 2.5 (pullFromBuffers) between reEmitQueued and the fixed-point loop iterates EnginePullable components and routes pulled items to their pending queues. registerTDDefaults passes holdTypes: Set(["batch"]) to Queue factory. Wave 6/7/8 topologies adjusted for pull-based flow. 762 tests total.
+
+**Data Cache redesign (post Stage 5b)** — Cache renamed to Data Cache and repositioned from a client-facing reverse proxy to a data-layer cache (Redis/Memcached pattern) sitting between Server and Database. Topology-only change: Server's ProcessingCapability drops `api_read`, Server's ForwardingCapability adds `api_read`, so reads now FORWARD downstream instead of RESPOND-ing locally. Server tuned to 25+25=50 pooled budget (was 15+15=30) so a single tier-1 Server can push all Wave 3 traffic downstream; Database tuned to 25/tick (was 50) so DB is the new Wave 3 bottleneck when no Data Cache is present. Database's StorageCapability now handles `api_read` in addition to `api_write`. `CACHE_ENTRY` renamed to `DATA_CACHE_ENTRY` (type `"data_cache"`). CachingCapability and engine unchanged. Wave 3 teaching: lone `Server → Database` loses on DB saturation (25/tick cap, 35 reads/tick arrival); `Server → Data Cache → Database` rescue wins; `LB → [Servers] → Data Cache → DB` rescue wins. Waves 4–10 tests rewired with Data Cache between Server (or Servers behind LB) and Database; higher-wave rescue topologies upgrade Data Cache and Database to tier 3 to absorb scaled intensities. CDN unchanged (still client-facing for `static_asset`). Sandbox/core registry's separate `cache` entry unchanged (different teaching context). 825 tests total.
 
 ## All 10 waves shipped — Phase 1 TD mode complete
 
