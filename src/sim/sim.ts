@@ -53,9 +53,16 @@ export class Sim {
     if (!edge) return;
     const component = this.components.get(edge.to.componentId);
     if (!component) return;
+    const egressEdges: { id: ConnectionId; speed: number }[] = [];
+    for (const conn of this.connections.values()) {
+      if (conn.from.componentId === component.id && conn.direction === "forward") {
+        egressEdges.push({ id: conn.id, speed: conn.speed });
+      }
+    }
     const ctx: ArrivalContext = {
       componentId: component.id,
       ingressEdgeId: edge.id,
+      egressEdges,
       simTime: this.simTime,
       rng: this.rng,
       bucket: component.bucket,

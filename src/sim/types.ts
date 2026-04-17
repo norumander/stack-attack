@@ -49,6 +49,7 @@ export type Outcome =
 export type ArrivalContext = {
   readonly componentId: ComponentId;
   readonly ingressEdgeId: ConnectionId;
+  readonly egressEdges: ReadonlyArray<{ id: ConnectionId; speed: number }>;
   readonly simTime: number;
   readonly rng: () => number;
   readonly bucket: CapacityBucket | null;
