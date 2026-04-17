@@ -6,7 +6,7 @@ import type { SimConnection } from "./connection";
 import { makeSimRng } from "./rng";
 import { mintPacketId, mintRequestId } from "./packet";
 import { advancePackets, collectArrivals } from "./edge-physics";
-import { launchDueSnakes } from "./snake";
+import { launchDueSnakes, populateSnakes } from "./snake";
 
 export type SimOptions = {
   readonly seed: number;
@@ -46,6 +46,7 @@ export class Sim {
   step(dt: number): void {
     this.lastStepEvents.length = 0;
     for (const c of this.components.values()) c.refillBucket(dt);
+    populateSnakes(this.clients, this.simTime + dt);
     launchDueSnakes(this.clients, this.connections, this.activePackets, this.simTime + dt, this.rng);
     advancePackets(this.activePackets, dt);
     const { arriving, remaining } = collectArrivals(this.activePackets);

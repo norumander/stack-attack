@@ -3,6 +3,21 @@ import type { Packet } from "./types";
 import type { SimClient } from "./client";
 import type { SimConnection } from "./connection";
 
+export function populateSnakes(clients: ReadonlyMap<ComponentId, SimClient>, simTime: number): void {
+  for (const client of clients.values()) {
+    if (!client.trafficSource) continue;
+    while (
+      client.nextGenerateTime <= simTime &&
+      client.nextGenerateTime < client.waveEndTime &&
+      client.snake.length < client.snakeMax
+    ) {
+      const pkt = client.trafficSource.generatePacketForTest(client.id, client.nextGenerateTime);
+      client.snake.push(pkt);
+      client.nextGenerateTime += 1 / client.packetRate;
+    }
+  }
+}
+
 /**
  * Per-step snake-launch routine. For each client that's due, pop snake.head,
  * pick a random forward egress, assign edgeId/speed, push to activePackets.
