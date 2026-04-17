@@ -1,10 +1,10 @@
 import type { ComponentId, ConnectionId } from "@core/types/ids";
-import type { Packet } from "./types";
+import type { ArrivalContext, Outcome, Packet } from "./types";
 import type { SimComponent } from "./component";
 import type { SimConnection } from "./connection";
 import { makeSimRng } from "./rng";
 import { mintPacketId, mintRequestId } from "./packet";
-import { advancePackets } from "./edge-physics";
+import { advancePackets, collectArrivals } from "./edge-physics";
 
 export type SimOptions = {
   readonly seed: number;
@@ -36,7 +36,43 @@ export class Sim {
   step(dt: number): void {
     for (const c of this.components.values()) c.refillBucket(dt);
     advancePackets(this.activePackets, dt);
+    const { arriving, remaining } = collectArrivals(this.activePackets);
+    this.activePackets.length = 0;
+    this.activePackets.push(...remaining);
+    for (const packet of arriving) {
+      this.dispatchArrival(packet);
+    }
     this.simTime += dt;
+  }
+
+  private dispatchArrival(packet: Packet): void {
+    const edge = this.connections.get(packet.edgeId);
+    if (!edge) return;
+    const component = this.components.get(edge.to.componentId);
+    if (!component) return;
+    const ctx: ArrivalContext = {
+      componentId: component.id,
+      ingressEdgeId: edge.id,
+      simTime: this.simTime,
+      rng: this.rng,
+      mintPacketId: () => this.mintPacketId(),
+      mintRequestId: () => this.mintRequestId(),
+    };
+    if (packet.direction === "forward") {
+      const cap = component.capabilities[0];
+      if (!cap) return;
+      const outcome = cap.onArriveRequest(packet, ctx);
+      this.applyOutcome(outcome);
+    } else {
+      // Response-leg dispatch lives in Task 10.
+      for (const cap of component.capabilities) {
+        cap.onArriveResponse?.(packet, ctx);
+      }
+    }
+  }
+
+  private applyOutcome(_outcome: Outcome): void {
+    // Tasks 8–10 fill in forward / drop / terminate / respond.
   }
 
   mintPacketId = mintPacketId;

@@ -7,12 +7,12 @@ let nextRequestIdCounter = 0;
 /** Monotonic packet id. Reset only in tests that need cross-test isolation. */
 export function mintPacketId(): PacketId {
   nextPacketIdCounter += 1;
-  return `p${nextPacketIdCounter}` as PacketId;
+  return `p${String(nextPacketIdCounter).padStart(10, "0")}` as PacketId;
 }
 
 export function mintRequestId(): RequestId {
   nextRequestIdCounter += 1;
-  return `r${nextRequestIdCounter}` as RequestId;
+  return `r${String(nextRequestIdCounter).padStart(10, "0")}` as RequestId;
 }
 
 export function resetIdCountersForTest(): void {
