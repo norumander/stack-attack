@@ -19,7 +19,7 @@ export class ForwardingCapability implements SimCapability {
       edgeId: egress.id,
       progress: 0,
       speed: egress.speed,
-      spawnedAt: ctx.simTime,
+      spawnedAt: packet.spawnedAt,
       parentId: packet.id,
       direction: "forward",
       route: [...packet.route, ctx.ingressEdgeId],

@@ -22,7 +22,7 @@ export class GeoRoutingCapability implements SimCapability {
       edgeId: match.id,
       progress: 0,
       speed: match.speed,
-      spawnedAt: ctx.simTime,
+      spawnedAt: packet.spawnedAt,
       parentId: packet.id,
       direction: "forward",
       route: [...packet.route, ctx.ingressEdgeId],

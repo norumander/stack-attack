@@ -28,9 +28,11 @@ export class Sim {
     accumulatedRevenue: number;
     ingressEdgeId: ConnectionId;
     preSplitRoute: ConnectionId[];
+    originalSpawnedAt: number;
   }> = new Map();
   private readonly parentOfChild: Map<PacketId, PacketId> = new Map();
   private readonly activeReservations: { connectionId: ConnectionId; amount: number; releaseAt: number }[] = [];
+  private currentArrivalSpawnedAt: number = 0;
 
   private releaseExpiredReservations(): void {
     const keep: typeof this.activeReservations = [];
@@ -82,6 +84,7 @@ export class Sim {
   }
 
   private dispatchArrival(packet: Packet): void {
+    this.currentArrivalSpawnedAt = packet.spawnedAt;
     const edge = this.connections.get(packet.edgeId);
     if (!edge) return;
     const component = this.components.get(edge.to.componentId);
@@ -135,7 +138,12 @@ export class Sim {
             const twin = twinId ? this.connections.get(twinId) : undefined;
             this.mergeByParent.delete(parentPacketId);
             if (!twin) {
-              this.lastStepEvents.push({ kind: "respond-delivered", componentId: component.id, revenue: merge.accumulatedRevenue });
+              this.lastStepEvents.push({
+                kind: "respond-delivered",
+                componentId: component.id,
+                revenue: merge.accumulatedRevenue,
+                latencySeconds: this.simTime - merge.originalSpawnedAt,
+              });
               return;
             }
             const merged: Packet = {
@@ -144,7 +152,7 @@ export class Sim {
               edgeId: twin.id,
               progress: 0,
               speed: twin.speed,
-              spawnedAt: this.simTime,
+              spawnedAt: merge.originalSpawnedAt,
               parentId: parentPacketId,
               direction: "back",
               route: [...merge.preSplitRoute],
@@ -161,7 +169,12 @@ export class Sim {
         // No upstream left — response has returned to origin.
         const revenue = this.revenueByPacketId.get(packet.id) ?? 0;
         this.revenueByPacketId.delete(packet.id);
-        this.lastStepEvents.push({ kind: "respond-delivered", componentId: component.id, revenue });
+        this.lastStepEvents.push({
+          kind: "respond-delivered",
+          componentId: component.id,
+          revenue,
+          latencySeconds: this.simTime - packet.spawnedAt,
+        });
         return;
       }
       const nextRequestEdgeId = packet.route[packet.route.length - 1];
@@ -169,7 +182,12 @@ export class Sim {
         // Reached origin — route is now empty; response delivered.
         const revenue = this.revenueByPacketId.get(packet.id) ?? 0;
         this.revenueByPacketId.delete(packet.id);
-        this.lastStepEvents.push({ kind: "respond-delivered", componentId: component.id, revenue });
+        this.lastStepEvents.push({
+          kind: "respond-delivered",
+          componentId: component.id,
+          revenue,
+          latencySeconds: this.simTime - packet.spawnedAt,
+        });
         return;
       }
       const nextTwinId = this.connections.get(nextRequestEdgeId)?.twinId;
@@ -193,7 +211,12 @@ export class Sim {
         this.lastStepEvents.push({ kind: "drop", componentId, reason: outcome.reason, count: outcome.count });
         return;
       case "terminate":
-        this.lastStepEvents.push({ kind: "terminate", componentId, revenue: outcome.revenue });
+        this.lastStepEvents.push({
+          kind: "terminate",
+          componentId,
+          revenue: outcome.revenue,
+          latencySeconds: this.simTime - this.currentArrivalSpawnedAt,
+        });
         return;
       case "multi":
         for (const child of outcome.outcomes) this.applyOutcome(child, componentId);
@@ -205,6 +228,7 @@ export class Sim {
           accumulatedRevenue: 0,
           ingressEdgeId: outcome.ingressEdgeId,
           preSplitRoute: [...outcome.preSplitRoute],
+          originalSpawnedAt: this.currentArrivalSpawnedAt,
         });
         for (const emit of outcome.emit) {
           this.parentOfChild.set(emit.packet.id, outcome.mergeKey);
@@ -220,7 +244,12 @@ export class Sim {
         const twin = twinId ? this.connections.get(twinId) : undefined;
         if (!twin) {
           // Topology broken or origin already reached — fire delivery event at the responder.
-          this.lastStepEvents.push({ kind: "respond-delivered", componentId, revenue: outcome.revenueOnDelivery });
+          this.lastStepEvents.push({
+            kind: "respond-delivered",
+            componentId,
+            revenue: outcome.revenueOnDelivery,
+            latencySeconds: this.simTime - this.currentArrivalSpawnedAt,
+          });
           return;
         }
         resp.edgeId = twin.id;
@@ -245,6 +274,7 @@ export class Sim {
               kind: "terminate",
               componentId: comp.id,
               revenue: cap.opts.revenuePerItem * pulled.requests.length,
+              latencySeconds: this.simTime - pulled.spawnedAt,
             });
           }
         }

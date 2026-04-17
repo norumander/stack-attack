@@ -16,7 +16,7 @@ export class QueueCapability implements SimCapability {
       if (!egress) return { kind: "drop", reason: "no_egress", count: packet.requests.length };
       const child: Packet = {
         id: ctx.mintPacketId(), requests: packet.requests, edgeId: egress.id, progress: 0, speed: egress.speed,
-        spawnedAt: ctx.simTime, parentId: packet.id, direction: "forward",
+        spawnedAt: packet.spawnedAt, parentId: packet.id, direction: "forward",
         route: [...packet.route, ctx.ingressEdgeId],
       };
       return { kind: "forward", emit: [{ edgeId: egress.id, packet: child }] };

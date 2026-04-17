@@ -34,7 +34,7 @@ export class ProcessingCapability implements SimCapability {
       edgeId: packet.edgeId, // sim's applyOutcome.respond uses this as the request-leg edge whose twin to take
       progress: 0,
       speed: packet.speed,   // overwritten by sim with twin.speed
-      spawnedAt: ctx.simTime,
+      spawnedAt: packet.spawnedAt,
       parentId: packet.id,
       direction: "back",
       route: [...packet.route, ctx.ingressEdgeId],
