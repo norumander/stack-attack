@@ -15,7 +15,7 @@ const wave: WaveDef = {
   intensity: 10,
   packetRate: 5,
   duration: 3,
-  composition: { writeRatio: 0, authRatio: 0, streamRatio: 0, largeRatio: 0 },
+  composition: { writeRatio: 0, authRatio: 0, streamRatio: 0, largeRatio: 0, asyncRatio: 0 },
   keyDistribution: { kind: "zipf", alpha: 1.07, spaceSize: 50 },
   entryClients: ["client" as ComponentId],
 };

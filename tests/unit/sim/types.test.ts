@@ -15,6 +15,7 @@ describe("sim types", () => {
       isWrite: false,
       requiresAuth: false,
       isLarge: false,
+      isAsync: false,
       originClientId: "c1" as unknown as Request["originClientId"],
       originZone: null,
       spawnedAt: 0,

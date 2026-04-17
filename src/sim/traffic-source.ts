@@ -21,6 +21,7 @@ export class TrafficSource {
     const requiresAuth = this.rng() < this.wave.composition.authRatio;
     const isLarge = this.rng() < this.wave.composition.largeRatio;
     const isStream = this.rng() < this.wave.composition.streamRatio;
+    const isAsync = this.rng() < this.wave.composition.asyncRatio;
     const requests: Request[] = [];
     for (let i = 0; i < this.perPacketCount; i += 1) {
       const keyIdx = this.sampleKey(this.rng());
@@ -30,6 +31,7 @@ export class TrafficSource {
         isWrite,
         requiresAuth,
         isLarge,
+        isAsync,
         ...(isStream && this.wave.streamConfig ? { stream: this.wave.streamConfig } : {}),
         originClientId,
         originZone: null,

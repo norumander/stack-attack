@@ -16,6 +16,7 @@ function mkReq(isWrite: boolean, key: string): Request {
     isWrite,
     requiresAuth: false,
     isLarge: false,
+    isAsync: false,
     originClientId: "client" as ComponentId,
     originZone: null,
     spawnedAt: 0,

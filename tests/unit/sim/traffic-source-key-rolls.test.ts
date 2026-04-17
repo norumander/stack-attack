@@ -13,7 +13,7 @@ describe("TrafficSource — key rolls", () => {
       intensity: 10,
       packetRate: 5,
       duration: 60,
-      composition: { writeRatio: 0, authRatio: 0, streamRatio: 0, largeRatio: 0 },
+      composition: { writeRatio: 0, authRatio: 0, streamRatio: 0, largeRatio: 0, asyncRatio: 0 },
       keyDistribution: { kind: "zipf", alpha: 1.5, spaceSize: 10 },
       entryClients: ["c1" as ComponentId],
     };

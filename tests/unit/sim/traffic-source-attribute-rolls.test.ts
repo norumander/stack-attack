@@ -9,7 +9,7 @@ const wave: WaveDef = {
   intensity: 10,
   packetRate: 5,
   duration: 60,
-  composition: { writeRatio: 0.3, authRatio: 0, streamRatio: 0, largeRatio: 0 },
+  composition: { writeRatio: 0.3, authRatio: 0, streamRatio: 0, largeRatio: 0, asyncRatio: 0 },
   keyDistribution: { kind: "uniform", spaceSize: 100 },
   entryClients: ["c1" as ComponentId],
 };

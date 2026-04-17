@@ -6,6 +6,7 @@ export type WaveComposition = {
   readonly authRatio: number;
   readonly streamRatio: number;
   readonly largeRatio: number;
+  readonly asyncRatio: number;
 };
 
 export type WaveKeyDistribution =

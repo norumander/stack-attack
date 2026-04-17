@@ -20,6 +20,7 @@ export type Request = {
   readonly isWrite: boolean;
   readonly requiresAuth: boolean;
   readonly isLarge: boolean;
+  readonly isAsync: boolean;
   readonly stream?: StreamConfig;
   readonly originClientId: ComponentId;
   readonly originZone: Zone | null;
