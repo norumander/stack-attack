@@ -17,6 +17,7 @@
     "baseUrl": ".",
     "paths": {
       "@core/*": ["src/core/*"],
+      "@sim/*": ["src/sim/*"],
       "@capabilities/*": ["src/capabilities/*"],
       "@harness/*": ["tests/harness/*"],
       "@modes/*": ["src/modes/*"]
