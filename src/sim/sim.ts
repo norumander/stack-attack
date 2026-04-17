@@ -4,6 +4,7 @@ import type { SimComponent } from "./component";
 import type { SimConnection } from "./connection";
 import { makeSimRng } from "./rng";
 import { mintPacketId, mintRequestId } from "./packet";
+import { advancePackets } from "./edge-physics";
 
 export type SimOptions = {
   readonly seed: number;
@@ -33,9 +34,8 @@ export class Sim {
   }
 
   step(dt: number): void {
-    // Stage A wiring: refill buckets, advance packets, fire arrivals.
-    // Filled in across Tasks 6–10. Stub for empty test.
     for (const c of this.components.values()) c.refillBucket(dt);
+    advancePackets(this.activePackets, dt);
     this.simTime += dt;
   }
 
