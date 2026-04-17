@@ -118,6 +118,9 @@ export class Sim {
       case "terminate":
         this.lastStepEvents.push({ kind: "terminate", componentId, revenue: outcome.revenue });
         return;
+      case "multi":
+        for (const child of outcome.outcomes) this.applyOutcome(child, componentId);
+        return;
       case "respond": {
         const resp = outcome.responsePacket;
         // The response's initial edgeId is set by the responder to the request-leg

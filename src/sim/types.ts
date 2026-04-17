@@ -44,7 +44,8 @@ export type Outcome =
   | { readonly kind: "forward"; readonly emit: ReadonlyArray<{ edgeId: ConnectionId; packet: Packet }> }
   | { readonly kind: "terminate"; readonly revenue: number }
   | { readonly kind: "respond"; readonly responsePacket: Packet; readonly revenueOnDelivery: number }
-  | { readonly kind: "drop"; readonly reason: string; readonly count: number };
+  | { readonly kind: "drop"; readonly reason: string; readonly count: number }
+  | { readonly kind: "multi"; readonly outcomes: readonly Outcome[] };
 
 export type ArrivalContext = {
   readonly componentId: ComponentId;
