@@ -96,6 +96,41 @@ export class Sim {
       for (const cap of component.capabilities) {
         cap.onArriveResponse?.(packet, ctx);
       }
+      // Check if this response is a child of a split — merge wait-all.
+      const parentPacketId = packet.parentId != null ? this.parentOfChild.get(packet.parentId) : undefined;
+      if (parentPacketId !== undefined) {
+        const merge = this.mergeByParent.get(parentPacketId);
+        if (merge !== undefined) {
+          merge.receivedChildren += 1;
+          const childRevenue = this.revenueByPacketId.get(packet.id) ?? 0;
+          merge.accumulatedRevenue += childRevenue;
+          this.revenueByPacketId.delete(packet.id);
+          this.parentOfChild.delete(packet.parentId!);
+          if (merge.receivedChildren >= merge.expectedChildren) {
+            const twinId = this.connections.get(merge.ingressEdgeId)?.twinId;
+            const twin = twinId ? this.connections.get(twinId) : undefined;
+            this.mergeByParent.delete(parentPacketId);
+            if (!twin) {
+              this.lastStepEvents.push({ kind: "respond-delivered", componentId: component.id, revenue: merge.accumulatedRevenue });
+              return;
+            }
+            const merged: Packet = {
+              id: this.mintPacketId(),
+              requests: [],
+              edgeId: twin.id,
+              progress: 0,
+              speed: twin.speed,
+              spawnedAt: this.simTime,
+              parentId: parentPacketId,
+              direction: "back",
+              route: [...merge.preSplitRoute],
+            };
+            this.revenueByPacketId.set(merged.id, merge.accumulatedRevenue);
+            this.activePackets.push(merged);
+          }
+          return; // child retires at LB — do not fall through to route-pop
+        }
+      }
       // Response just arrived at a component. Pop the route and retrace on next twin.
       const poppedEdgeId = packet.route.pop();
       if (poppedEdgeId === undefined) {
