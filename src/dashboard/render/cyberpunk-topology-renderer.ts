@@ -30,6 +30,7 @@ import {
 import { createFlashFx, type FlashFx } from "./cyberpunk/flash-fx.js";
 import { createPlacementGhost, type PlacementGhost } from "./cyberpunk/placement-ghost.js";
 import { createSelectionRing, type SelectionRing } from "./cyberpunk/selection-ring.js";
+import { SnakeLayer } from "./cyberpunk/snake-layer.js";
 
 /**
  * Cyberpunk isometric renderer. Implements TopologyRenderer as a drop-in
@@ -57,6 +58,7 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
   private flashFx: FlashFx | null = null;
   private placementGhost: PlacementGhost | null = null;
   private selectionRing: SelectionRing | null = null;
+  private snakeLayer: SnakeLayer | null = null;
 
   private pointerDownCallbacks: Array<(ev: RendererPointerEvent) => void> = [];
   private pointerMoveCallbacks: Array<(ev: RendererPointerEvent) => void> = [];
@@ -132,6 +134,9 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
 
     this.packetLayer = createPacketLayer(this.connectionLayer, this.packetTextures);
     world.addChild(this.packetLayer.container);
+
+    this.snakeLayer = new SnakeLayer(this.componentLayer, this.packetTextures);
+    world.addChild(this.snakeLayer.container);
 
     this.flashFx = createFlashFx(this.componentLayer, this.packetLayer);
     world.addChild(this.flashFx.container);
@@ -320,6 +325,8 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     this.flashFx = null;
     this.placementGhost = null;
     this.selectionRing = null;
+    this.snakeLayer?.cleanup();
+    this.snakeLayer = null;
     this.mountedContainer = null;
   }
 
@@ -443,6 +450,12 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
 
   spawnRequestDot(args: SpawnRequestDotArgs): void {
     this.packetLayer?.spawn(args);
+  }
+  updateClientSnake(
+    clientId: ComponentId,
+    packets: ReadonlyArray<{ id: string; type: string; count: number }>,
+  ): void {
+    this.snakeLayer?.update(clientId, packets);
   }
   queueFlashOnRequestArrival(
     requestId: RequestId,

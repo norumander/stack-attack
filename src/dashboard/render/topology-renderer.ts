@@ -26,6 +26,14 @@ export interface TopologyRenderer {
   // ─ Requests (fire-and-forget animations) ──────────────────────────────
   spawnRequestDot(args: SpawnRequestDotArgs): void;
 
+  /**
+   * Update the visible "snake" of upcoming packets queued at a client.
+   * Renderer displays up to the first 10 packets trailing behind the
+   * client sprite (desaturated). Optional — renderers that don't support
+   * snake rendering can omit this method.
+   */
+  updateClientSnake?(clientId: ComponentId, packets: ReadonlyArray<{ id: string; type: string; count: number }>): void;
+
   // ─ One-shot feedback ──────────────────────────────────────────────────
   flashOverload(id: ComponentId): void;
   flashDrop(id: ComponentId): void;
