@@ -57,8 +57,9 @@ describe("ForwardingCapability", () => {
     sim.spawnPacket(makePacket({ requests: [mkReq()], edgeId: ab.id, speed: ab.speed, spawnedAt: 0, direction: "forward" }));
     sim.step(1 / 60);
     expect(sim.activePackets.length).toBe(1);
-    expect(sim.activePackets[0].edgeId).toBe(bc.id);
-    expect(sim.activePackets[0].route).toEqual([ab.id]);
+    const p = sim.activePackets[0]!;
+    expect(p.edgeId).toBe(bc.id);
+    expect(p.route).toEqual([ab.id]);
   });
 
   it("drops on missing egress edge", () => {

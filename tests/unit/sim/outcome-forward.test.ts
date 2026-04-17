@@ -59,7 +59,7 @@ describe("outcome: forward", () => {
 
     sim.step(1 / 60); // p arrives at b, is forwarded onto edge2
     expect(sim.activePackets.length).toBe(1);
-    const emitted = sim.activePackets[0];
+    const emitted = sim.activePackets[0]!;
     expect(emitted.edgeId).toBe(edge2.id);
     expect(emitted.progress).toBe(0);
     expect(emitted.route).toEqual([edge1.id]);

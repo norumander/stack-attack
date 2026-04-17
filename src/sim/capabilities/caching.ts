@@ -107,7 +107,7 @@ export class CachingCapability implements SimCapability {
         outcomes.push({ kind: "forward", emit: [{ edgeId: egress.id, packet: child }] });
       }
     }
-    if (outcomes.length === 1) return outcomes[0];
+    if (outcomes.length === 1) return outcomes[0]!;
     if (outcomes.length === 0) return { kind: "drop", reason: "empty_request", count: 0 };
     return { kind: "multi", outcomes };
   }

@@ -5,3 +5,4 @@ dist/
 coverage/
 .vitest/
 .claude.local.md
+.superpowers/

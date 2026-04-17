@@ -59,8 +59,9 @@ describe("outcome: respond", () => {
     sim.step(1 / 60);
     // request arrived at b; response should now be in-flight on backEdge
     expect(sim.activePackets.length).toBe(1);
-    expect(sim.activePackets[0].direction).toBe("back");
-    expect(sim.activePackets[0].edgeId).toBe(backEdge.id);
+    const p = sim.activePackets[0]!;
+    expect(p.direction).toBe("back");
+    expect(p.edgeId).toBe(backEdge.id);
   });
 
   it("fires respond-delivered event when response reaches origin (empty route)", () => {

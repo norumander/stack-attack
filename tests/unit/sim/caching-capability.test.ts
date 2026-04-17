@@ -68,7 +68,8 @@ describe("CachingCapability — cold cache", () => {
     sim.step(1 / 60); // request arrives at cache, miss → forward to db
     // Exactly one forward on bc; no respond events yet.
     expect(sim.activePackets.length).toBe(1);
-    expect(sim.activePackets[0].edgeId).toBe(bc.id);
+    const p = sim.activePackets[0]!;
+    expect(p.edgeId).toBe(bc.id);
     expect(sim.lastStepEvents.filter((e) => e.kind === "respond-delivered")).toHaveLength(0);
   });
 });
