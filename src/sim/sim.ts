@@ -7,6 +7,7 @@ import { makeSimRng } from "./rng";
 import { mintPacketId, mintRequestId } from "./packet";
 import { advancePackets, collectArrivals } from "./edge-physics";
 import { launchDueSnakes, populateSnakes } from "./snake";
+import { WorkerCapability } from "./capabilities/worker";
 
 export type SimOptions = {
   readonly seed: number;
@@ -69,6 +70,7 @@ export class Sim {
     for (const c of this.components.values()) c.refillBucket(dt);
     populateSnakes(this.clients, this.simTime + dt);
     launchDueSnakes(this.clients, this.connections, this.activePackets, this.simTime + dt, this.rng);
+    this.pullFromWorkers(dt);
     advancePackets(this.activePackets, dt);
     const { arriving, remaining } = collectArrivals(this.activePackets);
     this.activePackets.length = 0;
@@ -227,6 +229,25 @@ export class Sim {
         this.revenueByPacketId.set(resp.id, outcome.revenueOnDelivery);
         this.activePackets.push(resp);
         return;
+      }
+    }
+  }
+
+  private pullFromWorkers(dt: number): void {
+    for (const comp of this.components.values()) {
+      for (const cap of comp.capabilities) {
+        if (cap instanceof WorkerCapability) {
+          cap.refillPull(dt);
+          while (true) {
+            const pulled = cap.tryPullOne();
+            if (!pulled) break;
+            this.lastStepEvents.push({
+              kind: "terminate",
+              componentId: comp.id,
+              revenue: cap.opts.revenuePerItem * pulled.requests.length,
+            });
+          }
+        }
       }
     }
   }
