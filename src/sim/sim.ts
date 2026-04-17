@@ -58,6 +58,7 @@ export class Sim {
       ingressEdgeId: edge.id,
       simTime: this.simTime,
       rng: this.rng,
+      bucket: component.bucket,
       mintPacketId: () => this.mintPacketId(),
       mintRequestId: () => this.mintRequestId(),
     };

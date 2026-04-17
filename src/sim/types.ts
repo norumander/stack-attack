@@ -3,6 +3,7 @@ import type {
   ConnectionId,
   RequestId,
 } from "@core/types/ids";
+import type { CapacityBucket } from "./capacity-bucket";
 
 export type PacketId = string & { readonly __brand: "PacketId" };
 
@@ -50,6 +51,7 @@ export type ArrivalContext = {
   readonly ingressEdgeId: ConnectionId;
   readonly simTime: number;
   readonly rng: () => number;
+  readonly bucket: CapacityBucket | null;
   readonly mintPacketId: () => PacketId;
   readonly mintRequestId: () => RequestId;
 };
