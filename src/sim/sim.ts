@@ -71,8 +71,18 @@ export class Sim {
     }
   }
 
-  private applyOutcome(_outcome: Outcome): void {
-    // Tasks 8–10 fill in forward / drop / terminate / respond.
+  private applyOutcome(outcome: Outcome): void {
+    switch (outcome.kind) {
+      case "forward":
+        for (const emit of outcome.emit) {
+          this.activePackets.push(emit.packet);
+        }
+        return;
+      case "drop":
+      case "terminate":
+      case "respond":
+        return; // filled in Tasks 9, 10
+    }
   }
 
   mintPacketId = mintPacketId;
