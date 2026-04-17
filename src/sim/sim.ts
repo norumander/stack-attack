@@ -1,5 +1,5 @@
 import type { ComponentId, ConnectionId } from "@core/types/ids";
-import type { ArrivalContext, Outcome, Packet } from "./types";
+import type { ArrivalContext, Outcome, Packet, SimEvent } from "./types";
 import type { SimComponent } from "./component";
 import type { SimConnection } from "./connection";
 import { makeSimRng } from "./rng";
@@ -14,6 +14,7 @@ export class Sim {
   readonly components: Map<ComponentId, SimComponent> = new Map();
   readonly connections: Map<ConnectionId, SimConnection> = new Map();
   readonly activePackets: Packet[] = [];
+  readonly lastStepEvents: SimEvent[] = [];
   simTime = 0;
   readonly rng: () => number;
 
@@ -34,6 +35,7 @@ export class Sim {
   }
 
   step(dt: number): void {
+    this.lastStepEvents.length = 0;
     for (const c of this.components.values()) c.refillBucket(dt);
     advancePackets(this.activePackets, dt);
     const { arriving, remaining } = collectArrivals(this.activePackets);
@@ -62,7 +64,7 @@ export class Sim {
       const cap = component.capabilities[0];
       if (!cap) return;
       const outcome = cap.onArriveRequest(packet, ctx);
-      this.applyOutcome(outcome);
+      this.applyOutcome(outcome, component.id);
     } else {
       // Response-leg dispatch lives in Task 10.
       for (const cap of component.capabilities) {
@@ -71,7 +73,7 @@ export class Sim {
     }
   }
 
-  private applyOutcome(outcome: Outcome): void {
+  private applyOutcome(outcome: Outcome, componentId: ComponentId): void {
     switch (outcome.kind) {
       case "forward":
         for (const emit of outcome.emit) {
@@ -79,9 +81,13 @@ export class Sim {
         }
         return;
       case "drop":
+        this.lastStepEvents.push({ kind: "drop", componentId, reason: outcome.reason, count: outcome.count });
+        return;
       case "terminate":
+        this.lastStepEvents.push({ kind: "terminate", componentId, revenue: outcome.revenue });
+        return;
       case "respond":
-        return; // filled in Tasks 9, 10
+        return; // Task 10
     }
   }
 

@@ -59,3 +59,8 @@ export type SimCapability = {
   onArriveRequest(packet: Packet, ctx: ArrivalContext): Outcome;
   onArriveResponse?(packet: Packet, ctx: ArrivalContext): void;
 };
+
+export type SimEvent =
+  | { readonly kind: "drop"; readonly componentId: ComponentId; readonly reason: string; readonly count: number }
+  | { readonly kind: "terminate"; readonly componentId: ComponentId; readonly revenue: number }
+  | { readonly kind: "respond-delivered"; readonly componentId: ComponentId; readonly revenue: number };
