@@ -1,5 +1,5 @@
 import type { ComponentId, ConnectionId } from "@core/types/ids";
-import type { ArrivalContext, Outcome, Packet, PacketId, SimEvent } from "./types";
+import type { ArrivalContext, Outcome, Packet, PacketId, SimEvent, Zone } from "./types";
 import type { SimComponent } from "./component";
 import type { SimClient } from "./client";
 import type { SimConnection } from "./connection";
@@ -71,10 +71,11 @@ export class Sim {
     if (!edge) return;
     const component = this.components.get(edge.to.componentId);
     if (!component) return;
-    const egressEdges: { id: ConnectionId; speed: number }[] = [];
+    const egressEdges: { id: ConnectionId; speed: number; targetZone: Zone | null }[] = [];
     for (const conn of this.connections.values()) {
       if (conn.from.componentId === component.id && conn.direction === "forward") {
-        egressEdges.push({ id: conn.id, speed: conn.speed });
+        const target = this.components.get(conn.to.componentId);
+        egressEdges.push({ id: conn.id, speed: conn.speed, targetZone: target?.zone ?? null });
       }
     }
     const ctx: ArrivalContext = {
