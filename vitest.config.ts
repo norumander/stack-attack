@@ -16,6 +16,7 @@ export default defineConfig({
       "@capabilities": fileURLToPath(new URL("./src/capabilities", import.meta.url)),
       "@harness": fileURLToPath(new URL("./tests/harness", import.meta.url)),
       "@modes": fileURLToPath(new URL("./src/modes", import.meta.url)),
+      "@dashboard": fileURLToPath(new URL("./src/dashboard", import.meta.url)),
     },
   },
 });

@@ -20,7 +20,8 @@
       "@sim/*": ["src/sim/*"],
       "@capabilities/*": ["src/capabilities/*"],
       "@harness/*": ["tests/harness/*"],
-      "@modes/*": ["src/modes/*"]
+      "@modes/*": ["src/modes/*"],
+      "@dashboard/*": ["src/dashboard/*"]
     }
   },
   "include": ["src/**/*", "tests/**/*"]
