@@ -8,3 +8,9 @@ export { makePacket, mintPacketId, mintRequestId, resetIdCountersForTest } from 
 export { SimClient } from "./client";
 export { TrafficSource } from "./traffic-source";
 export type { WaveDef, WaveComposition, WaveKeyDistribution } from "./wave";
+export { LoadBalancerCapability } from "./capabilities/load-balancer";
+export { GatewayCapability } from "./capabilities/gateway";
+export { GeoRoutingCapability } from "./capabilities/geo-routing";
+export { StreamingCapability } from "./capabilities/streaming";
+export { QueueCapability } from "./capabilities/queue";
+export { WorkerCapability } from "./capabilities/worker";
