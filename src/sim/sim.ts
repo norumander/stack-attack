@@ -29,6 +29,18 @@ export class Sim {
     preSplitRoute: ConnectionId[];
   }> = new Map();
   private readonly parentOfChild: Map<PacketId, PacketId> = new Map();
+  private readonly activeReservations: { connectionId: ConnectionId; amount: number; releaseAt: number }[] = [];
+
+  private releaseExpiredReservations(): void {
+    const keep: typeof this.activeReservations = [];
+    for (const r of this.activeReservations) {
+      if (r.releaseAt > this.simTime) { keep.push(r); continue; }
+      const conn = this.connections.get(r.connectionId);
+      if (conn) conn.reservedBandwidth -= r.amount;
+    }
+    this.activeReservations.length = 0;
+    this.activeReservations.push(...keep);
+  }
 
   constructor(opts: SimOptions) {
     this.rng = makeSimRng(opts.seed);
@@ -53,6 +65,7 @@ export class Sim {
 
   step(dt: number): void {
     this.lastStepEvents.length = 0;
+    this.releaseExpiredReservations();
     for (const c of this.components.values()) c.refillBucket(dt);
     populateSnakes(this.clients, this.simTime + dt);
     launchDueSnakes(this.clients, this.connections, this.activePackets, this.simTime + dt, this.rng);
@@ -87,6 +100,14 @@ export class Sim {
       bucket: component.bucket,
       mintPacketId: () => this.mintPacketId(),
       mintRequestId: () => this.mintRequestId(),
+      reserveBandwidth: (edgeId, amount, durationSeconds) => {
+        const conn = this.connections.get(edgeId);
+        if (!conn) return false;
+        if (!conn.canReserve(amount)) return false;
+        conn.reservedBandwidth += amount;
+        this.activeReservations.push({ connectionId: edgeId, amount, releaseAt: this.simTime + durationSeconds });
+        return true;
+      },
     };
     if (packet.direction === "forward") {
       const cap = component.capabilities[0];

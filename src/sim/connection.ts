@@ -20,6 +20,11 @@ export class SimConnection {
   readonly latencySeconds: number;
   readonly twinId: ConnectionId;
   readonly direction: ConnectionDirection;
+  reservedBandwidth: number = 0;
+
+  canReserve(amount: number): boolean {
+    return this.bandwidth - this.reservedBandwidth >= amount;
+  }
 
   constructor(opts: SimConnectionOptions) {
     this.id = opts.id;

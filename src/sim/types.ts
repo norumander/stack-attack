@@ -58,6 +58,7 @@ export type ArrivalContext = {
   readonly bucket: CapacityBucket | null;
   readonly mintPacketId: () => PacketId;
   readonly mintRequestId: () => RequestId;
+  readonly reserveBandwidth?: (edgeId: ConnectionId, amount: number, durationSeconds: number) => boolean;
 };
 
 export type SimCapability = {
