@@ -14,3 +14,7 @@ export { GeoRoutingCapability } from "./capabilities/geo-routing";
 export { StreamingCapability } from "./capabilities/streaming";
 export { QueueCapability } from "./capabilities/queue";
 export { WorkerCapability } from "./capabilities/worker";
+export { evaluateSLA } from "./sla";
+export type { SLAThresholds, WaveMetrics, SLAResult } from "./sla";
+export { runWave } from "./test-harness";
+export type { RunWaveOptions } from "./test-harness";
