@@ -5,3 +5,6 @@ export { SimComponent } from "./component";
 export { SimConnection } from "./connection";
 export { Sim } from "./sim";
 export { makePacket, mintPacketId, mintRequestId, resetIdCountersForTest } from "./packet";
+export { SimClient } from "./client";
+export { TrafficSource } from "./traffic-source";
+export type { WaveDef, WaveComposition, WaveKeyDistribution } from "./wave";

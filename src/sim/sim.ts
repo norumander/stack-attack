@@ -1,10 +1,12 @@
 import type { ComponentId, ConnectionId } from "@core/types/ids";
 import type { ArrivalContext, Outcome, Packet, PacketId, SimEvent } from "./types";
 import type { SimComponent } from "./component";
+import type { SimClient } from "./client";
 import type { SimConnection } from "./connection";
 import { makeSimRng } from "./rng";
 import { mintPacketId, mintRequestId } from "./packet";
 import { advancePackets, collectArrivals } from "./edge-physics";
+import { launchDueSnakes } from "./snake";
 
 export type SimOptions = {
   readonly seed: number;
@@ -12,6 +14,7 @@ export type SimOptions = {
 
 export class Sim {
   readonly components: Map<ComponentId, SimComponent> = new Map();
+  readonly clients: Map<ComponentId, SimClient> = new Map();
   readonly connections: Map<ConnectionId, SimConnection> = new Map();
   readonly activePackets: Packet[] = [];
   readonly lastStepEvents: SimEvent[] = [];
@@ -27,6 +30,11 @@ export class Sim {
     this.components.set(c.id, c);
   }
 
+  addClient(c: SimClient): void {
+    this.clients.set(c.id, c);
+    this.components.set(c.id, c);
+  }
+
   addConnection(c: SimConnection): void {
     this.connections.set(c.id, c);
   }
@@ -38,6 +46,7 @@ export class Sim {
   step(dt: number): void {
     this.lastStepEvents.length = 0;
     for (const c of this.components.values()) c.refillBucket(dt);
+    launchDueSnakes(this.clients, this.connections, this.activePackets, this.simTime + dt, this.rng);
     advancePackets(this.activePackets, dt);
     const { arriving, remaining } = collectArrivals(this.activePackets);
     this.activePackets.length = 0;

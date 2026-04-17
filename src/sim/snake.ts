@@ -1,0 +1,47 @@
+import type { ComponentId, ConnectionId } from "@core/types/ids";
+import type { Packet } from "./types";
+import type { SimClient } from "./client";
+import type { SimConnection } from "./connection";
+
+/**
+ * Per-step snake-launch routine. For each client that's due, pop snake.head,
+ * pick a random forward egress, assign edgeId/speed, push to activePackets.
+ */
+export function launchDueSnakes(
+  clients: ReadonlyMap<ComponentId, SimClient>,
+  connections: ReadonlyMap<ConnectionId, SimConnection>,
+  activePackets: Packet[],
+  simTime: number,
+  rng: () => number,
+): void {
+  for (const client of clients.values()) {
+    while (client.nextLaunchTime <= simTime && client.snake.length > 0) {
+      const head = client.snake.shift()!;
+      const egresses = collectForwardEgresses(connections, client.id);
+      if (egresses.length === 0) {
+        client.nextLaunchTime += 1 / client.packetRate;
+        continue;
+      }
+      const idx = Math.floor(rng() * egresses.length);
+      const chosen = egresses[idx]!;
+      head.edgeId = chosen.id;
+      head.speed = chosen.speed;
+      head.progress = 0;
+      activePackets.push(head);
+      client.nextLaunchTime += 1 / client.packetRate;
+    }
+  }
+}
+
+function collectForwardEgresses(
+  connections: ReadonlyMap<ConnectionId, SimConnection>,
+  clientId: ComponentId,
+): SimConnection[] {
+  const egresses: SimConnection[] = [];
+  for (const c of connections.values()) {
+    if (c.from.componentId === clientId && c.direction === "forward") {
+      egresses.push(c);
+    }
+  }
+  return egresses;
+}
