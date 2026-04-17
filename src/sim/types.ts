@@ -30,9 +30,9 @@ export type PacketDirection = "forward" | "back";
 export type Packet = {
   readonly id: PacketId;
   readonly requests: readonly Request[];
-  readonly edgeId: ConnectionId;
+  edgeId: ConnectionId;
   progress: number;
-  readonly speed: number;
+  speed: number;
   readonly spawnedAt: number;
   readonly parentId: PacketId | null;
   readonly direction: PacketDirection;
@@ -42,7 +42,7 @@ export type Packet = {
 export type Outcome =
   | { readonly kind: "forward"; readonly emit: ReadonlyArray<{ edgeId: ConnectionId; packet: Packet }> }
   | { readonly kind: "terminate"; readonly revenue: number }
-  | { readonly kind: "respond"; readonly responsePacket: Packet }
+  | { readonly kind: "respond"; readonly responsePacket: Packet; readonly revenueOnDelivery: number }
   | { readonly kind: "drop"; readonly reason: string; readonly count: number };
 
 export type ArrivalContext = {
