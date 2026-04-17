@@ -21,6 +21,14 @@ export class Sim {
   simTime = 0;
   readonly rng: () => number;
   private readonly revenueByPacketId: Map<PacketId, number> = new Map();
+  private readonly mergeByParent: Map<PacketId, {
+    expectedChildren: number;
+    receivedChildren: number;
+    accumulatedRevenue: number;
+    ingressEdgeId: ConnectionId;
+    preSplitRoute: ConnectionId[];
+  }> = new Map();
+  private readonly parentOfChild: Map<PacketId, PacketId> = new Map();
 
   constructor(opts: SimOptions) {
     this.rng = makeSimRng(opts.seed);
@@ -130,6 +138,19 @@ export class Sim {
         return;
       case "multi":
         for (const child of outcome.outcomes) this.applyOutcome(child, componentId);
+        return;
+      case "split":
+        this.mergeByParent.set(outcome.mergeKey, {
+          expectedChildren: outcome.expectedChildren,
+          receivedChildren: 0,
+          accumulatedRevenue: 0,
+          ingressEdgeId: outcome.ingressEdgeId,
+          preSplitRoute: [...outcome.preSplitRoute],
+        });
+        for (const emit of outcome.emit) {
+          this.parentOfChild.set(emit.packet.id, outcome.mergeKey);
+          this.activePackets.push(emit.packet);
+        }
         return;
       case "respond": {
         const resp = outcome.responsePacket;

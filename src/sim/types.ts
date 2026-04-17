@@ -46,7 +46,8 @@ export type Outcome =
   | { readonly kind: "terminate"; readonly revenue: number }
   | { readonly kind: "respond"; readonly responsePacket: Packet; readonly revenueOnDelivery: number }
   | { readonly kind: "drop"; readonly reason: string; readonly count: number }
-  | { readonly kind: "multi"; readonly outcomes: readonly Outcome[] };
+  | { readonly kind: "multi"; readonly outcomes: readonly Outcome[] }
+  | { readonly kind: "split"; readonly emit: ReadonlyArray<{ edgeId: ConnectionId; packet: Packet }>; readonly mergeKey: PacketId; readonly expectedChildren: number; readonly ingressEdgeId: ConnectionId; readonly preSplitRoute: ReadonlyArray<ConnectionId> };
 
 export type ArrivalContext = {
   readonly componentId: ComponentId;
