@@ -17,6 +17,7 @@ const wave: WaveDef = {
   duration: 3,
   composition: { writeRatio: 0, authRatio: 0, streamRatio: 0, largeRatio: 0, asyncRatio: 0 },
   keyDistribution: { kind: "zipf", alpha: 1.07, spaceSize: 50 },
+  revenue: { perRead: 1, perWrite: 1, perAuth: 1, perStream: 1 },
   entryClients: ["client" as ComponentId],
 };
 

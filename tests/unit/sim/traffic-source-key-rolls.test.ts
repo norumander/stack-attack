@@ -15,6 +15,7 @@ describe("TrafficSource — key rolls", () => {
       duration: 60,
       composition: { writeRatio: 0, authRatio: 0, streamRatio: 0, largeRatio: 0, asyncRatio: 0 },
       keyDistribution: { kind: "zipf", alpha: 1.5, spaceSize: 10 },
+      revenue: { perRead: 1, perWrite: 1, perAuth: 1, perStream: 1 },
       entryClients: ["c1" as ComponentId],
     };
     const ts = new TrafficSource(wave, makeSimRng(1));
