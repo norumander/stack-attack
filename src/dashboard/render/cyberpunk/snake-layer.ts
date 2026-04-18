@@ -5,14 +5,28 @@ import type { PacketTextureMap, PacketSpriteType } from "./packet-layer.js";
 
 export type SnakePacket = { readonly id: string; readonly type: string; readonly count: number };
 
+type SpriteAnim = {
+  /** Where the sprite is currently drawn (animated). */
+  curX: number;
+  curY: number;
+  /** Resting slot position the sprite is sliding toward. */
+  targetX: number;
+  targetY: number;
+};
+
 type ClientSnakeState = {
   readonly container: Container;
   readonly sprites: Sprite[];
   readonly labels: (Text | null)[];
+  readonly anims: SpriteAnim[];
+  /** Last trail direction so newly-spawned sprites can be placed further-out. */
+  lastDir: { dx: number; dy: number };
 };
 
 const TRAIL_SPACING_PX = 24;
 const MAX_VISIBLE = 10;
+/** Per-frame lerp factor: ~0.2 → converges in ~5 frames at 60fps. */
+const SLIDE_LERP = 0.2;
 
 /**
  * Snake layer: renders a desaturated trail of up-to-10 upcoming packets
@@ -52,13 +66,15 @@ export class SnakeLayer {
       this.dispose(clientId);
       return;
     }
+    const dir = options.trailDirection;
     let state = this.states.get(clientId);
     if (!state) {
       const container = new Container();
       this.container.addChild(container);
-      state = { container, sprites: [], labels: [] };
+      state = { container, sprites: [], labels: [], anims: [], lastDir: dir };
       this.states.set(clientId, state);
     }
+    state.lastDir = dir;
     state.container.x = clientState.container.x;
     state.container.y = clientState.container.y;
 
@@ -69,6 +85,7 @@ export class SnakeLayer {
       s.destroy();
       const lbl = state.labels.pop();
       lbl?.destroy();
+      state.anims.pop();
     }
     const fallbackTex = this.textures.read;
     while (state.sprites.length < visible.length) {
@@ -81,13 +98,23 @@ export class SnakeLayer {
       state.container.addChild(sprite);
       state.sprites.push(sprite);
       state.labels.push(null);
+      // Spawn one slot further out from the client than its eventual resting
+      // slot — the tick loop will lerp it inward toward its target.
+      const spawnOffset = (idx + 2) * TRAIL_SPACING_PX;
+      const spawnX = dir.dx * spawnOffset;
+      const spawnY = dir.dy * spawnOffset - 8;
+      sprite.x = spawnX;
+      sprite.y = spawnY;
+      state.anims.push({ curX: spawnX, curY: spawnY, targetX: spawnX, targetY: spawnY });
     }
     for (let i = 0; i < visible.length; i += 1) {
       const sprite = state.sprites[i];
       if (!sprite) continue;
+      const anim = state.anims[i]!;
       const offset = (i + 1) * TRAIL_SPACING_PX;
-      sprite.x = options.trailDirection.dx * offset;
-      sprite.y = options.trailDirection.dy * offset - 8;
+      // Update target for current frame; tick() will animate toward it.
+      anim.targetX = dir.dx * offset;
+      anim.targetY = dir.dy * offset - 8;
       sprite.alpha = Math.max(0.15, 0.5 - i * 0.035);
       const tex = this.textures[classify(visible[i]!.type)];
       if (tex && sprite.texture !== tex) sprite.texture = tex;
@@ -106,6 +133,24 @@ export class SnakeLayer {
       } else if (label) {
         label.destroy();
         state.labels[i] = null;
+      }
+    }
+  }
+
+  /**
+   * Per-frame animation step — lerps each sprite's drawn position toward its
+   * target slot. Called from the renderer's main ticker. deltaMs is unused
+   * (fixed lerp factor per frame); kept for symmetry with PacketLayer.tick.
+   */
+  tick(_deltaMs: number): void {
+    for (const state of this.states.values()) {
+      for (let i = 0; i < state.sprites.length; i += 1) {
+        const sprite = state.sprites[i]!;
+        const anim = state.anims[i]!;
+        anim.curX += (anim.targetX - anim.curX) * SLIDE_LERP;
+        anim.curY += (anim.targetY - anim.curY) * SLIDE_LERP;
+        sprite.x = anim.curX;
+        sprite.y = anim.curY;
       }
     }
   }

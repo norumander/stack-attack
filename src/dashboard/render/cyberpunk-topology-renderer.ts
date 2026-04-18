@@ -149,11 +149,12 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
 
     this.recomputeWorldCenter();
 
-    // Ticker: packets + flashes.
+    // Ticker: packets + flashes + snake slide-in animation.
     app.ticker.add((ticker) => {
       const deltaMs = ticker.deltaMS;
       this.packetLayer?.tick(deltaMs);
       this.flashFx?.tick(deltaMs);
+      this.snakeLayer?.tick(deltaMs);
     });
 
     // Pointer events with pan support.
@@ -328,6 +329,12 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     this.snakeLayer?.cleanup();
     this.snakeLayer = null;
     this.mountedContainer = null;
+  }
+
+  /** The Pixi canvas DOM element. Useful for binding native DOM events
+   * (e.g. contextmenu) to the canvas instead of an outer wrapper. */
+  getCanvas(): HTMLCanvasElement | null {
+    return this.app?.canvas ?? null;
   }
 
   resize(_width: number, _height: number): void {
