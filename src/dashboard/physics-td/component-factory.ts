@@ -7,6 +7,8 @@ import { GatewayCapability } from "@sim/capabilities/gateway";
 import { LoadBalancerCapability } from "@sim/capabilities/load-balancer";
 import { QueueCapability } from "@sim/capabilities/queue";
 import { WorkerCapability } from "@sim/capabilities/worker";
+import { StreamingCapability } from "@sim/capabilities/streaming";
+import { GeoRoutingCapability } from "@sim/capabilities/geo-routing";
 
 export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
   ["server", 100],
@@ -17,6 +19,8 @@ export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
   ["api_gateway", 250],
   ["queue", 125],
   ["worker", 150],
+  ["streaming_server", 250],
+  ["dns_gtm", 200],
 ]);
 
 /** Sprite type used by the renderer to pick the iso tile graphic. */
@@ -29,11 +33,13 @@ export const COMPONENT_SPRITE_TYPE: ReadonlyMap<string, string> = new Map([
   ["api_gateway", "api_gateway"],
   ["queue", "queue"],
   ["worker", "worker"],
+  ["streaming_server", "streaming_server"],
+  ["dns_gtm", "dns_gtm"],
 ]);
 
 export const COMPONENT_FACTORY: ReadonlyArray<string> = [
   "server", "database", "data_cache", "load_balancer", "cdn", "api_gateway",
-  "queue", "worker",
+  "queue", "worker", "streaming_server", "dns_gtm",
 ];
 
 export function buildSimComponent(type: string, id: ComponentId): SimComponent | null {
@@ -75,6 +81,16 @@ export function buildSimComponent(type: string, id: ComponentId): SimComponent |
       return new SimComponent({
         id,
         capabilities: [new WorkerCapability({ pullRate: 30, revenuePerItem: 1 }, null)],
+      });
+    case "streaming_server":
+      return new SimComponent({
+        id,
+        capabilities: [new StreamingCapability({ revenuePerStream: 5 })],
+      });
+    case "dns_gtm":
+      return new SimComponent({
+        id,
+        capabilities: [new GeoRoutingCapability()],
       });
     default:
       return null;

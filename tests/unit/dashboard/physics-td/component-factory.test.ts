@@ -50,4 +50,16 @@ describe("component-factory", () => {
     expect(COMPONENT_COSTS.get("queue")).toBeGreaterThan(0);
     expect(COMPONENT_COSTS.get("worker")).toBeGreaterThan(0);
   });
+
+  it("buildSimComponent for streaming_server uses StreamingCapability", () => {
+    const comp = buildSimComponent("streaming_server", "s1" as ComponentId);
+    expect(comp).toBeDefined();
+    expect(comp!.capabilities[0]?.id).toBe("streaming");
+  });
+
+  it("buildSimComponent for dns_gtm uses GeoRoutingCapability", () => {
+    const comp = buildSimComponent("dns_gtm", "d1" as ComponentId);
+    expect(comp).toBeDefined();
+    expect(comp!.capabilities[0]?.id).toBe("geo-routing");
+  });
 });
