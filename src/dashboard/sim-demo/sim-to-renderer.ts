@@ -4,14 +4,34 @@ import type { TopologyRenderer } from "@dashboard/render/topology-renderer";
 import type { Packet, PacketId } from "@sim/types";
 import type { ComponentId, RequestId } from "@core/types/ids";
 
+export type SimToRendererAdapterOptions = {
+  readonly flashWindowMs?: number;
+};
+
 export class SimToRendererAdapter {
   private readonly trackedPackets: Set<PacketId> = new Set();
+  private readonly recentProcessed: Map<ComponentId, number[]> = new Map();
+  private readonly lastFlashAt: Map<string, number> = new Map();
+  private readonly flashWindowMs: number;
 
   constructor(
     private readonly sim: Sim,
     private readonly renderer: TopologyRenderer,
     private readonly positions: Map<ComponentId, { x: number; y: number }>,
-  ) {}
+    options: SimToRendererAdapterOptions = {},
+  ) {
+    this.flashWindowMs = options.flashWindowMs ?? 200;
+  }
+
+  private maybeFlash(componentId: ComponentId, kind: "drop" | "responded"): void {
+    const key = `${componentId as unknown as string}:${kind}`;
+    const now = performance.now();
+    const last = this.lastFlashAt.get(key) ?? 0;
+    if (now - last < this.flashWindowMs) return;
+    this.lastFlashAt.set(key, now);
+    if (kind === "drop") this.renderer.flashDrop(componentId);
+    else this.renderer.flashResponded(componentId);
+  }
 
   syncFrame(): void {
     for (const packet of this.sim.activePackets) {
@@ -35,10 +55,28 @@ export class SimToRendererAdapter {
     }
 
     for (const ev of this.sim.lastStepEvents) {
-      if (ev.kind === "drop") this.renderer.flashDrop(ev.componentId);
+      if (ev.kind === "drop") this.maybeFlash(ev.componentId, "drop");
       else if (ev.kind === "terminate" || ev.kind === "respond-delivered") {
-        this.renderer.flashResponded(ev.componentId);
+        this.maybeFlash(ev.componentId, "responded");
       }
+    }
+
+    // Track processed events for utilization (rolling 1s window).
+    for (const ev of this.sim.lastStepEvents) {
+      if (ev.kind !== "terminate" && ev.kind !== "respond-delivered") continue;
+      const arr = this.recentProcessed.get(ev.componentId) ?? [];
+      arr.push(this.sim.simTime);
+      this.recentProcessed.set(ev.componentId, arr);
+    }
+
+    // Push utilization for any component with a capacity.
+    const cutoff = this.sim.simTime - 1;
+    for (const [id, comp] of this.sim.components.entries()) {
+      if (comp.capacityPerSecond === null) continue;
+      const arr = this.recentProcessed.get(id) ?? [];
+      while (arr.length > 0 && arr[0]! < cutoff) arr.shift();
+      const utilization = arr.length / comp.capacityPerSecond;
+      this.renderer.updateComponent(id, { utilization: Math.min(1, utilization) });
     }
 
     for (const [id, comp] of this.sim.components.entries()) {

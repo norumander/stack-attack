@@ -137,6 +137,7 @@ export interface ComponentRenderState {
   gridX: number;
   gridY: number;
   chipStrip?: Container;
+  utilBar?: Graphics;
 }
 
 export interface ComponentLayer {
@@ -224,6 +225,21 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     states.delete(id);
   };
 
+  const applyUtilizationBar = (state: ComponentRenderState, utilization: number): void => {
+    if (!state.utilBar) {
+      state.utilBar = new Graphics();
+      state.utilBar.y = 14;
+      state.container.addChild(state.utilBar);
+    }
+    state.utilBar.clear();
+    const u = Math.max(0, Math.min(1, utilization));
+    const w = 28;
+    const h = 3;
+    state.utilBar.rect(-w / 2, 0, w, h).fill({ color: 0x223344, alpha: 0.6 });
+    const fillColor = u < 0.6 ? 0x4ade80 : u < 0.85 ? 0xfacc15 : 0xef4444;
+    state.utilBar.rect(-w / 2, 0, w * u, h).fill({ color: fillColor, alpha: 0.95 });
+  };
+
   const applyCacheKeysImpl = (state: ComponentRenderState, keys: ReadonlyArray<string>): void => {
     if (!state.chipStrip) {
       state.chipStrip = new Container();
@@ -262,6 +278,7 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     if (u.utilization !== undefined) {
       // Only tint the highlight layer; base stays its original dark navy.
       state.highlightSprite.tint = utilizationColor(u.utilization);
+      applyUtilizationBar(state, u.utilization);
     }
 
     if (u.pendingCount !== undefined) {
