@@ -286,8 +286,15 @@ function buildInfoPanel(root: HTMLElement): void {
   const stats = div("cp-info-stats cp-mono");
   p.append(stats);
 
+  const details = document.createElement("button");
+  details.type = "button";
+  details.className = "cp-info-details-btn";
+  details.textContent = "DETAILS";
+  p.append(details);
+
   root.append(p);
 
+  forwardClick(details, "td-info-panel-details");
   forwardClick(close, "td-info-panel-close");
   mirrorText("td-info-panel-header", header, (t) => t.toUpperCase());
   mirrorText("td-info-panel-description", desc);

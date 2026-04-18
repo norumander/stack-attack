@@ -1225,3 +1225,26 @@ body.renderer-iso .cp-win-cta {
 body.renderer-iso .cp-win-cta:hover {
   filter: brightness(1.1);
 }
+
+body.renderer-iso .cp-info-details-btn {
+  display: block;
+  margin: 12px 0 0;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid rgba(120, 220, 255, 0.45);
+  color: #aee7ff;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 80ms ease, color 80ms ease, border-color 80ms ease;
+}
+body.renderer-iso .cp-info-details-btn:hover {
+  background: rgba(120, 220, 255, 0.12);
+  border-color: rgba(170, 240, 255, 0.75);
+  color: #eaf7ff;
+}
+body.renderer-iso .cp-info-details-btn:active {
+  transform: translateY(1px);
+}
