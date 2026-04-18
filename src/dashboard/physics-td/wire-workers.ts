@@ -19,7 +19,7 @@ export function wireWorkers(sim: Sim): void {
         if (!sourceComp) continue;
         const queueCap = sourceComp.capabilities.find((c) => c instanceof QueueCapability);
         if (queueCap instanceof QueueCapability) {
-          cap.setQueue(queueCap);
+          cap.queue = queueCap;
           break;
         }
       }

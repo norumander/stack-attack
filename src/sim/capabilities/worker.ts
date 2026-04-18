@@ -13,9 +13,6 @@ export class WorkerCapability implements SimCapability {
   constructor(public readonly opts: WorkerCapabilityOptions, queue: QueueCapability | null = null) {
     this.queue = queue;
   }
-  setQueue(q: QueueCapability): void {
-    this.queue = q;
-  }
   onArriveRequest(): { kind: "drop"; reason: string; count: number } {
     return { kind: "drop", reason: "worker_not_arrived_path", count: 0 };
   }
