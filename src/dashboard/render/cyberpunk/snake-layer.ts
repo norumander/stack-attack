@@ -42,7 +42,11 @@ export class SnakeLayer {
     this.container = new Container();
   }
 
-  update(clientId: ComponentId, packets: ReadonlyArray<SnakePacket>): void {
+  update(
+    clientId: ComponentId,
+    packets: ReadonlyArray<SnakePacket>,
+    options: { trailDirection: { dx: number; dy: number } } = { trailDirection: { dx: -1, dy: 0 } },
+  ): void {
     const clientState = this.componentLayer.get(clientId);
     if (!clientState) {
       this.dispose(clientId);
@@ -81,8 +85,9 @@ export class SnakeLayer {
     for (let i = 0; i < visible.length; i += 1) {
       const sprite = state.sprites[i];
       if (!sprite) continue;
-      sprite.x = -((i + 1) * TRAIL_SPACING_PX);
-      sprite.y = -8;
+      const offset = (i + 1) * TRAIL_SPACING_PX;
+      sprite.x = options.trailDirection.dx * offset;
+      sprite.y = options.trailDirection.dy * offset - 8;
       sprite.alpha = Math.max(0.15, 0.5 - i * 0.035);
       const tex = this.textures[classify(visible[i]!.type)];
       if (tex && sprite.texture !== tex) sprite.texture = tex;

@@ -24,7 +24,7 @@ async function main(): Promise<void> {
     renderer.addConnection(id, conn.from.componentId, conn.to.componentId, { direction: conn.direction });
   }
 
-  const adapter = new SimToRendererAdapter(sim, renderer);
+  const adapter = new SimToRendererAdapter(sim, renderer, positions);
   const driver = new BrowserDriver(sim, { stepSeconds: 1 / 60 });
 
   const statSimTime = document.getElementById("stat-sim-time")!;

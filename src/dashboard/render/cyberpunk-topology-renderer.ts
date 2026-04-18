@@ -459,8 +459,10 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
   updateClientSnake(
     clientId: ComponentId,
     packets: ReadonlyArray<{ id: string; type: string; count: number }>,
+    options?: { trailDirection?: { dx: number; dy: number } },
   ): void {
-    this.snakeLayer?.update(clientId, packets);
+    const dir = options?.trailDirection ?? { dx: -1, dy: 0 };
+    this.snakeLayer?.update(clientId, packets, { trailDirection: dir });
   }
   queueFlashOnRequestArrival(
     requestId: RequestId,

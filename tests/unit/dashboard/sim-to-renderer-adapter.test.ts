@@ -82,7 +82,7 @@ describe("SimToRendererAdapter", () => {
   it("spawns a renderer dot for each new in-flight packet", () => {
     const { sim, ef } = boot();
     const renderer = new MockRenderer();
-    const adapter = new SimToRendererAdapter(sim, renderer);
+    const adapter = new SimToRendererAdapter(sim, renderer, new Map());
     sim.spawnPacket(makePacket({ requests: [mkRead()], edgeId: ef.id, speed: ef.speed, spawnedAt: 0, direction: "forward" }));
     adapter.syncFrame();
     expect(renderer.spawnedDots).toHaveLength(1);
@@ -93,7 +93,7 @@ describe("SimToRendererAdapter", () => {
   it("does not re-spawn dots for packets already tracked", () => {
     const { sim, ef } = boot();
     const renderer = new MockRenderer();
-    const adapter = new SimToRendererAdapter(sim, renderer);
+    const adapter = new SimToRendererAdapter(sim, renderer, new Map());
     sim.spawnPacket(makePacket({ requests: [mkRead()], edgeId: ef.id, speed: ef.speed, spawnedAt: 0, direction: "forward" }));
     adapter.syncFrame();
     adapter.syncFrame();
@@ -104,7 +104,7 @@ describe("SimToRendererAdapter", () => {
   it("fires flashDrop on drop events", () => {
     const { sim } = boot();
     const renderer = new MockRenderer();
-    const adapter = new SimToRendererAdapter(sim, renderer);
+    const adapter = new SimToRendererAdapter(sim, renderer, new Map());
     sim.lastStepEvents.push({ kind: "drop", componentId: "b" as ComponentId, reason: "test", count: 1 });
     adapter.syncFrame();
     expect(renderer.dropsFlashed).toEqual(["b"]);
@@ -113,7 +113,7 @@ describe("SimToRendererAdapter", () => {
   it("fires flashResponded on respond-delivered events", () => {
     const { sim } = boot();
     const renderer = new MockRenderer();
-    const adapter = new SimToRendererAdapter(sim, renderer);
+    const adapter = new SimToRendererAdapter(sim, renderer, new Map());
     sim.lastStepEvents.push({ kind: "respond-delivered", componentId: "a" as ComponentId, revenue: 5, latencySeconds: 0.2 });
     adapter.syncFrame();
     expect(renderer.respondedFlashed).toEqual(["a"]);

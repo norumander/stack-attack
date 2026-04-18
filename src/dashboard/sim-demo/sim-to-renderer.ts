@@ -2,7 +2,7 @@
 import type { Sim } from "@sim/sim";
 import type { TopologyRenderer } from "@dashboard/render/topology-renderer";
 import type { Packet, PacketId } from "@sim/types";
-import type { RequestId } from "@core/types/ids";
+import type { ComponentId, RequestId } from "@core/types/ids";
 
 export class SimToRendererAdapter {
   private readonly trackedPackets: Set<PacketId> = new Set();
@@ -10,6 +10,7 @@ export class SimToRendererAdapter {
   constructor(
     private readonly sim: Sim,
     private readonly renderer: TopologyRenderer,
+    private readonly positions: Map<ComponentId, { x: number; y: number }>,
   ) {}
 
   syncFrame(): void {
@@ -40,23 +41,30 @@ export class SimToRendererAdapter {
       }
     }
 
-    const maybeUpdateSnake = (this.renderer as TopologyRenderer & {
-      updateClientSnake?: (
-        clientId: string,
-        snake: ReadonlyArray<{ id: string; type: string; count: number }>,
-      ) => void;
-    }).updateClientSnake;
-    if (maybeUpdateSnake) {
+    if (this.renderer.updateClientSnake) {
       for (const client of this.sim.clients.values()) {
-        maybeUpdateSnake.call(
-          this.renderer,
-          client.id,
-          client.snake.map((p) => ({
-            id: p.id as unknown as string,
-            type: inferRequestType(p),
-            count: p.requests.length,
-          })),
-        );
+        const clientPos = this.positions.get(client.id);
+        let trailDirection: { dx: number; dy: number } = { dx: -1, dy: 0 };
+        if (clientPos) {
+          for (const conn of this.sim.connections.values()) {
+            if (conn.from.componentId === client.id && conn.direction === "forward") {
+              const targetPos = this.positions.get(conn.to.componentId);
+              if (targetPos) {
+                const dx = targetPos.x - clientPos.x;
+                const dy = targetPos.y - clientPos.y;
+                const len = Math.hypot(dx, dy);
+                if (len > 0) trailDirection = { dx: -dx / len, dy: -dy / len };
+              }
+              break;
+            }
+          }
+        }
+        const snakeView = client.snake.map((p) => ({
+          id: p.id as unknown as string,
+          type: inferRequestType(p),
+          count: p.requests.length,
+        }));
+        this.renderer.updateClientSnake(client.id, snakeView, { trailDirection });
       }
     }
   }

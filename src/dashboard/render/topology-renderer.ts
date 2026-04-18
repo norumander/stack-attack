@@ -37,7 +37,11 @@ export interface TopologyRenderer {
    * client sprite (desaturated). Optional — renderers that don't support
    * snake rendering can omit this method.
    */
-  updateClientSnake?(clientId: ComponentId, packets: ReadonlyArray<{ id: string; type: string; count: number }>): void;
+  updateClientSnake?(
+    clientId: ComponentId,
+    packets: ReadonlyArray<{ id: string; type: string; count: number }>,
+    options?: { trailDirection?: { dx: number; dy: number } },
+  ): void;
 
   // ─ One-shot feedback ──────────────────────────────────────────────────
   flashOverload(id: ComponentId): void;
