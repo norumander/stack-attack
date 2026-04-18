@@ -116,6 +116,7 @@ describe("PhysicsCampaignController", () => {
     expect(controller.phase).toBe("build");
     expect(controller.budget).toBe(700);
     expect(controller.placedComponents.size).toBe(0);
+    expect(controller.placedTypes.size).toBe(0);
     expect(controller.placedConnections.size).toBe(0);
     expect(callbacks.phaseChanges.map((p) => p.phase)).toContain("build");
   });
