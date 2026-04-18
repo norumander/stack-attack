@@ -18,6 +18,8 @@ describe("PhysicsCampaignController", () => {
       callbacks: {
         onPlaced: (type, _id, gridPos) => callbacks.placed.push({ type, gridPos }),
         onConnected: () => {},
+        onComponentDeleted: () => {},
+        onConnectionDeleted: () => {},
         onPhaseChange: (phase, waveIndex) => callbacks.phaseChanges.push({ phase, waveIndex }),
         onBudgetChange: (b) => callbacks.budgetChanges.push(b),
       },

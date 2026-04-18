@@ -18,6 +18,8 @@ export type ConnectResult =
 export type CampaignCallbacks = {
   onPlaced(type: string, componentId: ComponentId, gridPos: { x: number; y: number }): void;
   onConnected(sourceId: ComponentId, targetId: ComponentId, forwardId: ConnectionId, backId: ConnectionId): void;
+  onComponentDeleted(componentId: ComponentId): void;
+  onConnectionDeleted(forwardId: ConnectionId): void;
   onPhaseChange(phase: Phase, waveIndex: number): void;
   onBudgetChange(budget: number): void;
 };
@@ -46,20 +48,23 @@ export class PhysicsCampaignController {
   currentWaveIndex = 0;
   budget: number;
   readonly placedComponents: Set<ComponentId> = new Set();
-  readonly placedConnections: Set<string> = new Set(); // key = sourceId + ":" + targetId
+  readonly placedTypes: Map<ComponentId, string> = new Map();
+  /** key = sourceId + ":" + targetId → forward connection id (so deletion can find it) */
+  readonly placedConnections: Map<string, ConnectionId> = new Map();
 
   constructor(private readonly opts: CampaignOptions) {
     this.budget = opts.waves[0]?.startBudget ?? 0;
   }
 
   tryPlace(type: string, gridPos: { x: number; y: number }): PlaceResult {
-    if (this.phase !== "build") return { ok: false, reason: "insufficient_budget" }; // re-use reason for simplicity
+    if (this.phase !== "build") return { ok: false, reason: "insufficient_budget" };
     const cost = this.opts.componentCosts.get(type);
     if (cost === undefined) return { ok: false, reason: "unknown_type" };
     if (this.budget < cost) return { ok: false, reason: "insufficient_budget" };
     this.budget -= cost;
     const id = mintComponentId();
     this.placedComponents.add(id);
+    this.placedTypes.set(id, type);
     this.opts.callbacks.onPlaced(type, id, gridPos);
     this.opts.callbacks.onBudgetChange(this.budget);
     return { ok: true, componentId: id };
@@ -70,11 +75,47 @@ export class PhysicsCampaignController {
     if (sourceId === targetId) return { ok: false, reason: "self_connect" };
     const key = `${sourceId as unknown as string}:${targetId as unknown as string}`;
     if (this.placedConnections.has(key)) return { ok: false, reason: "already_connected" };
-    this.placedConnections.add(key);
     const forwardId = mintConnectionId();
     const backId = mintConnectionId();
+    this.placedConnections.set(key, forwardId);
     this.opts.callbacks.onConnected(sourceId, targetId, forwardId, backId);
     return { ok: true };
+  }
+
+  /** Refunds the component's cost, deletes any connection touching it, and fires onComponentDeleted. */
+  tryDeleteComponent(componentId: ComponentId): boolean {
+    if (this.phase !== "build") return false;
+    if (!this.placedComponents.has(componentId)) return false;
+    const type = this.placedTypes.get(componentId);
+    const refund = type ? (this.opts.componentCosts.get(type) ?? 0) : 0;
+    // Delete every connection touching this component
+    const idStr = componentId as unknown as string;
+    for (const [key, fwdId] of [...this.placedConnections.entries()]) {
+      const [src, tgt] = key.split(":");
+      if (src === idStr || tgt === idStr) {
+        this.placedConnections.delete(key);
+        this.opts.callbacks.onConnectionDeleted(fwdId);
+      }
+    }
+    this.placedComponents.delete(componentId);
+    this.placedTypes.delete(componentId);
+    this.budget += refund;
+    this.opts.callbacks.onComponentDeleted(componentId);
+    this.opts.callbacks.onBudgetChange(this.budget);
+    return true;
+  }
+
+  /** Deletes the connection identified by its forward id (twin-pair deleted together by bootstrap). */
+  tryDeleteConnection(forwardId: ConnectionId): boolean {
+    if (this.phase !== "build") return false;
+    for (const [key, fwdId] of this.placedConnections.entries()) {
+      if (fwdId === forwardId) {
+        this.placedConnections.delete(key);
+        this.opts.callbacks.onConnectionDeleted(forwardId);
+        return true;
+      }
+    }
+    return false;
   }
 
   ready(): void {
@@ -109,6 +150,7 @@ export class PhysicsCampaignController {
     // from sim + renderer. Controller just resets economy and phase.
     this.budget = this.opts.waves[this.currentWaveIndex]!.startBudget;
     this.placedComponents.clear();
+    this.placedTypes.clear();
     this.placedConnections.clear();
     this.phase = "build";
     this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);

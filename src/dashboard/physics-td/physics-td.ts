@@ -9,7 +9,6 @@ import { activateCyberpunkHud } from "@dashboard/cyberpunk-hud";
 import { CyberpunkTopologyRenderer } from "@dashboard/render/cyberpunk-topology-renderer";
 import { Sim } from "@sim/sim";
 import { SimClient } from "@sim/client";
-import { SimConnection } from "@sim/connection";
 import { TrafficSource } from "@sim/traffic-source";
 import { makeSimRng } from "@sim/rng";
 import { evaluateSLA } from "@sim/sla";
@@ -21,7 +20,7 @@ import { CAMPAIGN_WAVES } from "./waves";
 import { PlacementUX } from "./placement-ux";
 import { ConnectUX } from "./connect-ux";
 import * as hud from "./hud-bridge";
-import type { ComponentId, ConnectionId, PortId } from "@core/types/ids";
+import type { ComponentId } from "@core/types/ids";
 
 const CLIENT_ID = "client" as ComponentId;
 // Drain budget after wave duration: extra real-seconds for in-flight packets to retire.
@@ -56,7 +55,6 @@ async function main(): Promise<void> {
   let adapter: SimToRendererAdapter | null = null;
   let waveDeadline = 0; // performance.now ms — cutoff for sim ticks
   let drainDeadline = 0; // performance.now ms — cutoff for drain phase
-  let connIdSeq = 0;
   let metrics = {
     responded: 0,
     terminated: 0,
@@ -67,11 +65,6 @@ async function main(): Promise<void> {
     totalPackets: 0,
   };
   const seenPacketIds = new Set<string>();
-
-  function mintConnId(prefix: string): ConnectionId {
-    connIdSeq += 1;
-    return `${prefix}${String(connIdSeq).padStart(6, "0")}` as ConnectionId;
-  }
 
   const controller = new PhysicsCampaignController({
     waves: CAMPAIGN_WAVES.map((w) => ({ id: w.id, startBudget: w.startBudget })),
@@ -84,15 +77,39 @@ async function main(): Promise<void> {
       onConnected: (sourceId, targetId, forwardId, backId) => {
         refs.connect?.applyConnection(sourceId, targetId, forwardId, backId);
       },
+      onComponentDeleted: (id) => {
+        // Remove all sim connections touching this component; renderer side is
+        // covered by the onConnectionDeleted callbacks the controller also fires.
+        for (const [connId, conn] of [...sim.connections.entries()]) {
+          if (conn.from.componentId === id || conn.to.componentId === id) {
+            sim.connections.delete(connId);
+          }
+        }
+        sim.components.delete(id);
+        sim.clients.delete(id);
+        positions.delete(id);
+        renderer.removeComponent(id);
+      },
+      onConnectionDeleted: (forwardId) => {
+        const fwd = sim.connections.get(forwardId);
+        const twinId = fwd?.twinId;
+        sim.connections.delete(forwardId);
+        renderer.removeConnection(forwardId);
+        if (twinId) {
+          sim.connections.delete(twinId);
+          renderer.removeConnection(twinId);
+        }
+      },
       onPhaseChange: (phase, waveIndex) => {
         const wave = CAMPAIGN_WAVES[waveIndex];
         hud.setPhase(phase);
         hud.setWavePill(waveIndex + 1, CAMPAIGN_WAVES.length);
         if (phase === "build" && wave) {
           hud.setBriefing(wave.title, wave.briefing);
-          hud.setStatus("Build phase — place components and click READY");
+          hud.setStatus("Build phase — place components, right-click to delete, READY when done");
           hud.hideLossModal();
           hud.setReadyDisabled(false);
+          setupClientForBuild();
         } else if (phase === "simulate") {
           hud.setStatus("Wave running…");
           hud.setReadyDisabled(true);
@@ -126,6 +143,39 @@ async function main(): Promise<void> {
     });
   });
 
+  // Right-click to delete a placed component (refunds cost). Connections
+  // attached to the deleted component are cleaned up automatically by the
+  // controller's onConnectionDeleted callbacks.
+  host.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    if (controller.phase !== "build") return;
+    const hit = renderer.hitTest(ev.clientX, ev.clientY);
+    if (!hit) return;
+    if (hit.componentId === CLIENT_ID) {
+      hud.setStatus("Cannot delete the client — it's the entry point");
+      return;
+    }
+    const ok = controller.tryDeleteComponent(hit.componentId);
+    if (ok) hud.setStatus("Deleted — budget refunded");
+  });
+
+  // Client visual lives on the board during build phase so the player can
+  // see the entry point and route to it. The SimClient (with TrafficSource)
+  // is attached on READY.
+  const CLIENT_POS = { x: -3, y: 0 };
+  function setupClientForBuild(): void {
+    if (positions.has(CLIENT_ID)) return; // already there
+    positions.set(CLIENT_ID, CLIENT_POS);
+    renderer.addComponent(CLIENT_ID, {
+      type: "client",
+      displayName: "client",
+      gridPosition: CLIENT_POS,
+    });
+  }
+  // Initial build phase already painted before controller emits onPhaseChange,
+  // so we also bootstrap the client here for the first wave.
+  setupClientForBuild();
+
   // ─── READY → simulate ───────────────────────────────────────────────
   document.getElementById("td-ready-btn")!.addEventListener("click", () => {
     if (controller.phase !== "build") return;
@@ -136,8 +186,18 @@ async function main(): Promise<void> {
     const wave = CAMPAIGN_WAVES[controller.currentWaveIndex];
     if (!wave) return;
 
-    // Mint Client at a fixed position (off the placed-component grid).
-    const clientPos = { x: -3, y: 0 };
+    // Verify the player has connected the client to something — otherwise
+    // packets will spawn but never enter the network.
+    const clientHasEgress = [...sim.connections.values()].some(
+      (c) => c.from.componentId === CLIENT_ID && c.direction === "forward",
+    );
+    if (!clientHasEgress) {
+      hud.setStatus("Connect the client to a component before READY");
+      return;
+    }
+
+    // Attach the SimClient (with TrafficSource for this wave) to the existing
+    // client visual. The renderer entry was created at build phase start.
     const ts = new TrafficSource(
       wave.wave,
       makeSimRng(42 + controller.currentWaveIndex),
@@ -151,42 +211,6 @@ async function main(): Promise<void> {
       waveEndTime: wave.wave.duration,
     });
     sim.addClient(client);
-    positions.set(CLIENT_ID, clientPos);
-    renderer.addComponent(CLIENT_ID, {
-      type: "client",
-      displayName: "client",
-      gridPosition: clientPos,
-    });
-
-    // Auto-connect Client to the closest placed component (no manual wiring needed
-    // for the entry point — the player's first placement becomes the entry).
-    const target = pickClosestPlaced(controller.placedComponents, positions, clientPos);
-    if (target) {
-      const fwdId = mintConnId("conn-cli-f-");
-      const backId = mintConnId("conn-cli-b-");
-      const fwd = new SimConnection({
-        id: fwdId,
-        from: { componentId: CLIENT_ID, portId: "p" as PortId },
-        to: { componentId: target, portId: "p" as PortId },
-        bandwidth: 500,
-        latencySeconds: 0.5,
-        twinId: backId,
-        direction: "forward",
-      });
-      const back = new SimConnection({
-        id: backId,
-        from: { componentId: target, portId: "p" as PortId },
-        to: { componentId: CLIENT_ID, portId: "p" as PortId },
-        bandwidth: 500,
-        latencySeconds: 0.5,
-        twinId: fwdId,
-        direction: "back",
-      });
-      sim.addConnection(fwd);
-      sim.addConnection(back);
-      renderer.addConnection(fwdId, CLIENT_ID, target, { direction: "forward" });
-      renderer.addConnection(backId, target, CLIENT_ID, { direction: "back" });
-    }
 
     // Reset metric accumulators
     metrics = {
@@ -305,6 +329,8 @@ async function main(): Promise<void> {
     refs.connect = new ConnectUX(sim, renderer, controller, () =>
       refs.placement?.isPlacing() ?? false,
     );
+    // Repaint the client visual for the next build phase.
+    setupClientForBuild();
   }
 
   // ─── Initial paint ──────────────────────────────────────────────────
@@ -313,25 +339,6 @@ async function main(): Promise<void> {
   hud.setBudget(controller.budget);
   hud.setBriefing(CAMPAIGN_WAVES[0]!.title, CAMPAIGN_WAVES[0]!.briefing);
   hud.setStatus("Build phase — place components and click READY");
-}
-
-function pickClosestPlaced(
-  placed: ReadonlySet<ComponentId>,
-  positions: Map<ComponentId, { x: number; y: number }>,
-  origin: { x: number; y: number },
-): ComponentId | null {
-  let best: ComponentId | null = null;
-  let bestDist = Infinity;
-  for (const id of placed) {
-    const p = positions.get(id);
-    if (!p) continue;
-    const d = Math.hypot(p.x - origin.x, p.y - origin.y);
-    if (d < bestDist) {
-      bestDist = d;
-      best = id;
-    }
-  }
-  return best;
 }
 
 void main();
