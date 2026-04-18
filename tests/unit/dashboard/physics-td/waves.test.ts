@@ -11,4 +11,13 @@ describe("CAMPAIGN_WAVES catalog", () => {
     expect(w4).toBeDefined();
     expect(w4!.wave.composition.largeRatio).toBeCloseTo(0.4);
   });
+
+  it("Wave 1 briefing instructs Server + Database (post Data Cache redesign)", () => {
+    const w1 = CAMPAIGN_WAVES.find((w) => w.id === "w1");
+    expect(w1).toBeDefined();
+    expect(w1!.briefing.toLowerCase()).toContain("database");
+    expect(w1!.briefing.toLowerCase()).not.toContain("lone server");
+    // $300 affords Server ($100) + Database ($200).
+    expect(w1!.startBudget).toBeGreaterThanOrEqual(300);
+  });
 });

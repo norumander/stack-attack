@@ -62,8 +62,8 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
   {
     id: "w1",
     title: "Wave 1 — First Light",
-    briefing: "10 reads/sec, no writes. A lone Server can handle this. Budget for one Server, one Database (optional).",
-    narrative: "First contact. A lone Server is enough to greet the trickle.",
+    briefing: "10 reads/sec, no writes. Server is a forwarder — it needs a Database behind it. Place Server + Database, connect them, then connect the Client to your Server.",
+    narrative: "First contact. Drop a Server, wire a Database behind it, and route the Client through the Server.",
     wave: {
       intensity: 10,
       packetRate: 1,
@@ -74,7 +74,7 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
       entryClients: [CLIENT_ID],
     },
     sla: { availability: 0.9, maxAvgLatencySeconds: 2, maxDropRate: 0.1 },
-    startBudget: 200,
+    startBudget: 300,
   },
   {
     id: "w2",
