@@ -12,6 +12,7 @@ import { PhysicsCampaignController } from "./campaign-controller";
 import { COMPONENT_COSTS } from "./component-factory";
 import { CAMPAIGN_WAVES } from "./waves";
 import { PlacementUX } from "./placement-ux";
+import { ConnectUX } from "./connect-ux";
 import * as hud from "./hud-bridge";
 
 async function main(): Promise<void> {
@@ -34,7 +35,8 @@ async function main(): Promise<void> {
   // UX exist (they need the controller). Tasks 5–6 set these refs.
   const refs: {
     placement: PlacementUX | null;
-  } = { placement: null };
+    connect: ConnectUX | null;
+  } = { placement: null, connect: null };
 
   const controller = new PhysicsCampaignController({
     waves: CAMPAIGN_WAVES.map((w) => ({ id: w.id, startBudget: w.startBudget })),
@@ -44,8 +46,7 @@ async function main(): Promise<void> {
         refs.placement?.applyPlacement(type, id, gridPos);
       },
       onConnected: (sourceId, targetId, forwardId, backId) => {
-        // Wired in Task 6
-        console.log("[physics-td] onConnected", sourceId, targetId, forwardId, backId);
+        refs.connect?.applyConnection(sourceId, targetId, forwardId, backId);
       },
       onPhaseChange: (phase, waveIndex) => {
         const wave = CAMPAIGN_WAVES[waveIndex];
@@ -74,8 +75,12 @@ async function main(): Promise<void> {
     },
   });
 
-  // Placement UX
+  // Placement UX (registers pointer handlers; runs first via callback insertion order).
   refs.placement = new PlacementUX(sim, renderer, controller);
+  // Connect UX (registers pointer handlers second; defers when placement is active).
+  refs.connect = new ConnectUX(sim, renderer, controller, () =>
+    refs.placement?.isPlacing() ?? false,
+  );
 
   // Wire palette buttons to placement mode.
   document.querySelectorAll<HTMLButtonElement>(".td-palette-btn").forEach((btn) => {
