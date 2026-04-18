@@ -3,6 +3,7 @@ import type { ArrivalContext, Outcome, Packet, SimCapability, Request } from "..
 export type CachingCapabilityOptions = {
   readonly capacity: number;
   readonly revenuePerRead: number;
+  readonly largeOnly?: boolean;
 };
 
 /**
@@ -70,6 +71,10 @@ export class CachingCapability implements SimCapability {
         misses.push(r);
         continue;
       }
+      if (this.opts.largeOnly && !r.isLarge) {
+        misses.push(r);
+        continue;
+      }
       if (this.lookupAndTouch(r.key)) hits.push(r);
       else misses.push(r);
     }
@@ -118,7 +123,9 @@ export class CachingCapability implements SimCapability {
 
   onArriveResponse(packet: Packet, _ctx: ArrivalContext): void {
     for (const r of packet.requests) {
-      if (!r.isWrite) this.populate(r.key);
+      if (r.isWrite) continue;
+      if (this.opts.largeOnly && !r.isLarge) continue;
+      this.populate(r.key);
     }
   }
 }

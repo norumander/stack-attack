@@ -111,6 +111,23 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
     startBudget: 250,
   },
   {
+    id: "w4",
+    title: "Wave 4 — Marketing Adds Images",
+    briefing: "60 reads/sec with 40% large assets. CDN absorbs large traffic before it reaches Server. Add a CDN in front of your existing topology.",
+    narrative: "Marketing pushes the launch banner. Plant a CDN in front of your stack so heavy assets never reach the Server.",
+    wave: {
+      intensity: 60,
+      packetRate: 6,
+      duration: 8,
+      composition: { writeRatio: 0, authRatio: 0, streamRatio: 0, largeRatio: 0.4, asyncRatio: 0 },
+      keyDistribution: { kind: "zipf", alpha: 1.07, spaceSize: 100 },
+      revenue: { perRead: 1, perWrite: 0, perAuth: 0, perStream: 0 },
+      entryClients: [CLIENT_ID],
+    },
+    sla: { availability: 0.85, maxAvgLatencySeconds: 2, maxDropRate: 0.15 },
+    startBudget: 350,
+  },
+  {
     id: "w5",
     title: "Wave 5 — Auth Wall",
     briefing: "60 req/sec with 25% auth-required. Place an API Gateway in front to terminate auth before it touches the read path.",

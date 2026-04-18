@@ -123,3 +123,50 @@ describe("CachingCapability — LRU eviction", () => {
     expect(cache.hasKey("k3")).toBe(true);
   });
 });
+
+function mkLargeRead(key: string): Request {
+  return { ...mkRead(key), isLarge: true };
+}
+
+describe("CachingCapability — largeOnly filter", () => {
+  beforeEach(() => resetIdCountersForTest());
+
+  it("partitions large reads (hits respond, misses forward) and lumps non-large reads into the forward as if uncached", () => {
+    const cache = new CachingCapability({ capacity: 8, revenuePerRead: 1, largeOnly: true });
+    cache.__preloadForTest(["k_large_hit"]);
+    const b = new SimComponent({ id: "b" as ComponentId, capabilities: [cache] });
+    const c = new SimComponent({
+      id: "c" as ComponentId,
+      capabilities: [new ProcessingCapability({ revenuePerWrite: 0, revenuePerRead: 1 })],
+      capacityPerSecond: 100,
+    });
+    const { sim, ab, bc } = threeHopTopology(b, c);
+    sim.spawnPacket(makePacket({
+      requests: [mkLargeRead("k_large_hit"), mkLargeRead("k_large_miss"), mkRead("k_small")],
+      edgeId: ab.id, speed: ab.speed, spawnedAt: 0, direction: "forward",
+    }));
+    sim.step(1 / 60);
+    // After cache dispatch: one forward on bc (the large miss + the small read,
+    // both bypass the cache slot under largeOnly), and one back-leg packet (the
+    // large hit responding).
+    const forward = sim.activePackets.find((p) => p.edgeId === bc.id);
+    const respond = sim.activePackets.find((p) => p.direction === "back");
+    expect(forward).toBeDefined();
+    expect(respond).toBeDefined();
+    expect(forward!.requests.map((r) => r.key).sort()).toEqual(["k_large_miss", "k_small"]);
+    expect(respond!.requests).toHaveLength(1);
+    expect(respond!.requests[0]!.key).toBe("k_large_hit");
+  });
+
+  it("does not populate slots from non-large response-leg requests", () => {
+    const cache = new CachingCapability({ capacity: 8, revenuePerRead: 1, largeOnly: true });
+    // Synthesize a back-leg packet carrying a small (non-large) read and feed
+    // it through onArriveResponse directly — ctx is unused for populate.
+    const responsePacket = makePacket({
+      requests: [mkRead("k_small_resp")],
+      edgeId: "x" as ConnectionId, speed: 0, spawnedAt: 0, direction: "back",
+    });
+    cache.onArriveResponse?.(responsePacket, {} as never);
+    expect(cache.hasKey("k_small_resp")).toBe(false);
+  });
+});

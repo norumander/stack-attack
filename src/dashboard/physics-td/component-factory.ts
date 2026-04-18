@@ -52,7 +52,7 @@ export function buildSimComponent(type: string, id: ComponentId): SimComponent |
     case "cdn":
       return new SimComponent({
         id,
-        capabilities: [new CachingCapability({ capacity: 24, revenuePerRead: 1 })],
+        capabilities: [new CachingCapability({ capacity: 24, revenuePerRead: 1, largeOnly: true })],
       });
     case "api_gateway":
       return new SimComponent({
