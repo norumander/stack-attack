@@ -50,13 +50,53 @@ const LANE_OFFSET_PX = 18;
 /** Distinct color for response-leg lanes (warm amber vs the cyan forward lane). */
 const CONNECTION_BACK_CORE = 0xff9c4d;
 const CONNECTION_BACK_HIGHLIGHT = 0xffd9a8;
+/**
+ * Inset applied to each end of whichever lane "overshoots" the canonical
+ * endpoints along the canonical direction. With a fixed (+X / −X) lane offset,
+ * the lane whose offset shares the sign of canonDx projects past the canonical
+ * endpoint in the line direction — pulling it back by this inset keeps its
+ * endpoint clean of the component sprite. The other lane already falls short
+ * and is left full-length.
+ */
+const LANE_END_INSET_PX = 30;
+
+/**
+ * Returns a copy of `path` with its two end segments shortened by `inset`
+ * pixels along their respective segment directions. No-op when a segment is
+ * shorter than the inset (avoids crossing its own midpoint).
+ */
+function insetPathEnds(path: Point[], inset: number): Point[] {
+  if (path.length < 2 || inset <= 0) return path;
+  const result = [...path];
+  const p0 = result[0]!;
+  const p1 = result[1]!;
+  const d0x = p1.x - p0.x;
+  const d0y = p1.y - p0.y;
+  const len0 = Math.hypot(d0x, d0y);
+  if (len0 > inset) {
+    result[0] = { x: p0.x + (d0x / len0) * inset, y: p0.y + (d0y / len0) * inset };
+  }
+  const n = result.length - 1;
+  const pn = result[n]!;
+  const pm = result[n - 1]!;
+  const dnx = pm.x - pn.x;
+  const dny = pm.y - pn.y;
+  const lenN = Math.hypot(dnx, dny);
+  if (lenN > inset) {
+    result[n] = { x: pn.x + (dnx / lenN) * inset, y: pn.y + (dny / lenN) * inset };
+  }
+  return result;
+}
 
 /**
  * Routes a connection from (fromGX, fromGY) → (toGX, toGY) as an L-shape
- * that follows the iso grid axes: first travels along the column axis, then
- * along the row axis. Returns the three waypoints in world coords
- * (start, corner, end). When from and to share a row or column the corner
- * coincides with one endpoint and the path degenerates to a straight line.
+ * aligned with the iso grid plane: first travels along the grid-X axis
+ * (holding grid-Y at the source row), then along the grid-Y axis. The
+ * corner sits at grid (toGX, fromGY) and projects to world coords through
+ * gridToWorld so both legs render along the two iso diagonal axes visible
+ * in the tile pattern. Returns the three waypoints (start, corner, end);
+ * when source and target share a grid row or column the corner coincides
+ * with an endpoint and the path degenerates to a straight line.
  */
 function routePath(fromGX: number, fromGY: number, toGX: number, toGY: number): Point[] {
   const start = gridToWorld(fromGX, fromGY);
@@ -82,33 +122,43 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
       s.path = [];
       return;
     }
-    const raw = routePath(from.gridX, from.gridY, to.gridX, to.gridY);
-    // Compute perpendicular against the overall start→end vector so the L-path
-    // shifts uniformly into a parallel L (no zigzag).
-    const start = raw[0]!;
-    const end = raw[raw.length - 1]!;
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const len = Math.hypot(dx, dy);
-    if (len === 0) {
-      s.path = raw;
-      return;
-    }
-    let perpX = -dy / len;
-    let perpY = dx / len;
-    // Canonicalize the perpendicular so it points the same way regardless of
-    // which endpoint is parametric "from" vs "to". Without this, twin connections
-    // (forward + back between the same component pair) compute opposite
-    // perpendiculars; combined with the per-direction sign flip below, both
-    // lanes end up on the same side.
-    if (perpY < 0 || (perpY === 0 && perpX < 0)) {
-      perpX = -perpX;
-      perpY = -perpY;
-    }
-    const sign = s.direction === "forward" ? -1 : 1;
-    const ox = perpX * LANE_OFFSET_PX * sign;
-    const oy = perpY * LANE_OFFSET_PX * sign;
-    s.path = raw.map((p) => ({ x: p.x + ox, y: p.y + oy }));
+    // Canonicalize the underlying L so twin connections (forward + back)
+    // trace the SAME shape. Sort the two endpoints by (gridX, gridY) into
+    // a stable pair ordering; route that canonical pair once, then reverse
+    // the waypoints for whichever direction walks it backwards. Both lanes
+    // are then parallel offsets of one L, not two mirrored Ls.
+    const aFirst =
+      from.gridX < to.gridX ||
+      (from.gridX === to.gridX && from.gridY <= to.gridY);
+    const canonFrom = aFirst ? from : to;
+    const canonTo = aFirst ? to : from;
+    const rawCanon = routePath(canonFrom.gridX, canonFrom.gridY, canonTo.gridX, canonTo.gridY);
+    const raw = aFirst ? rawCanon : [...rawCanon].reverse();
+    // Fixed screen-space lane offset — blue (forward) shifts right by
+    // LANE_OFFSET_PX, orange (back) shifts left by the same amount. Using a
+    // constant screen-X offset (instead of a perpendicular-to-line offset)
+    // keeps BOTH the visual spacing AND the blue-on-right-of-orange
+    // relationship identical for every connection, regardless of the
+    // connection's orientation on the iso grid. Canonicalization of the
+    // underlying L shape above handles the forward/back twin symmetry; here
+    // we just translate by a fixed vector.
+    const sign = s.direction === "forward" ? 1 : -1;
+    const ox = LANE_OFFSET_PX * sign;
+    const oy = 0;
+    const offsetPath = raw.map((p) => ({ x: p.x + ox, y: p.y + oy }));
+    // Which lane "overshoots" the canonical endpoints depends on the sign of
+    // canonDx (the canonical direction's X component). When canonDx > 0, the
+    // blue (+X) offset projects forward past the canonical endpoint — blue
+    // overshoots and should be trimmed. When canonDx < 0, orange overshoots.
+    // For canonDx == 0 (purely vertical canonical line), neither lane
+    // overshoots; we default to trimming the back lane so the behavior stays
+    // consistent with the earlier (always-trim-orange) default.
+    const canonDx = rawCanon[rawCanon.length - 1]!.x - rawCanon[0]!.x;
+    const trimForward = canonDx > 0;
+    const shouldTrim =
+      (trimForward && s.direction === "forward") ||
+      (!trimForward && s.direction === "back");
+    s.path = shouldTrim ? insetPathEnds(offsetPath, LANE_END_INSET_PX) : offsetPath;
   };
 
   const strokePath = (gfx: Graphics, path: Point[], width: number, color: number, alpha: number): void => {
