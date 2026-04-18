@@ -3,6 +3,13 @@ import type { ArrivalContext, Outcome, Packet, SimCapability, Request } from "..
 export type CachingCapabilityOptions = {
   readonly capacity: number;
   readonly revenuePerRead: number;
+  /**
+   * When true, only reads with `isLarge: true` participate in the LRU.
+   * Non-large reads are forwarded to the first egress unchanged and do
+   * not populate slots on the response leg. Suitable for CDN placement
+   * where only binary assets should be cached. Default: false (cache all
+   * non-write requests).
+   */
   readonly largeOnly?: boolean;
 };
 
