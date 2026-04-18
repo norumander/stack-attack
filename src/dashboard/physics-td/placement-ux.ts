@@ -15,7 +15,9 @@ import type { ComponentId } from "@core/types/ids";
  *
  * Click palette → enters "placing mode" (renderer ghost follows cursor).
  * Click grid → controller.tryPlace; on success, applyPlacement mints the
- * SimComponent + adds to renderer. Stays in placing mode for fast multi-place.
+ * SimComponent + adds to renderer, then exits placing mode. A failed place
+ * (insufficient budget, occupied tile, etc.) keeps placing mode active so
+ * the player can retry on a valid tile.
  * Click palette button while already placing the same type → cancels.
  */
 export class PlacementUX {
@@ -45,7 +47,9 @@ export class PlacementUX {
       const result = this.controller.tryPlace(this.placingType, grid);
       if (!result.ok) {
         setStatus(`Cannot place: ${result.reason}`);
+        return;
       }
+      this.exitPlacingMode();
     });
   }
 
