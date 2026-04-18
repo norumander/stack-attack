@@ -22,6 +22,7 @@ export class TrafficSource {
     const isLarge = this.rng() < this.wave.composition.largeRatio;
     const isStream = this.rng() < this.wave.composition.streamRatio;
     const isAsync = this.rng() < this.wave.composition.asyncRatio;
+    const zone = this.rollZone();
     const requests: Request[] = [];
     for (let i = 0; i < this.perPacketCount; i += 1) {
       const keyIdx = this.sampleKey(this.rng());
@@ -34,7 +35,7 @@ export class TrafficSource {
         isAsync,
         ...(isStream && this.wave.streamConfig ? { stream: this.wave.streamConfig } : {}),
         originClientId,
-        originZone: null,
+        originZone: zone,
         spawnedAt: simTime,
       });
     }
@@ -49,6 +50,19 @@ export class TrafficSource {
       direction: "forward",
       route: [],
     };
+  }
+
+  private rollZone(): string | null {
+    const dist = this.wave.zoneDistribution;
+    if (!dist || dist.size === 0) return null;
+    const u = this.rng();
+    let acc = 0;
+    for (const [zone, weight] of dist) {
+      acc += weight;
+      if (u < acc) return zone;
+    }
+    // Floating-point safety: if u rounds slightly past 1, return last zone.
+    return [...dist.keys()].at(-1) ?? null;
   }
 }
 
