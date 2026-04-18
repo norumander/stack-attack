@@ -437,8 +437,13 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     }
   }
 
-  addConnection(id: ConnectionId, sourceId: ComponentId, targetId: ComponentId): void {
-    this.connectionLayer?.add(id, sourceId, targetId);
+  addConnection(
+    id: ConnectionId,
+    sourceId: ComponentId,
+    targetId: ComponentId,
+    options?: { direction?: "forward" | "back" },
+  ): void {
+    this.connectionLayer?.add(id, sourceId, targetId, options?.direction ?? "forward");
   }
   removeConnection(id: ConnectionId): void {
     this.connectionLayer?.remove(id);

@@ -19,7 +19,12 @@ export interface TopologyRenderer {
   updateComponent(id: ComponentId, update: ComponentUpdate): void;
 
   // ─ Connections ────────────────────────────────────────────────────────
-  addConnection(id: ConnectionId, sourceId: ComponentId, targetId: ComponentId): void;
+  addConnection(
+    id: ConnectionId,
+    sourceId: ComponentId,
+    targetId: ComponentId,
+    options?: { direction?: "forward" | "back" },
+  ): void;
   removeConnection(id: ConnectionId): void;
   updateConnection(id: ConnectionId, update: ConnectionUpdate): void;
 

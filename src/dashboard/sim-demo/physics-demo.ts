@@ -21,8 +21,7 @@ async function main(): Promise<void> {
     renderer.addComponent(id, { type: normalizeType(type), displayName: String(id), gridPosition: pos });
   }
   for (const [id, conn] of sim.connections.entries()) {
-    if (conn.direction !== "forward") continue;
-    renderer.addConnection(id, conn.from.componentId, conn.to.componentId);
+    renderer.addConnection(id, conn.from.componentId, conn.to.componentId, { direction: conn.direction });
   }
 
   const adapter = new SimToRendererAdapter(sim, renderer);

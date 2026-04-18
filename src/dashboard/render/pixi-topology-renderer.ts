@@ -318,7 +318,12 @@ export class PixiTopologyRenderer implements TopologyRenderer {
     }
   }
 
-  addConnection(id: ConnectionId, sourceId: ComponentId, targetId: ComponentId): void {
+  addConnection(
+    id: ConnectionId,
+    sourceId: ComponentId,
+    targetId: ComponentId,
+    _options?: { direction?: "forward" | "back" },
+  ): void {
     if (!this.connectionsLayer) return;
     const line = new Graphics();
     this.connectionsLayer.addChild(line);

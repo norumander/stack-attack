@@ -13,25 +13,40 @@ interface Point {
 interface ConnectionRenderState {
   sourceId: ComponentId;
   targetId: ComponentId;
+  /** Forward = lane offset −LANE_OFFSET_PX along perpendicular; back = +LANE_OFFSET_PX. */
+  direction: "forward" | "back";
   /** 0..1 utilization set by updateConnection; modulates core alpha. */
   loadUtilization: number;
-  /** L-routed waypoints in world coords: [start, corner, end]. */
+  /** L-routed waypoints in world coords (already offset per `direction`): [start, corner, end]. */
   path: Point[];
 }
 
 export interface ConnectionLayer {
   readonly container: Container;
-  add(id: ConnectionId, sourceId: ComponentId, targetId: ComponentId): void;
+  add(
+    id: ConnectionId,
+    sourceId: ComponentId,
+    targetId: ComponentId,
+    direction?: "forward" | "back",
+  ): void;
   remove(id: ConnectionId): void;
   update(id: ConnectionId, update: ConnectionUpdate): void;
-  /** Returns the routed path for a connection (≥ 2 points). */
+  /** Returns the routed path for a connection (≥ 2 points), already lane-offset. */
   pathFor(id: ConnectionId): Point[] | null;
-  /** Back-compat: first and last point of the path. */
+  /** Back-compat: first and last point of the (offset) path. */
   endpoints(id: ConnectionId): { fromX: number; fromY: number; toX: number; toY: number } | null;
+  /**
+   * Returns the offset endpoints (post-perpendicular shift) so consumers like
+   * the packet-layer can place dots on the correct lane.
+   */
+  getEndpoints(id: ConnectionId): { sx: number; sy: number; tx: number; ty: number } | null;
   entries(): IterableIterator<[ConnectionId, ConnectionRenderState]>;
   /** Redraw everything from current component positions. */
   redraw(): void;
 }
+
+/** Perpendicular offset applied to each lane — total separation is 2× this. */
+const LANE_OFFSET_PX = 6;
 
 /**
  * Routes a connection from (fromGX, fromGY) → (toGX, toGY) as an L-shape
@@ -64,7 +79,24 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
       s.path = [];
       return;
     }
-    s.path = routePath(from.gridX, from.gridY, to.gridX, to.gridY);
+    const raw = routePath(from.gridX, from.gridY, to.gridX, to.gridY);
+    // Compute perpendicular against the overall start→end vector so the L-path
+    // shifts uniformly into a parallel L (no zigzag).
+    const start = raw[0]!;
+    const end = raw[raw.length - 1]!;
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const len = Math.hypot(dx, dy);
+    if (len === 0) {
+      s.path = raw;
+      return;
+    }
+    const perpX = -dy / len;
+    const perpY = dx / len;
+    const sign = s.direction === "forward" ? -1 : 1;
+    const ox = perpX * LANE_OFFSET_PX * sign;
+    const oy = perpY * LANE_OFFSET_PX * sign;
+    s.path = raw.map((p) => ({ x: p.x + ox, y: p.y + oy }));
   };
 
   const strokePath = (gfx: Graphics, path: Point[], width: number, color: number, alpha: number): void => {
@@ -101,8 +133,13 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
     }
   };
 
-  const add = (id: ConnectionId, sourceId: ComponentId, targetId: ComponentId): void => {
-    states.set(id, { sourceId, targetId, loadUtilization: 0, path: [] });
+  const add = (
+    id: ConnectionId,
+    sourceId: ComponentId,
+    targetId: ComponentId,
+    direction: "forward" | "back" = "forward",
+  ): void => {
+    states.set(id, { sourceId, targetId, direction, loadUtilization: 0, path: [] });
     redraw();
   };
   const remove = (id: ConnectionId): void => {
@@ -133,6 +170,14 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
     };
   };
 
+  const getEndpoints = (id: ConnectionId) => {
+    const s = states.get(id);
+    if (!s || s.path.length < 2) return null;
+    const start = s.path[0]!;
+    const end = s.path[s.path.length - 1]!;
+    return { sx: start.x, sy: start.y, tx: end.x, ty: end.y };
+  };
+
   return {
     container,
     add,
@@ -140,6 +185,7 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
     update,
     pathFor,
     endpoints,
+    getEndpoints,
     entries: () => states.entries(),
     redraw,
   };
