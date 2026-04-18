@@ -6,7 +6,7 @@ import {
   describeObjective,
   describeReward,
   type BriefingDisplay,
-} from "../../../src/dashboard/td/briefing-text.js";
+} from "../../../src/dashboard/physics-td/briefing-text.js";
 import { WAVE_1 } from "../../../src/modes/td/td-waves.js";
 
 describe("computeLoad", () => {

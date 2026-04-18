@@ -2,7 +2,7 @@
 import type { WaveDef } from "@sim/wave";
 import type { SLAThresholds } from "@sim/sla";
 import type { ComponentId } from "@core/types/ids";
-import { computeLoad, type BriefingDisplay } from "@dashboard/td/briefing-text";
+import { computeLoad, type BriefingDisplay } from "./briefing-text";
 
 export type CampaignWave = {
   readonly id: string;
