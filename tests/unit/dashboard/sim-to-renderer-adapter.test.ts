@@ -118,4 +118,24 @@ describe("SimToRendererAdapter", () => {
     adapter.syncFrame();
     expect(renderer.respondedFlashed).toEqual(["a"]);
   });
+
+  it("throttles flashes within the window", () => {
+    const { sim } = boot();
+    const renderer = new MockRenderer();
+    const adapter = new SimToRendererAdapter(sim, renderer, new Map(), { flashWindowMs: 1000 });
+    // Push 5 drop events on the same component
+    for (let i = 0; i < 5; i += 1) {
+      sim.lastStepEvents.push({ kind: "drop", componentId: "b" as ComponentId, reason: "x", count: 1 });
+    }
+    adapter.syncFrame();
+    // First syncFrame fires once (window starts)
+    expect(renderer.dropsFlashed).toEqual(["b"]);
+    // Second syncFrame within window — no new flash
+    sim.lastStepEvents.length = 0;
+    for (let i = 0; i < 5; i += 1) {
+      sim.lastStepEvents.push({ kind: "drop", componentId: "b" as ComponentId, reason: "x", count: 1 });
+    }
+    adapter.syncFrame();
+    expect(renderer.dropsFlashed).toEqual(["b"]); // still just one
+  });
 });
