@@ -5,6 +5,8 @@ import { ForwardingCapability } from "@sim/capabilities/forwarding";
 import { CachingCapability } from "@sim/capabilities/caching";
 import { GatewayCapability } from "@sim/capabilities/gateway";
 import { LoadBalancerCapability } from "@sim/capabilities/load-balancer";
+import { QueueCapability } from "@sim/capabilities/queue";
+import { WorkerCapability } from "@sim/capabilities/worker";
 
 export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
   ["server", 100],
@@ -13,6 +15,8 @@ export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
   ["load_balancer", 175],
   ["cdn", 200],
   ["api_gateway", 250],
+  ["queue", 125],
+  ["worker", 150],
 ]);
 
 /** Sprite type used by the renderer to pick the iso tile graphic. */
@@ -23,10 +27,13 @@ export const COMPONENT_SPRITE_TYPE: ReadonlyMap<string, string> = new Map([
   ["load_balancer", "load_balancer"],
   ["cdn", "cdn"],
   ["api_gateway", "api_gateway"],
+  ["queue", "queue"],
+  ["worker", "worker"],
 ]);
 
 export const COMPONENT_FACTORY: ReadonlyArray<string> = [
   "server", "database", "data_cache", "load_balancer", "cdn", "api_gateway",
+  "queue", "worker",
 ];
 
 export function buildSimComponent(type: string, id: ComponentId): SimComponent | null {
@@ -58,6 +65,16 @@ export function buildSimComponent(type: string, id: ComponentId): SimComponent |
       return new SimComponent({
         id,
         capabilities: [new GatewayCapability({ revenuePerAuth: 4 })],
+      });
+    case "queue":
+      return new SimComponent({
+        id,
+        capabilities: [new QueueCapability({ capacity: 64 })],
+      });
+    case "worker":
+      return new SimComponent({
+        id,
+        capabilities: [new WorkerCapability({ pullRate: 30, revenuePerItem: 1 }, null)],
       });
     default:
       return null;

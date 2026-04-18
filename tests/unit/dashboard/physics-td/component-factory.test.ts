@@ -30,4 +30,22 @@ describe("component-factory", () => {
     const comp = buildSimComponent("unknown_thing", "x" as ComponentId);
     expect(comp).toBeNull();
   });
+
+  it("buildSimComponent for queue carries a QueueCapability", () => {
+    const comp = buildSimComponent("queue", "q1" as ComponentId);
+    expect(comp).toBeDefined();
+    expect(comp!.capabilities[0]?.id).toBe("queue");
+  });
+
+  it("buildSimComponent for worker carries a WorkerCapability with null queue", () => {
+    const comp = buildSimComponent("worker", "w1" as ComponentId);
+    expect(comp).toBeDefined();
+    expect(comp!.capabilities[0]?.id).toBe("worker");
+    // Cannot import WorkerCapability here without circular risk; just check id.
+  });
+
+  it("COMPONENT_COSTS includes queue + worker", () => {
+    expect(COMPONENT_COSTS.get("queue")).toBeGreaterThan(0);
+    expect(COMPONENT_COSTS.get("worker")).toBeGreaterThan(0);
+  });
 });

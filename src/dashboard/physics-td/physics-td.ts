@@ -23,6 +23,7 @@ import { COMPONENT_COSTS } from "./component-factory";
 import { CAMPAIGN_WAVES, computeBriefingForCampaignWave } from "./waves";
 import { PlacementUX } from "./placement-ux";
 import { ConnectUX } from "./connect-ux";
+import { wireWorkers } from "./wire-workers";
 import * as hud from "./hud-bridge";
 import type { ComponentId } from "@core/types/ids";
 
@@ -333,6 +334,7 @@ async function main(): Promise<void> {
       waveEndTime: wave.wave.duration,
     });
     sim.addClient(client);
+    wireWorkers(sim);
 
     // Reset metric accumulators
     metrics = {

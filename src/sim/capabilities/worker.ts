@@ -8,10 +8,13 @@ export type WorkerCapabilityOptions = {
 
 export class WorkerCapability implements SimCapability {
   readonly id = "worker";
-  readonly queue: QueueCapability;
+  queue: QueueCapability | null;
   private credits = 0;
-  constructor(public readonly opts: WorkerCapabilityOptions, queue: QueueCapability) {
+  constructor(public readonly opts: WorkerCapabilityOptions, queue: QueueCapability | null = null) {
     this.queue = queue;
+  }
+  setQueue(q: QueueCapability): void {
+    this.queue = q;
   }
   onArriveRequest(): { kind: "drop"; reason: string; count: number } {
     return { kind: "drop", reason: "worker_not_arrived_path", count: 0 };
@@ -21,6 +24,7 @@ export class WorkerCapability implements SimCapability {
   }
   tryPullOne(): Packet | null {
     if (this.credits < 1) return null;
+    if (!this.queue) return null;
     const p = this.queue.held.shift();
     if (!p) return null;
     this.credits -= 1;
