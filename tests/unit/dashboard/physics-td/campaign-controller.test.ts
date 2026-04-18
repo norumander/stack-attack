@@ -51,7 +51,7 @@ describe("PhysicsCampaignController", () => {
     controller.tryPlace("server", { x: 5, y: 1 });
     const result = controller.tryPlace("server", { x: 6, y: 1 });
     expect(result.ok).toBe(false);
-    expect(result.reason).toBe("insufficient_budget");
+    if (!result.ok) expect(result.reason).toBe("insufficient_budget");
     expect(controller.budget).toBe(0);
     expect(callbacks.placed).toHaveLength(5);
   });
