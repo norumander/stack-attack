@@ -1,13 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  renderBriefing,
   computeLoad,
   describeTraffic,
-  describeObjective,
   describeReward,
-  type BriefingDisplay,
 } from "../../../src/dashboard/physics-td/briefing-text.js";
-import { WAVE_1 } from "../../../src/modes/td/td-waves.js";
 
 describe("computeLoad", () => {
   it.each([
@@ -70,14 +66,6 @@ describe("describeTraffic", () => {
   });
 });
 
-describe("describeObjective", () => {
-  it("Wave 1 → fixed launch-day copy", () => {
-    expect(describeObjective(WAVE_1)).toBe(
-      "Survive 30 ticks. Don't lose your foothold.",
-    );
-  });
-});
-
 describe("describeReward", () => {
   it("single type → '$N per user served'", () => {
     expect(describeReward(new Map([["api_read", 1]]))).toBe(
@@ -92,15 +80,3 @@ describe("describeReward", () => {
   });
 });
 
-describe("renderBriefing — Wave 1", () => {
-  it("produces the Wave 1 briefing shape", () => {
-    const display: BriefingDisplay = renderBriefing(WAVE_1);
-    expect(display.title).toBe("LAUNCH DAY");
-    expect(display.load).toEqual({ dots: 1, label: "LIGHT" });
-    expect(display.traffic).toBe("A handful of readers");
-    expect(display.objective).toBe(
-      "Survive 30 ticks. Don't lose your foothold.",
-    );
-    expect(display.reward).toBe("$1 per user served");
-  });
-});

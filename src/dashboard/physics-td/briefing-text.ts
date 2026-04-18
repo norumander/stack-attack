@@ -1,5 +1,3 @@
-import type { TDWaveDefinition } from "@modes/td/td-waves.js";
-
 export interface BriefingDisplay {
   readonly title: string;
   readonly narrative?: string;
@@ -34,13 +32,6 @@ export function describeTraffic(
   return "Mixed traffic";
 }
 
-export function describeObjective(wave: TDWaveDefinition): string {
-  if (wave.id === 1) {
-    return "Survive 30 ticks. Don't lose your foothold.";
-  }
-  return `Hold the line for ${wave.duration} ticks.`;
-}
-
 export function describeReward(
   revenue: ReadonlyMap<string, number>,
 ): string {
@@ -52,20 +43,3 @@ export function describeReward(
   return `$${min}–$${max} per user served`;
 }
 
-export function renderBriefing(wave: TDWaveDefinition): BriefingDisplay {
-  // Filter revenue to only the traffic types active in this wave's composition.
-  const activeRevenue = new Map<string, number>();
-  for (const [type, rate] of wave.revenuePerRequestType) {
-    if (wave.composition.has(type)) {
-      activeRevenue.set(type, rate);
-    }
-  }
-
-  return {
-    title: wave.name.toUpperCase(),
-    load: computeLoad(wave.intensity),
-    traffic: describeTraffic(wave.composition),
-    objective: describeObjective(wave),
-    reward: describeReward(activeRevenue),
-  };
-}

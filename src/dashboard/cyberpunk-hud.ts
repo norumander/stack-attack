@@ -8,7 +8,7 @@
  * migrated yet.
  */
 
-import type { BriefingDisplay } from "./td/briefing-text.js";
+import type { BriefingDisplay } from "./physics-td/briefing-text.js";
 
 export interface CyberpunkHudController {
   updateBriefing(display: BriefingDisplay): void;
