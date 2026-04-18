@@ -186,7 +186,7 @@ async function main(): Promise<void> {
 
   infoPanel = bindInfoPanel({
     renderer: { onPointerDown: (cb) => renderer.onPointerDown((ev) => cb({ hit: ev.hit })) },
-    sim,
+    getSim: () => sim,
     controller,
     dossierStore,
     hudCtrl,
@@ -689,6 +689,7 @@ async function main(): Promise<void> {
     sim.activePackets.length = 0;
     positions.clear();
     componentTypes.clear();
+    perComponentDrops = new Map();
     perComponentProcessed = new Map();
     // Fresh sim instance to wipe internal merge maps + revenue ledger.
     sim = new Sim({ seed: 1 });

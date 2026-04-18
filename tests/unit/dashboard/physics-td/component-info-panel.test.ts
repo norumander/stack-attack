@@ -87,7 +87,7 @@ describe("bindInfoPanel", () => {
     const hudCtrl = { showToast: (m: string) => toasts.push(m) };
     const handle = bindInfoPanel({
       renderer,
-      sim,
+      getSim: () => sim,
       controller,
       dossierStore,
       hudCtrl,

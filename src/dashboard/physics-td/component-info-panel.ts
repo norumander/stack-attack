@@ -9,7 +9,7 @@ export interface InfoPanelDeps {
   readonly renderer: {
     onPointerDown(cb: (ev: { hit: { componentId: ComponentId } | null }) => void): void;
   };
-  readonly sim: Sim;
+  readonly getSim: () => Sim;
   readonly controller: { readonly phase: string };
   readonly dossierStore: ComponentDossierStore;
   readonly hudCtrl: { showToast(message: string): void };
@@ -93,7 +93,7 @@ export function bindInfoPanel(deps: InfoPanelDeps): InfoPanelHandle {
 
   function updateLiveStats(): void {
     if (!openId) return;
-    const comp = deps.sim.components.get(openId);
+    const comp = deps.getSim().components.get(openId);
     if (!comp) { hide(); return; }
     clearChildren(stats!);
     if (deps.controller.phase !== "simulate") return;
