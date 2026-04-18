@@ -156,4 +156,21 @@ export class PhysicsCampaignController {
     this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
     this.opts.callbacks.onBudgetChange(this.budget);
   }
+
+  /**
+   * Dev affordance: jump to an arbitrary wave, clearing prior placements
+   * and re-seeding budget to that wave's startBudget. Bootstrap is
+   * responsible for clearing the visuals via clearWaveWorld().
+   */
+  jumpToWave(index: number): void {
+    const clamped = Math.max(0, Math.min(this.opts.waves.length - 1, index));
+    this.currentWaveIndex = clamped;
+    this.budget = this.opts.waves[clamped]!.startBudget;
+    this.placedComponents.clear();
+    this.placedTypes.clear();
+    this.placedConnections.clear();
+    this.phase = "build";
+    this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
+    this.opts.callbacks.onBudgetChange(this.budget);
+  }
 }

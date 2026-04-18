@@ -166,6 +166,42 @@ async function main(): Promise<void> {
     },
   });
 
+  // ─── Dev wave-jump selector ─────────────────────────────────────────
+  const devSelect = document.getElementById("td-dev-wave-select") as HTMLSelectElement | null;
+  if (devSelect) {
+    // Clear any existing options without using innerHTML.
+    while (devSelect.firstChild) devSelect.removeChild(devSelect.firstChild);
+    // Populate options from CAMPAIGN_WAVES.
+    for (let i = 0; i < CAMPAIGN_WAVES.length; i += 1) {
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = CAMPAIGN_WAVES[i]!.title;
+      devSelect.appendChild(opt);
+    }
+    // Honor ?wave=N on URL (1-indexed for human friendliness).
+    const urlWaveParam = new URLSearchParams(window.location.search).get("wave");
+    if (urlWaveParam !== null) {
+      const idx = Number.parseInt(urlWaveParam, 10);
+      if (Number.isFinite(idx) && idx >= 1 && idx <= CAMPAIGN_WAVES.length) {
+        const zeroIdx = idx - 1;
+        devSelect.value = String(zeroIdx);
+        // Defer the jump until after initial paint so the controller's first
+        // onPhaseChange callback fires for wave 0 first (paint reset).
+        queueMicrotask(() => {
+          clearWaveWorld();
+          controller.jumpToWave(zeroIdx);
+        });
+      }
+    }
+    // Wire change → jump.
+    devSelect.addEventListener("change", () => {
+      const idx = Number.parseInt(devSelect.value, 10);
+      if (!Number.isFinite(idx)) return;
+      clearWaveWorld();
+      controller.jumpToWave(idx);
+    });
+  }
+
   refs.placement = new PlacementUX(sim, renderer, controller);
   refs.connect = new ConnectUX(
     sim,

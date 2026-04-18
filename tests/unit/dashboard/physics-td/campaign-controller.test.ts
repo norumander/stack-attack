@@ -108,4 +108,27 @@ describe("PhysicsCampaignController", () => {
     controller.nextWave();
     expect(controller.phase).toBe("campaign-complete");
   });
+
+  it("jumpToWave(index) switches to that wave's build phase with its startBudget", () => {
+    const { controller, callbacks } = makeController();
+    controller.jumpToWave(1);
+    expect(controller.currentWaveIndex).toBe(1);
+    expect(controller.phase).toBe("build");
+    expect(controller.budget).toBe(700);
+    expect(controller.placedComponents.size).toBe(0);
+    expect(controller.placedConnections.size).toBe(0);
+    expect(callbacks.phaseChanges.map((p) => p.phase)).toContain("build");
+  });
+
+  it("jumpToWave clamps out-of-range index to last wave", () => {
+    const { controller } = makeController();
+    controller.jumpToWave(99);
+    expect(controller.currentWaveIndex).toBe(1); // 2 waves in test fixture
+  });
+
+  it("jumpToWave clamps negative index to 0", () => {
+    const { controller } = makeController();
+    controller.jumpToWave(-5);
+    expect(controller.currentWaveIndex).toBe(0);
+  });
 });
