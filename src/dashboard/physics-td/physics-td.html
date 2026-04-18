@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BrainLift — Physics TD</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="../cyberpunk-hud.css" />
+  <style>
+    html, body { margin: 0; padding: 0; background: #0a1420; color: #ccddee; font-family: monospace; overflow: hidden; }
+    #canvas-host { position: absolute; inset: 0; }
+    /* Hidden mirror divs that cyberpunk-hud.ts observes — physics-td.ts writes
+       to these, the HUD reflects them to its visible cyberpunk-styled DOM. */
+    .td-hud-mirror { display: none; }
+  </style>
+</head>
+<body>
+  <div id="canvas-host"></div>
+
+  <!-- Mirror divs observed by cyberpunk-hud.ts. Writing to these updates the
+       visible HUD without us needing to touch the HUD's internal DOM. -->
+  <div class="td-hud-mirror">
+    <div id="td-hud-wave">1 of 4</div>
+    <div id="td-hud-phase">build</div>
+    <div id="td-hud-budget">$200</div>
+    <div id="td-status">Build phase — place components and click READY</div>
+
+    <!-- Briefing card -->
+    <div id="td-briefing-title">Wave 1 — First Light</div>
+    <div id="td-briefing-traffic"></div>
+    <div id="td-briefing-budget"></div>
+    <div id="td-briefing-threshold"></div>
+    <div id="td-briefing-components"></div>
+
+    <!-- Loss modal -->
+    <div id="td-loss-modal" hidden>
+      <div id="td-loss-modal-title">Wave LOST</div>
+      <p id="td-loss-modal-detail"></p>
+      <button id="td-retry-btn">Retry Wave</button>
+      <button id="td-reset-btn">Reset Campaign</button>
+    </div>
+
+    <!-- Info panel -->
+    <div id="td-info-panel" hidden>
+      <button id="td-info-panel-close">×</button>
+      <div id="td-info-panel-header"></div>
+      <div id="td-info-panel-description"></div>
+      <ul id="td-info-panel-caps"></ul>
+      <div id="td-info-panel-stats"></div>
+    </div>
+
+    <!-- Dev wave selector + READY button (HUD's READY forwards to this one) -->
+    <select id="td-dev-wave-select"></select>
+    <button id="td-ready-btn">READY</button>
+
+    <!-- Palette buttons (HUD reads classic buttons to extract cost text +
+         forwards palette-cell clicks to these). -->
+    <button class="td-palette-btn" data-type="server">+ Server $100</button>
+    <button class="td-palette-btn" data-type="database">+ Database $200</button>
+    <button class="td-palette-btn" data-type="data_cache">+ Data Cache $150</button>
+    <button class="td-palette-btn" data-type="load_balancer">+ Load Balancer $175</button>
+    <button class="td-palette-btn" data-type="cdn">+ CDN $200</button>
+    <button class="td-palette-btn" data-type="api_gateway">+ API Gateway $250</button>
+  </div>
+
+  <script type="module" src="./physics-td.ts"></script>
+</body>
+</html>
