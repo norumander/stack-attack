@@ -11,6 +11,7 @@ import { Sim } from "@sim/sim";
 import { PhysicsCampaignController } from "./campaign-controller";
 import { COMPONENT_COSTS } from "./component-factory";
 import { CAMPAIGN_WAVES } from "./waves";
+import { PlacementUX } from "./placement-ux";
 import * as hud from "./hud-bridge";
 
 async function main(): Promise<void> {
@@ -29,16 +30,21 @@ async function main(): Promise<void> {
   // Sim placeholder — wave-driven Client + driver added on READY (Task 7).
   const sim = new Sim({ seed: 1 });
 
+  // Mutable refs let us define controller callbacks before placement/connect
+  // UX exist (they need the controller). Tasks 5–6 set these refs.
+  const refs: {
+    placement: PlacementUX | null;
+  } = { placement: null };
+
   const controller = new PhysicsCampaignController({
     waves: CAMPAIGN_WAVES.map((w) => ({ id: w.id, startBudget: w.startBudget })),
     componentCosts: COMPONENT_COSTS,
     callbacks: {
       onPlaced: (type, id, gridPos) => {
-        // Wired in Task 5 — placement.applyPlacement
-        console.log("[physics-td] onPlaced", type, id, gridPos);
+        refs.placement?.applyPlacement(type, id, gridPos);
       },
       onConnected: (sourceId, targetId, forwardId, backId) => {
-        // Wired in Task 6 — connect.applyConnection
+        // Wired in Task 6
         console.log("[physics-td] onConnected", sourceId, targetId, forwardId, backId);
       },
       onPhaseChange: (phase, waveIndex) => {
@@ -68,17 +74,23 @@ async function main(): Promise<void> {
     },
   });
 
+  // Placement UX
+  refs.placement = new PlacementUX(sim, renderer, controller);
+
+  // Wire palette buttons to placement mode.
+  document.querySelectorAll<HTMLButtonElement>(".td-palette-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const type = btn.dataset.type;
+      if (type) refs.placement?.enterPlacingMode(type);
+    });
+  });
+
   // Initial paint
   hud.setWavePill(1, CAMPAIGN_WAVES.length);
   hud.setPhase("build");
   hud.setBudget(controller.budget);
   hud.setBriefing(CAMPAIGN_WAVES[0]!.title, CAMPAIGN_WAVES[0]!.briefing);
   hud.setStatus("Build phase — place components and click READY");
-
-  // Keep references alive for subsequent tasks.
-  void sim;
-  void renderer;
-  void controller;
 }
 
 void main();
