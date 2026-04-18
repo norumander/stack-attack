@@ -511,16 +511,11 @@ async function main(): Promise<void> {
 
     cta.addEventListener("click", () => {
       overlay.remove();
-      if (nextWave) {
-        // Reset the world for the next wave so the previous topology doesn't
-        // leak into the new build phase.
-        clearWaveWorld();
-        controller.nextWave();
-      } else {
-        // No next wave → controller transitions to campaign-complete on its
-        // own when nextWave() is called past the last index.
-        controller.nextWave();
-      }
+      // Topology + budget carry into next wave (no clearWaveWorld here).
+      // Detach the SimClient so the next wave's TrafficSource starts fresh.
+      sim.clients.delete(CLIENT_ID);
+      sim.activePackets.length = 0;
+      controller.nextWave();
     });
     cta.focus();
   }
