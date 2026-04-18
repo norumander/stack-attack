@@ -3,11 +3,15 @@ import type { Packet } from "./types";
 import type { SimClient } from "./client";
 import type { SimConnection } from "./connection";
 
-export function populateSnakes(clients: ReadonlyMap<ComponentId, SimClient>, simTime: number): void {
+export function populateSnakes(clients: ReadonlyMap<ComponentId, SimClient>, _simTime: number): void {
   for (const client of clients.values()) {
     if (!client.trafficSource) continue;
+    // Generation runs AHEAD of sim time to keep the snake visibly full.
+    // We stop when the snake is at capacity OR we'd be generating beyond the
+    // wave's end. Each generated packet's spawnedAt remains nextGenerateTime
+    // so latency math stays honest (a packet at the back of the snake will
+    // appear "spawned" when it would have been generated, not when it launches).
     while (
-      client.nextGenerateTime <= simTime &&
       client.nextGenerateTime < client.waveEndTime &&
       client.snake.length < client.snakeMax
     ) {

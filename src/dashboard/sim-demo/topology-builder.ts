@@ -15,10 +15,13 @@ export type DemoTopology = {
   positions: Map<ComponentId, { x: number; y: number }>;
 };
 
+// Demo-tuned for visibility: low packet rate, slow edges, long wave.
+// Steady state: ~1 packet/sec launched, snake full at 10, ~5 in flight at once.
+// Production wave tests use much higher intensity for SLA verification.
 const WAVE_3: WaveDef = {
-  intensity: 50,
-  packetRate: 10,
-  duration: 60,
+  intensity: 10,
+  packetRate: 1,
+  duration: 600,
   composition: { writeRatio: 0, authRatio: 0, streamRatio: 0, largeRatio: 0, asyncRatio: 0 },
   keyDistribution: { kind: "zipf", alpha: 1.07, spaceSize: 100 },
   revenue: { perRead: 1, perWrite: 0, perAuth: 0, perStream: 0 },
@@ -56,7 +59,7 @@ export function buildWave3CacheRescue(seed: number): DemoTopology {
       id: id as ConnectionId,
       from: { componentId: from, portId: "p" as PortId },
       to: { componentId: to, portId: "p" as PortId },
-      bandwidth: 300, latencySeconds: 0.5, twinId: twin as ConnectionId, direction: dir,
+      bandwidth: 300, latencySeconds: 1.5, twinId: twin as ConnectionId, direction: dir,
     });
   sim.addConnection(wire("cs", client.id, server.id, "forward", "sc"));
   sim.addConnection(wire("sc", server.id, client.id, "back", "cs"));
