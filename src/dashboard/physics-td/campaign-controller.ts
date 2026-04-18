@@ -1,0 +1,117 @@
+import type { ComponentId, ConnectionId } from "@core/types/ids";
+
+export type Phase = "build" | "simulate" | "won" | "lost" | "campaign-complete";
+
+export type WaveSlot = {
+  readonly id: string;
+  readonly startBudget: number;
+};
+
+export type PlaceResult =
+  | { readonly ok: true; readonly componentId: ComponentId }
+  | { readonly ok: false; readonly reason: "insufficient_budget" | "unknown_type" };
+
+export type ConnectResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: "self_connect" | "already_connected" };
+
+export type CampaignCallbacks = {
+  onPlaced(type: string, componentId: ComponentId, gridPos: { x: number; y: number }): void;
+  onConnected(sourceId: ComponentId, targetId: ComponentId, forwardId: ConnectionId, backId: ConnectionId): void;
+  onPhaseChange(phase: Phase, waveIndex: number): void;
+  onBudgetChange(budget: number): void;
+};
+
+export type CampaignOptions = {
+  readonly waves: ReadonlyArray<WaveSlot>;
+  readonly componentCosts: ReadonlyMap<string, number>;
+  readonly callbacks: CampaignCallbacks;
+};
+
+let nextComponentIdCounter = 0;
+let nextConnectionIdCounter = 0;
+
+function mintComponentId(): ComponentId {
+  nextComponentIdCounter += 1;
+  return `c${String(nextComponentIdCounter).padStart(6, "0")}` as ComponentId;
+}
+
+function mintConnectionId(): ConnectionId {
+  nextConnectionIdCounter += 1;
+  return `conn${String(nextConnectionIdCounter).padStart(6, "0")}` as ConnectionId;
+}
+
+export class PhysicsCampaignController {
+  phase: Phase = "build";
+  currentWaveIndex = 0;
+  budget: number;
+  readonly placedComponents: Set<ComponentId> = new Set();
+  readonly placedConnections: Set<string> = new Set(); // key = sourceId + ":" + targetId
+
+  constructor(private readonly opts: CampaignOptions) {
+    this.budget = opts.waves[0]?.startBudget ?? 0;
+  }
+
+  tryPlace(type: string, gridPos: { x: number; y: number }): PlaceResult {
+    if (this.phase !== "build") return { ok: false, reason: "insufficient_budget" }; // re-use reason for simplicity
+    const cost = this.opts.componentCosts.get(type);
+    if (cost === undefined) return { ok: false, reason: "unknown_type" };
+    if (this.budget < cost) return { ok: false, reason: "insufficient_budget" };
+    this.budget -= cost;
+    const id = mintComponentId();
+    this.placedComponents.add(id);
+    this.opts.callbacks.onPlaced(type, id, gridPos);
+    this.opts.callbacks.onBudgetChange(this.budget);
+    return { ok: true, componentId: id };
+  }
+
+  tryConnect(sourceId: ComponentId, targetId: ComponentId): ConnectResult {
+    if (this.phase !== "build") return { ok: false, reason: "self_connect" };
+    if (sourceId === targetId) return { ok: false, reason: "self_connect" };
+    const key = `${sourceId as unknown as string}:${targetId as unknown as string}`;
+    if (this.placedConnections.has(key)) return { ok: false, reason: "already_connected" };
+    this.placedConnections.add(key);
+    const forwardId = mintConnectionId();
+    const backId = mintConnectionId();
+    this.opts.callbacks.onConnected(sourceId, targetId, forwardId, backId);
+    return { ok: true };
+  }
+
+  ready(): void {
+    if (this.phase !== "build") return;
+    this.phase = "simulate";
+    this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
+  }
+
+  onWaveEnd(passed: boolean): void {
+    if (this.phase !== "simulate") return;
+    this.phase = passed ? "won" : "lost";
+    this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
+  }
+
+  nextWave(): void {
+    if (this.phase !== "won") return;
+    this.currentWaveIndex += 1;
+    if (this.currentWaveIndex >= this.opts.waves.length) {
+      this.phase = "campaign-complete";
+      this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex - 1);
+      return;
+    }
+    this.budget = this.opts.waves[this.currentWaveIndex]!.startBudget;
+    this.phase = "build";
+    this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
+    this.opts.callbacks.onBudgetChange(this.budget);
+  }
+
+  retry(): void {
+    if (this.phase !== "lost") return;
+    // Note: bootstrap is responsible for clearing placedComponents/Connections
+    // from sim + renderer. Controller just resets economy and phase.
+    this.budget = this.opts.waves[this.currentWaveIndex]!.startBudget;
+    this.placedComponents.clear();
+    this.placedConnections.clear();
+    this.phase = "build";
+    this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
+    this.opts.callbacks.onBudgetChange(this.budget);
+  }
+}
