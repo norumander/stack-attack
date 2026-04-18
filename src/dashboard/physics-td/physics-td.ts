@@ -25,6 +25,7 @@ import { PlacementUX } from "./placement-ux";
 import { ConnectUX } from "./connect-ux";
 import { wireWorkers } from "./wire-workers";
 import * as hud from "./hud-bridge";
+import { diagnoseWave } from "./diagnose-wave";
 import type { ComponentId } from "@core/types/ids";
 
 const CLIENT_ID = "client" as ComponentId;
@@ -81,6 +82,7 @@ async function main(): Promise<void> {
     latencyCount: 0,
     totalPackets: 0,
   };
+  let perComponentDrops: Map<ComponentId, { total: number; byReason: Map<string, number> }> = new Map();
   const seenPacketIds = new Set<string>();
 
   // Delete mode toggle (fallback to right-click). When ON, normal click on a
@@ -382,6 +384,7 @@ async function main(): Promise<void> {
       latencyCount: 0,
       totalPackets: 0,
     };
+    perComponentDrops = new Map();
     seenPacketIds.clear();
 
     adapter = new SimToRendererAdapter(sim, renderer, positions);
@@ -413,6 +416,11 @@ async function main(): Promise<void> {
       for (const ev of sim.lastStepEvents) {
         if (ev.kind === "drop") {
           metrics.drops += ev.count;
+          const compId = ev.componentId as ComponentId;
+          let tally = perComponentDrops.get(compId);
+          if (!tally) { tally = { total: 0, byReason: new Map() }; perComponentDrops.set(compId, tally); }
+          tally.total += ev.count;
+          tally.byReason.set(ev.reason, (tally.byReason.get(ev.reason) ?? 0) + ev.count);
         } else if (ev.kind === "terminate") {
           metrics.terminated += 1;
           metrics.revenue += ev.revenue;
@@ -460,8 +468,22 @@ async function main(): Promise<void> {
         driver = null;
         adapter = null;
         if (!sla.passed) {
-          const reasons = sla.reasons.length > 0 ? sla.reasons.join("; ") : "wave failed";
-          hud.showLossModal("Wave LOST", `SLA failed: ${reasons}`);
+          const wave = CAMPAIGN_WAVES[controller.currentWaveIndex]!;
+          const diagnosis = diagnoseWave({
+            sim,
+            wave: {
+              writeRatio: wave.wave.composition.writeRatio,
+              hasReads: 1 - wave.wave.composition.writeRatio - wave.wave.composition.authRatio - wave.wave.composition.streamRatio > 0,
+              hasStreams: wave.wave.composition.streamRatio > 0,
+            },
+            perComponentDrops,
+            totalDrops: metrics.drops,
+            totalProcessed: metrics.responded + metrics.terminated,
+          });
+          const detail = diagnosis.hint
+            ? `${diagnosis.symptom} ${diagnosis.hint}`
+            : diagnosis.symptom;
+          hud.showLossModal(diagnosis.headline, detail);
         }
         controller.onWaveEnd(sla.passed);
       }
