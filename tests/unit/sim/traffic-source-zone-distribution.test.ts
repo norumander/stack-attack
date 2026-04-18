@@ -46,7 +46,8 @@ describe("TrafficSource — zone distribution", () => {
   });
 
   it("falls back to null originZone when zoneDistribution is absent", () => {
-    const noZoneWave: WaveDef = { ...wave, zoneDistribution: undefined };
+    const { zoneDistribution: _omit, ...rest } = wave;
+    const noZoneWave: WaveDef = rest;
     const ts = new TrafficSource(noZoneWave, makeSimRng(17));
     const pkt = ts.generatePacketForTest("c1" as ComponentId, 0);
     expect(pkt.requests[0]!.originZone).toBeNull();
