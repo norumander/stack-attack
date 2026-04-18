@@ -26,6 +26,9 @@ import { ConnectUX } from "./connect-ux";
 import { wireWorkers } from "./wire-workers";
 import * as hud from "./hud-bridge";
 import { diagnoseWave } from "./diagnose-wave";
+import { ComponentDossierStore } from "./dossier-store";
+import { showDossier } from "./show-dossier";
+import { bindInfoPanel, type InfoPanelHandle } from "./component-info-panel";
 import type { ComponentId } from "@core/types/ids";
 
 const CLIENT_ID = "client" as ComponentId;
@@ -59,6 +62,7 @@ async function main(): Promise<void> {
 
   // Per-wave positions for the sim-to-renderer adapter (tracks placed positions).
   let positions = new Map<ComponentId, { x: number; y: number }>();
+  const componentTypes = new Map<ComponentId, string>();
 
   // Mutable refs for late-bound UX wiring.
   const refs: {
@@ -83,6 +87,7 @@ async function main(): Promise<void> {
     totalPackets: 0,
   };
   let perComponentDrops: Map<ComponentId, { total: number; byReason: Map<string, number> }> = new Map();
+  let perComponentProcessed: Map<ComponentId, number> = new Map();
   const seenPacketIds = new Set<string>();
 
   // Delete mode toggle (fallback to right-click). When ON, normal click on a
@@ -102,12 +107,17 @@ async function main(): Promise<void> {
     }
   }
 
+  // Forward declaration — assigned after controller construction (closure safe
+  // because onPhaseChange is only called during gameplay, after assignment).
+  let infoPanel!: InfoPanelHandle;
+
   const controller = new PhysicsCampaignController({
     waves: CAMPAIGN_WAVES.map((w) => ({ id: w.id, startBudget: w.startBudget })),
     componentCosts: COMPONENT_COSTS,
     callbacks: {
       onPlaced: (type, id, gridPos) => {
         positions.set(id, gridPos);
+        componentTypes.set(id, type);
         refs.placement?.applyPlacement(type, id, gridPos);
       },
       onConnected: (sourceId, targetId, forwardId, backId) => {
@@ -124,6 +134,7 @@ async function main(): Promise<void> {
         sim.components.delete(id);
         sim.clients.delete(id);
         positions.delete(id);
+        componentTypes.delete(id);
         renderer.removeComponent(id);
       },
       onConnectionDeleted: (forwardId) => {
@@ -152,13 +163,16 @@ async function main(): Promise<void> {
           hud.setReadyDisabled(true);
           hudCtrl.hideBriefing();
         } else if (phase === "won") {
+          infoPanel.hide();
           hud.setStatus("Wave WON");
           hud.setReadyDisabled(true);
           showWinModal(waveIndex);
         } else if (phase === "lost") {
+          infoPanel.hide();
           hud.setReadyDisabled(true);
           // Loss modal is shown by the wave-end handler with the SLA reasons.
         } else if (phase === "campaign-complete") {
+          infoPanel.hide();
           hud.setStatus("Campaign complete — well played!");
           hud.setReadyDisabled(true);
           showCampaignCompleteModal();
@@ -166,6 +180,19 @@ async function main(): Promise<void> {
       },
       onBudgetChange: (b) => hud.setBudget(b),
     },
+  });
+
+  const dossierStore = new ComponentDossierStore();
+
+  infoPanel = bindInfoPanel({
+    renderer: { onPointerDown: (cb) => renderer.onPointerDown((ev) => cb({ hit: ev.hit })) },
+    sim,
+    controller,
+    dossierStore,
+    hudCtrl,
+    componentTypes,
+    getDrops: () => perComponentDrops,
+    getProcessed: () => perComponentProcessed,
   });
 
   // ─── Dev wave-jump selector ─────────────────────────────────────────
@@ -224,11 +251,16 @@ async function main(): Promise<void> {
     // way: clone the node so any prior listeners are dropped, then re-bind.
     const fresh = btn.cloneNode(true) as HTMLButtonElement;
     btn.replaceWith(fresh);
-    fresh.addEventListener("click", (e) => {
+    fresh.addEventListener("click", async (e) => {
       e.preventDefault();
       if (deleteMode) {
         // Toggling palette in delete mode exits delete mode first.
         setDeleteMode(false);
+      }
+      if (!dossierStore.hasSeen(type)) {
+        const cost = COMPONENT_COSTS.get(type) ?? 0;
+        await showDossier(type, cost);
+        dossierStore.markSeen(type);
       }
       refs.placement?.enterPlacingMode(type);
     });
@@ -385,6 +417,7 @@ async function main(): Promise<void> {
       totalPackets: 0,
     };
     perComponentDrops = new Map();
+    perComponentProcessed = new Map();
     seenPacketIds.clear();
 
     adapter = new SimToRendererAdapter(sim, renderer, positions);
@@ -426,11 +459,15 @@ async function main(): Promise<void> {
           metrics.revenue += ev.revenue;
           metrics.latencySum += ev.latencySeconds;
           metrics.latencyCount += 1;
+          const compId = ev.componentId as ComponentId;
+          perComponentProcessed.set(compId, (perComponentProcessed.get(compId) ?? 0) + 1);
         } else if (ev.kind === "respond-delivered") {
           metrics.responded += 1;
           metrics.revenue += ev.revenue;
           metrics.latencySum += ev.latencySeconds;
           metrics.latencyCount += 1;
+          const compId = ev.componentId as ComponentId;
+          perComponentProcessed.set(compId, (perComponentProcessed.get(compId) ?? 0) + 1);
         }
       }
       adapter.syncFrame();
@@ -446,6 +483,9 @@ async function main(): Promise<void> {
           hud.setStatus(`Wave running — tick ${tick}/${total}`);
         } else if (now < drainDeadline) {
           hud.setStatus("Wave running — draining queue");
+        }
+        if (infoPanel.isOpen() && controller.phase === "simulate") {
+          infoPanel.updateLiveStats();
         }
       }
 
@@ -648,6 +688,8 @@ async function main(): Promise<void> {
     sim.clients.clear();
     sim.activePackets.length = 0;
     positions.clear();
+    componentTypes.clear();
+    perComponentProcessed = new Map();
     // Fresh sim instance to wipe internal merge maps + revenue ledger.
     sim = new Sim({ seed: 1 });
     // PlacementUX/ConnectUX hold a Sim reference — rebuild them so they
