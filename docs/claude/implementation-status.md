@@ -1,68 +1,53 @@
 # Implementation status
 
-**Current stage:** Phase 1, Stage 5b + Data Cache redesign complete. TD mode is playable through Wave 10 — all 10 waves shipped. Cache redesigned as a data-layer Data Cache between Server and Database. 825 tests, typecheck clean.
+**Current stage:** Physics TD is the sole game mode. Classic TD mode, sandbox mode, and all associated infrastructure have been removed. 613 tests, typecheck clean.
 
-## What ships (merged into `main`)
+## What ships
 
-**Capability library (23 production capabilities)** — `register-all-capabilities.ts` wires the full set for sandbox/dashboard use. PROCESS: `ProcessingCapability`, `ForwardingCapability`, `StorageCapability`, `SearchCapability`, `QueryCapability`, `RegistrationCapability`, `BlobStorageCapability`, `StreamingCapability`, `BatchProcessingCapability`. INTERCEPT: `FilterCapability`, `SSLTerminationCapability`, `CompressionCapability`, `RateLimitCapability`, `AuthCapability`, `CachingCapability`, `QueueCapability`, `CircuitBreakerCapability`, `RetryCapability`. OBSERVE: `MonitoringCapability`, `HealthCheckCapability`, `AutoScaleCapability`. No phase (EngineConsultable only): `RoutingCapability`, `GeoRoutingCapability`.
+**Physics TD game** — entry point `localhost:5173/`. Source in `src/dashboard/physics-td/`. Uses the physics-based `Sim` engine (`src/sim/`) and the cyberpunk isometric renderer (`src/dashboard/render/cyberpunk-topology-renderer.ts`).
 
-**Component registry (14 entries)** — `src/core/registry/component-entries.ts` + `register-all.ts` (`bootstrapRegistries()` factory). Client, Server, Database, Cache, Load Balancer, Queue, CDN, API Gateway, Service Registry, Worker, Circuit Breaker, DNS/GTM, Blob Storage, Streaming Media Server. Used by the Vite dashboard and the `stage3-smoke.test.ts` integration test for sandbox play.
+**Physics sim engine** — `src/sim/` — packet-physics request simulation. `Sim` drives per-frame packet advancement, SLA evaluation, and wave lifecycle. `TrafficSource` generates typed request packets per wave composition. `SimClient` owns the traffic snake.
 
-**TD mode stack (Wave 1–3 learning arc)** — `src/modes/td/` contains `TDEconomy`, `TDTrafficSource`, `TDModeController`, wave definitions (`WAVE_1` trivial reads, `WAVE_2` mixed R/W, `WAVE_3` traffic spike at TTL 8), `td-component-entries.ts` (Server/Database/Cache/LoadBalancer bundles tuned for the arc), and `registerTDDefaults()`. `tests/integration/td/` has four wave tests: Wave 1 trivial Server, Wave 2 Server+Database with write-routing verified, Wave 3 lone-server **loses**, Wave 3 Cache-rescue and LB-rescue both **win** (learning arc validated end-to-end). After Batch 3, `helpers.ts:buildServer/buildDatabase/buildCache` mint their components via `compRegistry.create(...)`, so these three test helpers and `registerTDDefaults` share a single source of truth. `buildLoadBalancer` remains a one-off (fixed port config with variable egress count); unifying it is deferred to Stage 3c.
+**Cyberpunk HUD** — `src/dashboard/cyberpunk-hud.ts` + `src/dashboard/cyberpunk-hud.css`. Mirror-div pattern: physics-td writes to hidden divs, HUD reflects them into the visible cyberpunk-styled overlay.
 
-**Unified capability options model** — after merge, the five capabilities that both tracks touched are a single class each with optional behavior flags:
-- `ProcessingCapability`: default is `canHandle: true` + `RESPOND` + tier*25 throughput + no events (sandbox/dashboard usage). TD mode constructs with `{handledTypes: ["api_read"], throughputPerTier: 20, emitProcessedEvent: true}` for read-only Server with tuned cap and event emission. (Stage-1-legacy `outcomeKind` option was deleted in the post-3b cleanup pass — no production consumers, only its own tests.)
-- `ForwardingCapability`: default is unconditional forwarder, unbounded throughput, no events (intermediary use — LB, Gateway, CDN, etc.). TD mode constructs with `{handledTypes, throughputPerTier, emitForwardedEvent}` for tuned instances. `getThroughputPerTick` is defined **only** when `throughputPerTier` is passed.
-- `StorageCapability`: default is `tier * 5` throughput + no events (sandbox). TD mode uses `{throughputPerTier: 25, emitProcessedEvent: true}` via `buildDatabase` so Database is not the Wave 3 bottleneck.
-- `CachingCapability`: accepted teammate's version as-is (LRU with type-slot hashing, per-type key pools). My Wave 3 cache-rescue test assertions pass trivially with it.
-- `MonitoringCapability`: accepted teammate's version (per-tick stats, `resetPerTickState`).
+**Campaign** — `src/dashboard/physics-td/waves.ts` defines `CAMPAIGN_WAVES`. `PhysicsCampaignController` manages wave lifecycle, budget, and SLA evaluation. Component factory in `component-factory.ts` defines available types and costs.
 
-**Sandbox dashboard** — `src/dashboard/` is a Vite app with topology presets, traffic controls, chaos panel, and Chart.js metrics visualization. Wired to the real `bootstrapRegistries()` capability instances. Run via `pnpm dev` (script wired in `package.json`).
+**Renderer** — `src/dashboard/render/cyberpunk-topology-renderer.ts` + `src/dashboard/render/cyberpunk/` — Pixi-based isometric renderer. `BrowserDriver` + `SimToRendererAdapter` in `src/dashboard/sim-demo/` bridge the physics sim to the renderer each frame.
 
-**Stage 3b: Interactive playable loop** — `TDModeController` accepts a multi-wave campaign, exposes `getCurrentWaveIndex` / `getCurrentWave` / `isCampaignComplete` / `isWaveDrained` / `getCurrentWaveMetrics` / `getWaveCount` / `setEconomy`, and has real `tryPlace` / `tryConnect` methods that mutate state via the registry path (`ComponentRegistry.tryCreate`, `state.placeComponent`, `state.addConnection`). `TDTrafficSource` is self-counting via `ticksGenerated` (decoupled from `state.currentTick`). `registerTDDefaults` produces TD-tuned capability factories; after Batch 3 the Server/Database/Cache harness helpers build their components through the same registry, eliminating the byte-for-byte duplication. New `forwarding-pipe` capability id (Cache/LB/Client variant — Stage 3d retuned from 55 to 200/tick to handle Wave 4/5 intensities). `CLIENT_ENTRY` added to the TD bundle. Dashboard has a TD-mode toggle (URL hash persisted), palette, click-to-place + click-to-connect, READY button, wave HUD, and per-wave economy + condition reset. New tests: `tests/unit/td-mode-controller-{place,connect,phase}.test.ts`, `tests/unit/td-traffic-source-self-counting.test.ts`, `tests/unit/component-registry-try-create.test.ts`, `tests/integration/td/campaign-headless.test.ts`. Stage 3a's four wave tests remain pinned via the back-compat single-wave `TDModeControllerOptions` shape.
+## Source layout
 
-**Stage 3d: Waves 4 + 5 (edge components)** — Wave 4 ("Marketing Adds Images") introduces `static_asset` request type and the CDN edge cache; Wave 5 ("The Authentication Wall") introduces `auth_required` and the API Gateway. Three capability extensions landed: `CachingCapability.getStats().hitRateByType` (per-type hit rate for the loss modal's diagnostic "CDN — static_asset: 78%" line), `ProcessingCapability.typeLatencyPenalty` (per-type latency add-on; set to `{ auth_required: 4 }` on TD Server), and `AuthCapability.terminateAuthRequired` (opt-in RESPOND-instead-of-PASS at Gateway — mirrors cache-hit short-circuit). `TD_CDN_ENTRY` (caching + forwarding-pipe + monitoring, $200, pentagon shape) and `TD_API_GATEWAY_ENTRY` (auth + forwarding-pipe + monitoring, $250, trapezoid shape) added to TD bundle; both wired through `registerTDDefaults`. Server's processing factory extended to `handledTypes: ["api_read", "static_asset", "auth_required"]`. `forwarding-pipe` tier-1 throughput raised from 55 to 200/tick (engine counts cache-hits against tick budget — the old 55 cap couldn't handle Wave 4's 80/tick). `wire()` helper gained optional `{bandwidth}` param (default 100 was a latent gate). `AuthCapability.getStats()` now exposes `authProcessedTotal` (cumulative, not per-tick). Dashboard: briefing card has a label registry so `static_asset → "static"`, `auth_required → "auth"` display cleanly; loss modal appends a "Cache hit rates:" section when the topology has any caching component. 4 new integration tests cover the two loss/win pairs: Wave 4 server-only loses on availability, Wave 4 CDN+Cache rescue wins with 78% static hit rate; Wave 5 single-Server-topology (Wave 4 rescue) loses on availability, Wave 5 Gateway + LB + 2-Server rescue wins with 99.7% availability. 682 tests total.
+```
+src/
+├── core/           # Shared type definitions (ids, etc.)
+├── sim/            # Physics sim engine — Sim, packets, capabilities
+├── capabilities/   # Core capability implementations
+├── dashboard/
+│   ├── index.html              # Entry point → localhost:5173/
+│   ├── physics-td/             # Game logic (campaign, UX, waves, HUD bridge)
+│   ├── render/                 # Cyberpunk renderer + cyberpunk/ subfolder
+│   ├── sim-demo/               # BrowserDriver, SimToRendererAdapter
+│   ├── cyberpunk-hud.ts        # HUD overlay controller
+│   └── cyberpunk-hud.css
+```
 
-**Stage 3e augmentation: Waves 6+7 gap-fill** — `event` request type dropped from WAVE_6 and WAVE_7 compositions (REPLICATE fan-out deferred). `batch` share raised to 20%. Win-path integration tests added: `wave-6-queue-worker-wins.test.ts` verifies Queue participation and Worker batch processing via inline topology (Queue → Worker → LB → Servers); `wave-7-breaker-rescue-wins.test.ts` verifies CircuitBreaker participation and 90%+ availability under chaos. Three test helpers added: `buildQueue`, `buildWorker`, `buildCircuitBreaker`, plus `buildWorkerWithForwarding` (inline Worker with ForwardingCapability) in `tests/integration/td/helpers.ts`. `buildLoadBalancer` handledTypes extended to include `batch`/`event`/`stream` (matching `registerTDDefaults` forwarding-pipe factory), throughput raised from 200 to 500/tick. 697 tests total.
+## Dashboard URL
 
-**Stage 4a: Wave 8 — Video Launch (streaming isolation)** — `stream` request type with multi-tick bandwidth reservation. `TDTrafficSource` populates `streamDuration`/`streamBandwidth` from `wave.streamConfig` for stream-type requests, activating the engine's existing active-stream lifecycle. TD entries added: `STREAMING_SERVER_ENTRY` (streaming + forwarding-pipe + monitoring, inline filter pattern) and `BLOB_STORAGE_ENTRY` (blob-storage + monitoring, decorative). `runWave` extended with stream drain loop to tick past wave duration until `isWaveDrained` returns true. Win/lose integration test pair validates streaming isolation rescue. 708 tests total.
+- `/` — Physics TD game (the only mode)
 
-**Stage 4b: Wave 9 — Going Global (multi-zone latency)** — First engine change since Stage 2c: `getEffectiveLatency()` now adds cross-zone latency via `getZonePairLatency()` (additive, after condition multiplier). `TDModeController.getInitialZoneTopology()` reads `wave.zoneTopology` instead of returning hardcoded single-zone. `TDTrafficSource` assigns `request.originZone` from `wave.zoneDistribution` via weighted random per request. `DNS_GTM_ENTRY` (geo-routing + forwarding-pipe + monitoring) added to TD bundle. All test helpers extended with optional `zone` parameter (backward compatible). Win/lose integration tests validate single-zone latency failure and multi-zone DNS routing rescue. 724 tests total.
+## Commands
 
-**Stage 4c: Wave 10 — The Viral Moment (AutoScale boss wave)** — AutoScaleCapability implemented with utilization-based scaling: scale-up at >80% utilization for 2 consecutive ticks, scale-down at <30% for 5 ticks. Uses previous-tick utilization snapshot (processed/capacity). Tier-based cooldown (tier 1: 5 ticks, tier 2: 2 ticks). SCALE side effects clamped by engine to [minInstances, maxInstances]. OBSERVE-phase sideEffects collection fixed in Component.process() to pipe SCALE to deliverStaged. Auto-scale added to Server (maxInstances: 10) and Database (maxInstances: 5) TD entries. chaosSchedule type extended for `connection_sever` and `latency_injection`. Three-test teaching arc: no autoscale loses, server-only loses (DB bottleneck), full autoscale wins. 740 tests total.
+```bash
+pnpm test                              # full suite (~11s, 613 tests)
+pnpm test tests/unit/<name>.test.ts    # single file (~1s)
+pnpm typecheck                         # strict tsc --noEmit
+pnpm dev                               # Vite at localhost:5173/
+pnpm exec vite build                   # production build
+```
 
-**Stage 5b: EnginePullable pull semantics** — Queue now holds batch requests via QUEUE_HOLD outcome (split buffer: heldBuffer for intentional holds, overflowBuffer for backpressure). Worker actively pulls from connected Queue's heldBuffer via BatchProcessingCapability.pullPending(). New engine step 2.5 (pullFromBuffers) between reEmitQueued and the fixed-point loop iterates EnginePullable components and routes pulled items to their pending queues. registerTDDefaults passes holdTypes: Set(["batch"]) to Queue factory. Wave 6/7/8 topologies adjusted for pull-based flow. 762 tests total.
+## Phase 2 candidates
 
-**Data Cache redesign (post Stage 5b)** — Cache renamed to Data Cache and repositioned from a client-facing reverse proxy to a data-layer cache (Redis/Memcached pattern) sitting between Server and Database. Topology-only change: Server's ProcessingCapability drops `api_read`, Server's ForwardingCapability adds `api_read`, so reads now FORWARD downstream instead of RESPOND-ing locally. Server tuned to 25+25=50 pooled budget (was 15+15=30) so a single tier-1 Server can push all Wave 3 traffic downstream; Database tuned to 25/tick (was 50) so DB is the new Wave 3 bottleneck when no Data Cache is present. Database's StorageCapability now handles `api_read` in addition to `api_write`. `CACHE_ENTRY` renamed to `DATA_CACHE_ENTRY` (type `"data_cache"`). CachingCapability and engine unchanged. Wave 3 teaching: lone `Server → Database` loses on DB saturation (25/tick cap, 35 reads/tick arrival); `Server → Data Cache → Database` rescue wins; `LB → [Servers] → Data Cache → DB` rescue wins. Waves 4–10 tests rewired with Data Cache between Server (or Servers behind LB) and Database; higher-wave rescue topologies upgrade Data Cache and Database to tier 3 to absorb scaled intensities. CDN unchanged (still client-facing for `static_asset`). Sandbox/core registry's separate `cache` entry unchanged (different teaching context). 825 tests total.
-
-## All 10 waves shipped — Phase 1 TD mode complete
-
-**Phase 2 candidates:**
-- Dashboard polish: zone visualization, stream lines, auto-scale animation, connection latency display
+- Zone visualization, stream lines, auto-scale animation
 - Tier upgrades (scaling UP vs scaling OUT)
 - Cross-zone replication (CAP theorem teaching)
-- Topology-validation dry-run on READY
 - Player tutorial / onboarding flow
-- REPLICATE fan-out / event type (engine step needed)
-- EnginePullable pull semantics for Queue→Worker
-
-## History
-
-Stage-by-stage detail lives in `docs/superpowers/specs/` and `docs/superpowers/plans/`:
-
-- **`docs/superpowers/specs/2026-04-10-tower-defense-foundation-design.md`** — Stage 1 foundation type contracts.
-- **`docs/superpowers/plans/2026-04-10-tower-defense-foundation-stage-1.md`** — Stage 1 implementation plan.
-- **`docs/superpowers/specs/2026-04-10-stage-2a-tick-loop-core-design.md`** — Stage 2a engine contracts (1344 lines, authoritative for the implemented tick loop).
-- **`docs/superpowers/plans/2026-04-10-stage-2a-tick-loop-core.md`** — Stage 2a implementation plan.
-- **`docs/superpowers/specs/2026-04-11-stage-2b-condition-chaos-upkeep-design.md`** — Stage 2b condition/chaos/upkeep contracts.
-- **`docs/superpowers/plans/2026-04-11-stage-2b-condition-chaos-upkeep.md`** — Stage 2b implementation plan (16 TDD tasks).
-- **`docs/superpowers/specs/2026-04-12-stage-2c-ttl-scale-routing-design.md`** — Stage 2c bufferable TTL, SCALE processing, RoutingCapability contracts.
-- **`docs/superpowers/plans/2026-04-12-stage-2c-ttl-scale-routing.md`** — Stage 2c implementation plan (13 TDD tasks).
-- **`docs/superpowers/specs/2026-04-12-stage-3a-wave-1-3-playable-slice-design.md`** — Stage 3a playable slice contracts (ProcessingCapability rewrite, ForwardingCapability, Wave 1–3 learning arc). Revised twice post cold audit.
-- **`docs/superpowers/plans/2026-04-12-stage-3a-wave-1-3-playable-slice.md`** — Stage 3a 28-task implementation plan across three slices.
-- **`docs/superpowers/specs/2026-04-12-stage-3b-td-playable-loop-design.md`** — Stage 3b playable loop contracts (TDModeController multi-wave, real tryPlace/tryConnect, registry tuning, dashboard TD mode). Revised across 4 cold-audit rounds.
-- **`docs/superpowers/plans/2026-04-12-stage-3b-td-playable-loop.md`** — Stage 3b implementation plan (16 TDD tasks across slice A controller + slice B dashboard).
-- **`docs/superpowers/specs/2026-04-13-stage-3c-playable-polish-design.md`** — Stage 3c playable polish contracts (Pixi renderer, teaching surfaces, SERVER p-in capacity bump, extended registry entry). Revised across 3 cold-audit rounds.
-- **`docs/superpowers/plans/2026-04-13-stage-3c-playable-polish.md`** — Stage 3c implementation plan (~20 tasks across 7 slices).
-- **`docs/superpowers/specs/2026-04-14-stage-3d-waves-4-5-design.md`** — Stage 3d edge-component contracts (Wave 4 CDN, Wave 5 API Gateway, three capability extensions).
-- **`docs/superpowers/plans/2026-04-14-stage-3d-waves-4-5.md`** — Stage 3d 23-task implementation plan across Slice A (Wave 4), Slice B (Wave 5), Slice C (dashboard), and wrap-up.
+- Restructure: move `src/dashboard/` contents to `src/` root (tracked as follow-on task)
