@@ -1,10 +1,3 @@
-// Force cyberpunk HUD activation (depends on ?renderer=iso URL flag).
-if (!new URLSearchParams(window.location.search).has("renderer")) {
-  const url = new URL(window.location.href);
-  url.searchParams.set("renderer", "iso");
-  window.location.replace(url.toString());
-}
-
 import {
   activateCyberpunkHud,
   getCyberpunkHudController,

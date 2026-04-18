@@ -1,12 +1,4 @@
-/**
- * Cyberpunk HUD — full-screen overlay for the iso TD renderer.
- *
- * Activates on ?renderer=iso. Slice B exposes a CyberpunkHudController
- * handle for pushing structured state (briefing, viability, next bill,
- * toast) from main.ts; the older mirror-observer pattern is retained for
- * the simple text fields (wave pill, phase, budget) that haven't been
- * migrated yet.
- */
+/** Cyberpunk HUD — full-screen overlay for the physics TD renderer. */
 
 import type { BriefingDisplay } from "./physics-td/briefing-text.js";
 
@@ -39,11 +31,6 @@ let hudController: CyberpunkHudController | null = null;
 /** Returns the HUD controller once the HUD has been built. Null before activation. */
 export function getCyberpunkHudController(): CyberpunkHudController | null {
   return hudController;
-}
-
-/** True when the current URL opts into the iso renderer + cyberpunk HUD. */
-export function isCyberpunkHudActive(): boolean {
-  return new URLSearchParams(window.location.search).get("renderer") === "iso";
 }
 
 /** Activate the cyberpunk HUD. Idempotent. */

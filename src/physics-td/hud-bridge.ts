@@ -1,11 +1,4 @@
-/**
- * Pushes physics-td state into the hidden mirror divs that cyberpunk-hud.ts
- * observes via MutationObserver. The HUD reflects these into its visible
- * cyberpunk-styled chrome.
- *
- * If the HUD is not active (no ?renderer=iso flag), these writes still
- * happen — the mirror divs are display:none, no visual harm.
- */
+/** Pushes physics-td state into the mirror divs that cyberpunk-hud.ts observes. */
 
 export function setText(id: string, text: string): void {
   const el = document.getElementById(id);
