@@ -47,11 +47,9 @@ export interface ConnectionLayer {
 
 /** Perpendicular offset applied to each lane — total separation is 2× this. */
 const LANE_OFFSET_PX = 18;
-/** Arrowhead geometry near the target end of each lane (direction-of-flow indicator). */
-const ARROW_HEAD_LEN = 12;
-const ARROW_HEAD_WIDTH = 7;
-/** Pull arrowhead back from the actual endpoint so it doesn't overlap the target sprite. */
-const ARROW_PULLBACK_PX = 18;
+/** Distinct color for response-leg lanes (warm amber vs the cyan forward lane). */
+const CONNECTION_BACK_CORE = 0xff9c4d;
+const CONNECTION_BACK_HIGHLIGHT = 0xffd9a8;
 
 /**
  * Routes a connection from (fromGX, fromGY) → (toGX, toGY) as an L-shape
@@ -122,47 +120,6 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
     gfx.stroke({ color, width, alpha, cap: "butt", join: "miter" });
   };
 
-  const drawArrowhead = (gfx: Graphics, path: Point[], color: number, alpha: number): void => {
-    if (path.length < 2) return;
-    const tip = path[path.length - 1]!;
-    // Walk backward through the path until we find a non-degenerate previous
-    // point. L-routed paths whose source and target share a row/column have a
-    // zero-length last segment (corner === end); using the start->end vector
-    // as a fallback yields the right direction.
-    let prev: Point | null = null;
-    for (let i = path.length - 2; i >= 0; i--) {
-      const candidate = path[i]!;
-      if (candidate.x !== tip.x || candidate.y !== tip.y) {
-        prev = candidate;
-        break;
-      }
-    }
-    if (!prev) return;
-    const segDx = tip.x - prev.x;
-    const segDy = tip.y - prev.y;
-    const segLen = Math.hypot(segDx, segDy);
-    if (segLen === 0) return;
-    const ux = segDx / segLen;
-    const uy = segDy / segLen;
-    const perpX = -uy;
-    const perpY = ux;
-    // Anchor the arrowhead tip back from the endpoint so it doesn't overlap the target sprite
-    const tipX = tip.x - ux * ARROW_PULLBACK_PX;
-    const tipY = tip.y - uy * ARROW_PULLBACK_PX;
-    const baseX = tipX - ux * ARROW_HEAD_LEN;
-    const baseY = tipY - uy * ARROW_HEAD_LEN;
-    const leftX = baseX + perpX * ARROW_HEAD_WIDTH;
-    const leftY = baseY + perpY * ARROW_HEAD_WIDTH;
-    const rightX = baseX - perpX * ARROW_HEAD_WIDTH;
-    const rightY = baseY - perpY * ARROW_HEAD_WIDTH;
-    gfx
-      .moveTo(tipX, tipY)
-      .lineTo(leftX, leftY)
-      .lineTo(rightX, rightY)
-      .lineTo(tipX, tipY)
-      .fill({ color, alpha });
-  };
-
   const redraw = (): void => {
     outer.clear();
     core.clear();
@@ -170,22 +127,27 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
     for (const [, s] of states) {
       recomputePath(s);
       if (s.path.length < 2) continue;
+      const coreColor = s.direction === "forward"
+        ? CYBERPUNK_TOKENS.palette.connection
+        : CONNECTION_BACK_CORE;
+      const highlightColor = s.direction === "forward"
+        ? CYBERPUNK_TOKENS.palette.packet
+        : CONNECTION_BACK_HIGHLIGHT;
       strokePath(outer, s.path, CYBERPUNK_TOKENS.cable.outerWidth, CYBERPUNK_TOKENS.palette.tileLine, 1);
       strokePath(
         core,
         s.path,
         CYBERPUNK_TOKENS.cable.coreWidth,
-        CYBERPUNK_TOKENS.palette.connection,
+        coreColor,
         0.65 + s.loadUtilization * 0.35,
       );
       strokePath(
         highlight,
         s.path,
         CYBERPUNK_TOKENS.cable.highlightWidth,
-        CYBERPUNK_TOKENS.palette.packet,
+        highlightColor,
         1,
       );
-      drawArrowhead(highlight, s.path, CYBERPUNK_TOKENS.palette.packet, 1);
     }
   };
 

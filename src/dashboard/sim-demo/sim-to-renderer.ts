@@ -1,15 +1,26 @@
 // src/dashboard/sim-demo/sim-to-renderer.ts
 import type { Sim } from "@sim/sim";
 import type { TopologyRenderer } from "@dashboard/render/topology-renderer";
-import type { Packet, PacketId } from "@sim/types";
-import type { ComponentId, RequestId } from "@core/types/ids";
+import type { Packet } from "@sim/types";
+import type { ComponentId, ConnectionId, RequestId } from "@core/types/ids";
 
 export type SimToRendererAdapterOptions = {
   readonly flashWindowMs?: number;
 };
 
+/**
+ * Tracks dot-spawn events keyed by (packetId, edgeId). A response packet
+ * retracing through the topology keeps its packet.id but gets reassigned a
+ * new edgeId at each hop — without including edgeId in the key, the adapter
+ * would suppress the new dot and the visual would appear to stop at the
+ * first hop.
+ */
+function spawnKey(packetId: string, edgeId: ConnectionId): string {
+  return `${packetId}::${edgeId as unknown as string}`;
+}
+
 export class SimToRendererAdapter {
-  private readonly trackedPackets: Set<PacketId> = new Set();
+  private readonly trackedSpawns: Set<string> = new Set();
   private readonly recentProcessed: Map<ComponentId, number[]> = new Map();
   private readonly lastFlashAt: Map<string, number> = new Map();
   private readonly flashWindowMs: number;
@@ -26,8 +37,8 @@ export class SimToRendererAdapter {
   private maybeFlash(componentId: ComponentId, kind: "drop" | "responded"): void {
     const key = `${componentId as unknown as string}:${kind}`;
     const now = performance.now();
-    const last = this.lastFlashAt.get(key) ?? 0;
-    if (now - last < this.flashWindowMs) return;
+    const last = this.lastFlashAt.get(key);
+    if (last !== undefined && now - last < this.flashWindowMs) return;
     this.lastFlashAt.set(key, now);
     if (kind === "drop") this.renderer.flashDrop(componentId);
     else this.renderer.flashResponded(componentId);
@@ -35,8 +46,9 @@ export class SimToRendererAdapter {
 
   syncFrame(): void {
     for (const packet of this.sim.activePackets) {
-      if (this.trackedPackets.has(packet.id)) continue;
-      this.trackedPackets.add(packet.id);
+      const key = spawnKey(packet.id as unknown as string, packet.edgeId);
+      if (this.trackedSpawns.has(key)) continue;
+      this.trackedSpawns.add(key);
       const remainingProgress = 1 - packet.progress;
       const durationMs = (remainingProgress / packet.speed) * 1000;
       const reqId: RequestId = (packet.requests[0]?.id ?? (packet.id as unknown as RequestId));
@@ -49,9 +61,11 @@ export class SimToRendererAdapter {
       });
     }
 
-    const activeIds = new Set<PacketId>(this.sim.activePackets.map((p) => p.id));
-    for (const id of this.trackedPackets) {
-      if (!activeIds.has(id)) this.trackedPackets.delete(id);
+    const activeKeys = new Set<string>(
+      this.sim.activePackets.map((p) => spawnKey(p.id as unknown as string, p.edgeId)),
+    );
+    for (const key of this.trackedSpawns) {
+      if (!activeKeys.has(key)) this.trackedSpawns.delete(key);
     }
 
     for (const ev of this.sim.lastStepEvents) {
