@@ -23,6 +23,10 @@ export class CachingCapability implements SimCapability {
     return this.slots.includes(k);
   }
 
+  getSnapshot(): { keys: ReadonlyArray<string> } {
+    return { keys: [...this.slots] };
+  }
+
   __preloadForTest(keys: readonly string[]): void {
     // Keys provided in insertion order (first = oldest). We unshift each so
     // the first key lands at the tail (LRU) and the last at the front (MRU).

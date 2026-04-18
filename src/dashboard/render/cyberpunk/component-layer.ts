@@ -1,4 +1,4 @@
-import { Container, Sprite, Text, Texture } from "pixi.js";
+import { Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import type { ComponentId } from "@core/types/ids.js";
 import type { ComponentVisual, ComponentUpdate } from "../topology-renderer.js";
 import { CYBERPUNK_TOKENS } from "./tokens.js";
@@ -113,6 +113,10 @@ export async function loadComponentTextures(): Promise<ComponentTextureMap> {
   return Object.fromEntries(entries) as ComponentTextureMap;
 }
 
+function shortKey(k: string): string {
+  return k.length <= 3 ? k : k.slice(-3);
+}
+
 function resolveTextures(textures: ComponentTextureMap, type: string): ComponentSplitTextures {
   if (textures[type]) return textures[type]!;
   const fallback = FALLBACK_BY_TYPE[type];
@@ -132,6 +136,7 @@ export interface ComponentRenderState {
   type: string;
   gridX: number;
   gridY: number;
+  chipStrip?: Container;
 }
 
 export interface ComponentLayer {
@@ -219,6 +224,28 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     states.delete(id);
   };
 
+  const applyCacheKeysImpl = (state: ComponentRenderState, keys: ReadonlyArray<string>): void => {
+    if (!state.chipStrip) {
+      state.chipStrip = new Container();
+      state.chipStrip.y = 24;
+      state.container.addChild(state.chipStrip);
+    }
+    state.chipStrip.removeChildren();
+    const visible = keys.slice(0, 8);
+    for (let i = 0; i < visible.length; i += 1) {
+      const x = (i - (visible.length - 1) / 2) * 22;
+      const chip = new Graphics().roundRect(-10, -6, 20, 12, 3).fill({ color: 0x223344, alpha: 0.85 });
+      chip.x = x;
+      const label = new Text({
+        text: shortKey(visible[i]!),
+        style: { fontFamily: "monospace", fontSize: 8, fill: 0xaadddd },
+      });
+      label.anchor.set(0.5);
+      chip.addChild(label);
+      state.chipStrip.addChild(chip);
+    }
+  };
+
   const update = (id: ComponentId, u: ComponentUpdate): void => {
     const state = states.get(id);
     if (!state) return;
@@ -244,6 +271,10 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
       } else {
         state.pendingLabel.visible = false;
       }
+    }
+
+    if (u.cacheKeys !== undefined) {
+      applyCacheKeysImpl(state, u.cacheKeys);
     }
   };
 

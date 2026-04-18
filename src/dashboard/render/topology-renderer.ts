@@ -111,6 +111,7 @@ export interface ComponentUpdate {
   condition?: number;     // 0..1 → health ring arc length
   pendingCount?: number;  // displayed in the component label
   gridPosition?: { x: number; y: number };
+  cacheKeys?: ReadonlyArray<string>;
 }
 
 export interface ConnectionUpdate {

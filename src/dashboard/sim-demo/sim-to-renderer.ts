@@ -41,6 +41,15 @@ export class SimToRendererAdapter {
       }
     }
 
+    for (const [id, comp] of this.sim.components.entries()) {
+      for (const cap of comp.capabilities) {
+        if (cap.id === "caching") {
+          const snapshot = (cap as unknown as { getSnapshot(): { keys: ReadonlyArray<string> } }).getSnapshot();
+          this.renderer.updateComponent(id, { cacheKeys: snapshot.keys });
+        }
+      }
+    }
+
     if (this.renderer.updateClientSnake) {
       for (const client of this.sim.clients.values()) {
         const clientPos = this.positions.get(client.id);
