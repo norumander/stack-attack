@@ -46,7 +46,12 @@ export interface ConnectionLayer {
 }
 
 /** Perpendicular offset applied to each lane — total separation is 2× this. */
-const LANE_OFFSET_PX = 6;
+const LANE_OFFSET_PX = 18;
+/** Arrowhead geometry near the target end of each lane (direction-of-flow indicator). */
+const ARROW_HEAD_LEN = 12;
+const ARROW_HEAD_WIDTH = 7;
+/** Pull arrowhead back from the actual endpoint so it doesn't overlap the target sprite. */
+const ARROW_PULLBACK_PX = 18;
 
 /**
  * Routes a connection from (fromGX, fromGY) → (toGX, toGY) as an L-shape
@@ -108,6 +113,35 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
     gfx.stroke({ color, width, alpha, cap: "butt", join: "miter" });
   };
 
+  const drawArrowhead = (gfx: Graphics, path: Point[], color: number, alpha: number): void => {
+    if (path.length < 2) return;
+    const tip = path[path.length - 1]!;
+    const prev = path[path.length - 2]!;
+    const segDx = tip.x - prev.x;
+    const segDy = tip.y - prev.y;
+    const segLen = Math.hypot(segDx, segDy);
+    if (segLen === 0) return;
+    const ux = segDx / segLen;
+    const uy = segDy / segLen;
+    const perpX = -uy;
+    const perpY = ux;
+    // Anchor the arrowhead tip back from the endpoint so it doesn't overlap the target sprite
+    const tipX = tip.x - ux * ARROW_PULLBACK_PX;
+    const tipY = tip.y - uy * ARROW_PULLBACK_PX;
+    const baseX = tipX - ux * ARROW_HEAD_LEN;
+    const baseY = tipY - uy * ARROW_HEAD_LEN;
+    const leftX = baseX + perpX * ARROW_HEAD_WIDTH;
+    const leftY = baseY + perpY * ARROW_HEAD_WIDTH;
+    const rightX = baseX - perpX * ARROW_HEAD_WIDTH;
+    const rightY = baseY - perpY * ARROW_HEAD_WIDTH;
+    gfx
+      .moveTo(tipX, tipY)
+      .lineTo(leftX, leftY)
+      .lineTo(rightX, rightY)
+      .lineTo(tipX, tipY)
+      .fill({ color, alpha });
+  };
+
   const redraw = (): void => {
     outer.clear();
     core.clear();
@@ -130,6 +164,7 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
         CYBERPUNK_TOKENS.palette.packet,
         1,
       );
+      drawArrowhead(highlight, s.path, CYBERPUNK_TOKENS.palette.packet, 1);
     }
   };
 
