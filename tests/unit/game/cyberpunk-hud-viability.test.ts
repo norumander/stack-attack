@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   activateCyberpunkHud,
   getCyberpunkHudController,
-} from "../../../src/dashboard/cyberpunk-hud.js";
+} from "../../../src/cyberpunk-hud.js";
 
 function bootHud(): void {
   document.body.className = "";

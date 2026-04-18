@@ -1,5 +1,5 @@
 import { describe, it, beforeEach, expect } from "vitest";
-import { PhysicsCampaignController } from "../../../../src/dashboard/physics-td/campaign-controller";
+import { PhysicsCampaignController } from "../../../../src/physics-td/campaign-controller";
 import type { ComponentId } from "@core/types/ids";
 
 describe("PhysicsCampaignController", () => {

@@ -1,4 +1,4 @@
-import type { TopologyRenderer } from "@dashboard/render/topology-renderer";
+import type { TopologyRenderer } from "../render/topology-renderer";
 import type { Sim } from "@sim/sim";
 import type { PhysicsCampaignController } from "./campaign-controller";
 import {

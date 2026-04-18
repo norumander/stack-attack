@@ -1,5 +1,5 @@
 import { describe, it, beforeEach, expect } from "vitest";
-import { showDossier } from "../../../../src/dashboard/physics-td/show-dossier";
+import { showDossier } from "../../../../src/physics-td/show-dossier";
 
 describe("showDossier", () => {
   beforeEach(() => {

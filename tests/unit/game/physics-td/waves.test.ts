@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CAMPAIGN_WAVES } from "../../../../src/dashboard/physics-td/waves";
+import { CAMPAIGN_WAVES } from "../../../../src/physics-td/waves";
 
 describe("CAMPAIGN_WAVES catalog", () => {
   it("includes W1, W2, W3, W4, W5 in order", () => {

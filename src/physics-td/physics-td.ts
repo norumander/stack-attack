@@ -9,15 +9,15 @@ import {
   activateCyberpunkHud,
   getCyberpunkHudController,
   type CyberpunkHudController,
-} from "@dashboard/cyberpunk-hud";
-import { CyberpunkTopologyRenderer } from "@dashboard/render/cyberpunk-topology-renderer";
+} from "../cyberpunk-hud";
+import { CyberpunkTopologyRenderer } from "../render/cyberpunk-topology-renderer";
 import { Sim } from "@sim/sim";
 import { SimClient } from "@sim/client";
 import { TrafficSource } from "@sim/traffic-source";
 import { makeSimRng } from "@sim/rng";
 import { evaluateSLA } from "@sim/sla";
-import { BrowserDriver } from "@dashboard/sim-demo/browser-driver";
-import { SimToRendererAdapter } from "@dashboard/sim-demo/sim-to-renderer";
+import { BrowserDriver } from "../sim-demo/browser-driver";
+import { SimToRendererAdapter } from "../sim-demo/sim-to-renderer";
 import { PhysicsCampaignController } from "./campaign-controller";
 import { COMPONENT_COSTS } from "./component-factory";
 import { CAMPAIGN_WAVES, computeBriefingForCampaignWave } from "./waves";

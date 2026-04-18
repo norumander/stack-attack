@@ -1,6 +1,5 @@
-// src/dashboard/sim-demo/sim-to-renderer.ts
 import type { Sim } from "@sim/sim";
-import type { TopologyRenderer } from "@dashboard/render/topology-renderer";
+import type { TopologyRenderer } from "../render/topology-renderer";
 import type { Packet } from "@sim/types";
 import type { ComponentId, ConnectionId, RequestId } from "@core/types/ids";
 

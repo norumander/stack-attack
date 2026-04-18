@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { COMPONENT_META } from "../../../../src/dashboard/physics-td/component-meta";
-import { COMPONENT_COSTS } from "../../../../src/dashboard/physics-td/component-factory";
+import { COMPONENT_META } from "../../../../src/physics-td/component-meta";
+import { COMPONENT_COSTS } from "../../../../src/physics-td/component-factory";
 
 describe("COMPONENT_META catalog", () => {
   it("covers all 10 placeable types from COMPONENT_COSTS", () => {

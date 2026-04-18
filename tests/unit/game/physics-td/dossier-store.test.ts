@@ -1,5 +1,5 @@
 import { describe, it, beforeEach, expect } from "vitest";
-import { ComponentDossierStore } from "../../../../src/dashboard/physics-td/dossier-store";
+import { ComponentDossierStore } from "../../../../src/physics-td/dossier-store";
 
 const KEY = "physics-td-dossiers-seen";
 

@@ -6,7 +6,7 @@ export default defineConfig({
     globals: true,
     include: ["tests/**/*.test.ts"],
     environmentMatchGlobs: [
-      ["tests/unit/dashboard/**", "happy-dom"],
+      ["tests/unit/game/**", "happy-dom"],
     ],
   },
   resolve: {
@@ -15,8 +15,6 @@ export default defineConfig({
       "@sim": fileURLToPath(new URL("./src/sim", import.meta.url)),
       "@capabilities": fileURLToPath(new URL("./src/capabilities", import.meta.url)),
       "@harness": fileURLToPath(new URL("./tests/harness", import.meta.url)),
-      "@modes": fileURLToPath(new URL("./src/modes", import.meta.url)),
-      "@dashboard": fileURLToPath(new URL("./src/dashboard", import.meta.url)),
     },
   },
 });

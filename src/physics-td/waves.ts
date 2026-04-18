@@ -1,4 +1,3 @@
-// src/dashboard/physics-td/waves.ts
 import type { WaveDef } from "@sim/wave";
 import type { SLAThresholds } from "@sim/sla";
 import type { ComponentId } from "@core/types/ids";

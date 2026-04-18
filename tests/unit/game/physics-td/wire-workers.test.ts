@@ -6,7 +6,7 @@ import { QueueCapability } from "@sim/capabilities/queue";
 import { WorkerCapability } from "@sim/capabilities/worker";
 import { ForwardingCapability } from "@sim/capabilities/forwarding";
 import { resetIdCountersForTest } from "@sim/packet";
-import { wireWorkers } from "../../../../src/dashboard/physics-td/wire-workers";
+import { wireWorkers } from "../../../../src/physics-td/wire-workers";
 import type { ComponentId, ConnectionId, PortId } from "@core/types/ids";
 
 describe("wireWorkers", () => {

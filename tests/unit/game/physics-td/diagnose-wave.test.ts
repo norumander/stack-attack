@@ -4,7 +4,7 @@ import { SimComponent } from "@sim/component";
 import { ForwardingCapability } from "@sim/capabilities/forwarding";
 import { ProcessingCapability } from "@sim/capabilities/processing";
 import { resetIdCountersForTest } from "@sim/packet";
-import { diagnoseWave, type DiagnosisInput } from "../../../../src/dashboard/physics-td/diagnose-wave";
+import { diagnoseWave, type DiagnosisInput } from "../../../../src/physics-td/diagnose-wave";
 import type { ComponentId } from "@core/types/ids";
 
 describe("diagnoseWave (physics)", () => {

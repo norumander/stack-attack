@@ -3,7 +3,7 @@ import {
   computeLoad,
   describeTraffic,
   describeReward,
-} from "../../../src/dashboard/physics-td/briefing-text.js";
+} from "../../../src/physics-td/briefing-text.js";
 
 describe("computeLoad", () => {
   it.each([

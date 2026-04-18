@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { utilizationColor } from "../../src/dashboard/render/utilization-color.js";
+import { utilizationColor } from "../../src/render/utilization-color.js";
 
 describe("utilizationColor", () => {
   it("returns pure green at utilization 0 (healthy)", () => {

@@ -4,7 +4,7 @@ import { SimComponent } from "@sim/component";
 import { SimConnection } from "@sim/connection";
 import { ProcessingCapability } from "@sim/capabilities/processing";
 import { makePacket, resetIdCountersForTest, mintRequestId } from "@sim/packet";
-import { SimToRendererAdapter } from "../../../src/dashboard/sim-demo/sim-to-renderer";
+import { SimToRendererAdapter } from "../../../src/sim-demo/sim-to-renderer";
 import type { TopologyRenderer, SpawnRequestDotArgs, ComponentUpdate, ConnectionUpdate, ComponentVisual, RendererPointerEvent } from "@dashboard/render/topology-renderer";
 import type { ComponentId, ConnectionId, PortId } from "@core/types/ids";
 import type { Request } from "@sim/types";

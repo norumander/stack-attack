@@ -3,9 +3,9 @@ import { Sim } from "@sim/sim";
 import { SimComponent } from "@sim/component";
 import { ProcessingCapability } from "@sim/capabilities/processing";
 import { ForwardingCapability } from "@sim/capabilities/forwarding";
-import { bindInfoPanel } from "../../../../src/dashboard/physics-td/component-info-panel";
-import { ComponentDossierStore } from "../../../../src/dashboard/physics-td/dossier-store";
-import * as ShowDossier from "../../../../src/dashboard/physics-td/show-dossier";
+import { bindInfoPanel } from "../../../../src/physics-td/component-info-panel";
+import { ComponentDossierStore } from "../../../../src/physics-td/dossier-store";
+import * as ShowDossier from "../../../../src/physics-td/show-dossier";
 import type { ComponentId } from "@core/types/ids";
 
 // Build the mirror-div fixture programmatically — never use innerHTML.

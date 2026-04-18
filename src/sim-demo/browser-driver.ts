@@ -1,4 +1,3 @@
-// src/dashboard/sim-demo/browser-driver.ts
 import type { Sim } from "@sim/sim";
 
 export type BrowserDriverOptions = {

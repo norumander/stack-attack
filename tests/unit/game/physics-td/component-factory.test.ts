@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { COMPONENT_FACTORY, COMPONENT_COSTS, buildSimComponent } from "../../../../src/dashboard/physics-td/component-factory";
+import { COMPONENT_FACTORY, COMPONENT_COSTS, buildSimComponent } from "../../../../src/physics-td/component-factory";
 import { WorkerCapability } from "@sim/capabilities/worker";
 import type { ComponentId } from "@core/types/ids";
 

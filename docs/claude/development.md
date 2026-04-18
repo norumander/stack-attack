@@ -8,15 +8,16 @@ React + TypeScript + Pixi.js planned for the UI stage (not yet built). Simulatio
 
 - `src/core/` — engine, state, component, capability, types, mode interfaces, registry
 - `src/core/engine/` — one file per tick step (29 files), plus helpers (rng, throughput, visit-order, etc.)
-- `src/modes/sandbox/` — `SandboxModeController`, zone management, scenario system
-- `src/modes/td/` — `TDModeController`, `TDEconomy`, `TDTrafficSource`, wave definitions
 - `src/capabilities/` — concrete capability implementations (e.g. `ProcessingCapability`)
-- `src/dashboard/` — Vite sandbox + TD dashboard
+- `src/sim/` — physics sim engine (Sim, packets, capabilities)
+- `src/physics-td/` — game logic (campaign, UX, waves, HUD bridge)
+- `src/render/` — cyberpunk isometric renderer
+- `src/sim-demo/` — BrowserDriver, SimToRendererAdapter
 
 ## Commands
 
 ```bash
-pnpm test                              # run full suite (~6s, 645 tests)
+pnpm test                              # run full suite (~11s, 613 tests)
 pnpm test tests/unit/<name>.test.ts    # run a single file (~1s)
 pnpm typecheck                         # strict tsc --noEmit
 pnpm dev                               # start Vite dashboard
@@ -24,7 +25,7 @@ pnpm dev                               # start Vite dashboard
 
 - **Package manager:** `pnpm` (uses `pnpm-lock.yaml`).
 - **Test layout:** vitest runs `tests/**/*.test.ts`. Unit in `tests/unit/`, integration in `tests/integration/`, mode-agnostic stubs in `tests/harness/`. See `test-harness.md` for fixtures.
-- **Path aliases:** `@core/*`, `@capabilities/*`, `@harness/*`. Must be mirrored in both `tsconfig.json` paths and `vitest.config.ts` resolve.alias — changing one without the other silently breaks tests or typecheck.
+- **Path aliases:** `@core/*`, `@sim/*`, `@capabilities/*`, `@harness/*`. Must be mirrored in both `tsconfig.json` paths and `vitest.config.ts` resolve.alias — changing one without the other silently breaks tests or typecheck.
 - **TypeScript:** strict with `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`. ESM — relative imports use `.js` extension on `.ts` sources (bundler moduleResolution). Branded IDs (`RequestId`, `ComponentId`, etc.) require `as RequestId` casts in test fixtures.
 - **Specs and plans:** designs in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`. Phase 1 is built in sequential stages with explicit exit criteria — write the next stage's plan only after the previous stage merges and its interfaces are locked.
 - **Phase 1 scope reminder:** pure TypeScript simulation. Vercel-plugin skill suggestions that fire on `package.json`/`tsconfig.json` writes are false positives in this phase.

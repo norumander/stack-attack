@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Sim } from "@sim/sim";
-import { BrowserDriver } from "../../../src/dashboard/sim-demo/browser-driver";
+import { BrowserDriver } from "../../../src/sim-demo/browser-driver";
 
 describe("BrowserDriver", () => {
   it("drains wall-clock delta in fixed 1/60s sim steps", () => {
