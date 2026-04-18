@@ -96,8 +96,17 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
       s.path = raw;
       return;
     }
-    const perpX = -dy / len;
-    const perpY = dx / len;
+    let perpX = -dy / len;
+    let perpY = dx / len;
+    // Canonicalize the perpendicular so it points the same way regardless of
+    // which endpoint is parametric "from" vs "to". Without this, twin connections
+    // (forward + back between the same component pair) compute opposite
+    // perpendiculars; combined with the per-direction sign flip below, both
+    // lanes end up on the same side.
+    if (perpY < 0 || (perpY === 0 && perpX < 0)) {
+      perpX = -perpX;
+      perpY = -perpY;
+    }
     const sign = s.direction === "forward" ? -1 : 1;
     const ox = perpX * LANE_OFFSET_PX * sign;
     const oy = perpY * LANE_OFFSET_PX * sign;
@@ -116,7 +125,19 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
   const drawArrowhead = (gfx: Graphics, path: Point[], color: number, alpha: number): void => {
     if (path.length < 2) return;
     const tip = path[path.length - 1]!;
-    const prev = path[path.length - 2]!;
+    // Walk backward through the path until we find a non-degenerate previous
+    // point. L-routed paths whose source and target share a row/column have a
+    // zero-length last segment (corner === end); using the start->end vector
+    // as a fallback yields the right direction.
+    let prev: Point | null = null;
+    for (let i = path.length - 2; i >= 0; i--) {
+      const candidate = path[i]!;
+      if (candidate.x !== tip.x || candidate.y !== tip.y) {
+        prev = candidate;
+        break;
+      }
+    }
+    if (!prev) return;
     const segDx = tip.x - prev.x;
     const segDy = tip.y - prev.y;
     const segLen = Math.hypot(segDx, segDy);
