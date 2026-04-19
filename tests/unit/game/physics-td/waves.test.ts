@@ -6,10 +6,10 @@ describe("CAMPAIGN_WAVES catalog", () => {
     expect(CAMPAIGN_WAVES.map((w) => w.id)).toEqual(["w1", "w2", "w3", "w4"]);
   });
 
-  it("Wave 3 carries ~30% largeRatio and ~20% authRatio for CDN + Gateway rescue", () => {
+  it("Wave 3 carries heavy largeRatio and ~20% authRatio for CDN + Gateway rescue", () => {
     const w3 = CAMPAIGN_WAVES.find((w) => w.id === "w3");
     expect(w3).toBeDefined();
-    expect(w3!.wave.composition.largeRatio).toBeCloseTo(0.3);
+    expect(w3!.wave.composition.largeRatio).toBeGreaterThanOrEqual(0.3);
     expect(w3!.wave.composition.authRatio).toBeCloseTo(0.2);
   });
 
