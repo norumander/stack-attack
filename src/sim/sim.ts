@@ -8,6 +8,7 @@ import { mintPacketId, mintRequestId } from "./packet";
 import { advancePackets, collectArrivals } from "./edge-physics";
 import { launchDueSnakes, populateSnakes } from "./snake";
 import { WorkerCapability } from "./capabilities/worker";
+import { effectiveEdgeSpeed } from "./zone-latency";
 
 export type SimOptions = {
   readonly seed: number;
@@ -72,7 +73,7 @@ export class Sim {
     this.releaseExpiredReservations();
     for (const c of this.components.values()) c.refillBucket(dt);
     populateSnakes(this.clients, this.simTime + dt);
-    launchDueSnakes(this.clients, this.connections, this.activePackets, this.simTime + dt, this.rng);
+    launchDueSnakes(this.clients, this.connections, this.activePackets, this.simTime + dt, this.rng, this.components);
     this.pullFromWorkers(dt);
     advancePackets(this.activePackets, dt);
     const { arriving, remaining } = collectArrivals(this.activePackets);
@@ -94,7 +95,7 @@ export class Sim {
     for (const conn of this.connections.values()) {
       if (conn.from.componentId === component.id && conn.direction === "forward") {
         const target = this.components.get(conn.to.componentId);
-        egressEdges.push({ id: conn.id, speed: conn.speed, targetZone: target?.zone ?? null });
+        egressEdges.push({ id: conn.id, speed: effectiveEdgeSpeed(conn, this.components), targetZone: target?.zone ?? null });
       }
     }
     const ctx: ArrivalContext = {
@@ -157,7 +158,7 @@ export class Sim {
               requests: [],
               edgeId: twin.id,
               progress: 0,
-              speed: twin.speed,
+              speed: effectiveEdgeSpeed(twin, this.components),
               spawnedAt: merge.originalSpawnedAt,
               parentId: parentPacketId,
               direction: "back",
@@ -203,7 +204,7 @@ export class Sim {
       if (!nextTwin) return;
       packet.edgeId = nextTwin.id;
       packet.progress = 0;
-      packet.speed = nextTwin.speed;
+      packet.speed = effectiveEdgeSpeed(nextTwin, this.components);
       this.activePackets.push(packet);
     }
   }
@@ -265,7 +266,7 @@ export class Sim {
         }
         resp.edgeId = twin.id;
         resp.progress = 0;
-        resp.speed = twin.speed;
+        resp.speed = effectiveEdgeSpeed(twin, this.components);
         this.revenueByPacketId.set(resp.id, { revenue: outcome.revenueOnDelivery, count: outcome.count });
         this.activePackets.push(resp);
         return;
