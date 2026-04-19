@@ -9,6 +9,7 @@ import { COMPONENT_META } from "./component-meta";
 import { COMPONENT_COSTS } from "./component-factory";
 import { ComponentDossierStore } from "./dossier-store";
 import { showDossier } from "./show-dossier";
+import type { ComponentMetrics } from "./component-metrics";
 
 export interface InfoPanelDeps {
   readonly renderer: {
@@ -21,6 +22,9 @@ export interface InfoPanelDeps {
   readonly componentTypes: Map<ComponentId, string>;
   readonly getDrops: () => Map<ComponentId, { total: number; byReason: Map<string, number> }>;
   readonly getProcessed: () => Map<ComponentId, number>;
+  /** Optional live-metrics lookup. When supplied, the panel renders a
+   *  "Live" section (drops-last-1s, avg response, stress indicator). */
+  readonly getMetrics?: (id: ComponentId) => ComponentMetrics;
 }
 
 export interface InfoPanelHandle {
@@ -113,6 +117,20 @@ export function bindInfoPanel(deps: InfoPanelDeps): InfoPanelHandle {
     stats!.appendChild(statRow("Dropped (wave)", String(dropTally)));
     const processed = deps.getProcessed().get(openId) ?? 0;
     stats!.appendChild(statRow("Processed (wave)", String(processed)));
+
+    // Live telemetry section — only when an aggregator is wired.
+    if (deps.getMetrics) {
+      const m = deps.getMetrics(openId);
+      stats!.appendChild(statRow("Drops (last 1s)", String(m.dropsLastSecond)));
+      const avgMs = Math.round(m.avgResponseSeconds * 1000);
+      stats!.appendChild(statRow("Avg response", m.avgResponseSeconds > 0 ? `${avgMs} ms` : "—"));
+      if (m.stressed || m.dropping) {
+        const status = m.dropping ? "DROPPING" : "STRESSED";
+        const row = statRow("Status", status);
+        row.classList.add(m.dropping ? "td-info-panel__stat-row--dropping" : "td-info-panel__stat-row--stressed");
+        stats!.appendChild(row);
+      }
+    }
   }
 
   deps.renderer.onPointerDown((ev) => {

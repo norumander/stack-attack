@@ -2,7 +2,7 @@
 
 A tower defense game that teaches system architecture through gameplay. Traffic is the enemy, infrastructure components are the towers, a live economy makes architecture decisions feel like business decisions. Strategy game first — the learning is the surprise.
 
-**Current stage:** Physics TD with rate-limited Server (30 req/sec) + Redis-style backend-only Data Cache. Classic TD, sandbox mode, and all associated infrastructure removed. 698 tests, typecheck clean.
+**Current stage:** Physics TD is the shipping mode — 8-wave Netflix campaign (Launch → Viral Moment) covering reads, writes, async/batch, chaos, streaming, multi-zone routing, and auto-scale. Supporting systems landed: per-component live metrics + stress indicators (`component-metrics.ts`), component labels + info panel, Diagnose-mode framework (`src/diagnose/` — controller + level schema shipped, content levels in progress), AI chatbot (Supabase Edge Function → Claude backend + right-edge drawer UI in both modes), multi-egress topology validator, and a topology-builder DSL in `src/playtest/` for Diagnose levels. Typecheck clean.
 
 ## Context hub
 
@@ -23,7 +23,6 @@ This file is intentionally small. Pull the chunk you need:
 - **Never commit unless explicitly asked.** New commits over amending. Never `--no-verify`, never force-push to main.
 - **No React, Next.js, or Vercel imports in `src/core/` or `src/capabilities/`.** Enforced by `tests/unit/engine-pixi-isolation.test.ts`.
 - **Ignore Vercel plugin hook noise.** The plugin injects Next.js / verification skill reminders on `vite` / `pnpm dev|build` regex matches — this is a local Vite + Pixi project, not Vercel/Next. Those reminders are false positives.
-- **Pre-existing typecheck noise (2 lines):** `tests/unit/pull-from-buffers.test.ts:81` has a known unrelated error (`requestsPerTick` on `FixedIntensityConfig`), and `tests/unit/game/sim-to-renderer-adapter.test.ts:8` imports a missing `@dashboard/render/topology-renderer` alias. Clean typecheck = just those two lines.
 - **`tests/playtest/*` is research/analysis, not production tests.** Can be deleted or rewritten without blocking a feature — separate from the `tests/unit/` and `tests/integration/` contract surface.
 
 ## Quickstart

@@ -6,6 +6,7 @@
   <title>Stack Attack — Physics TD</title>
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./cyberpunk-hud.css" />
+  <link rel="stylesheet" href="./chatbot/chatbot-drawer.css" />
   <link rel="stylesheet" href="./auth/auth.css" />
   <style>
     html, body { margin: 0; padding: 0; background: #0a1420; color: #ccddee; font-family: monospace; overflow: hidden; }
@@ -35,6 +36,9 @@
     <div id="td-hud-phase">build</div>
     <div id="td-hud-budget">$200</div>
     <div id="td-status">Build phase — place components and click READY</div>
+
+    <!-- Topology validator errors (live-updated during build phase) -->
+    <div id="td-topology-errors"></div>
 
     <!-- Briefing card -->
     <div id="td-briefing-title">Wave 1 — First Light</div>

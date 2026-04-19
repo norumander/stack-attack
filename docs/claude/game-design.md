@@ -8,12 +8,12 @@ The game must stand on its own as a strategy game first. The learning is the lon
 
 **KSP analogy:** KSP doesn't teach aerospace engineering, but after playing it every orbital mechanics concept has an experiential anchor. We do the same for system architecture. A player who finishes this game and later encounters caching, load balancing, or sharding in a tutorial already has the intuition.
 
-## Two modes, one engine
+## Modes
 
-- **TD Mode** (ships first): Game-first. Components expose limited capabilities through placement, connection, and upgrades. Waves test the player's architecture under pressure. Build → watch → assess → repeat. No mid-wave intervention.
-- **Sandbox Mode** (designed-for from day one, built later): Full capability set unlocked. Player configures traffic, triggers chaos, explores tradeoffs without economic pressure.
+- **Physics TD (campaign)** — the shipping mode. Game-first. The player places components, connects them, watches a real-time sim run. 8-wave Netflix-themed campaign from Launch Day to Viral Moment, introducing reads/writes, async/batch, chaos, streaming, multi-zone, auto-scale.
+- **Diagnose mode** — framework exists (`src/diagnose/`). Player inherits a pre-placed 15–20 component topology with subtle flaws and uses a smaller remediation budget (partial refund on delete) to fix the architecture under one revealing wave. No content levels shipped yet.
 
-Both modes share the same component system. A Database in TD has `StorageCapability(tier=1)` and flavor text; in Sandbox it exposes `SchemaCapability`, `ReplicationCapability`, and `QueryCapability`. The ModeController determines the aperture; components never know which mode they're in.
+Classic TD / sandbox mode from an earlier iteration has been removed.
 
 ## Core design principles (one-liners)
 
@@ -22,9 +22,10 @@ Both modes share the same component system. A Database in TD has `StorageCapabil
 - **Tradeoffs, not right answers** — multi-axis scoring (cost, performance, reliability). The best architecture is the cheapest one that still performs under worst-case load.
 - **Build → Watch → Assess** — no mid-wave intervention. Maps to how real engineering works (deploy, observe, diagnose, iterate). Auto-battler loop.
 - **Wrong intuitions on purpose** — caches don't always help, load balancers don't always matter, queues trade latency for throughput. Open-ended levels with valid-tradeoff Pareto frontiers.
+- **One source of truth for stress signals** — `component-metrics.ts` encodes stress thresholds (utilization, rolling drops); both the info panel and the sprite stress indicator read from it.
 
 ## Design docs (read on demand)
 
-- **`component-architecture.md`** — object model, 7 core abstractions, 4-phase execution pipeline (INTERCEPT/PROCESS/REPLICATE/OBSERVE), engine sub-interfaces (EngineConsultable/EngineBufferable), 10-step simulation tick, 13-component registry with key capabilities, extensibility contract, zones/multi-region, auto-scaling. Authoritative for engine design target.
-- **`wave-progression-strategy.md`** — two scaling axes (intensity + diversity), 7 request types, 10-wave progression with architectural lessons, boss waves, economic pressure curve.
+- **`component-architecture.md`** (repo root) — object model, capability pattern, component registry. Mixes current Physics TD design with historical tick-step engine notes; treat the tick-phase sections as historical.
+- **`wave-progression-strategy.md`** (repo root) — two scaling axes (intensity + diversity), request types, wave progression, economic pressure curve.
 - **`docs/research/stack-attack-concept.md`** — purpose, SPOVs, research insights, market analysis, design theory.

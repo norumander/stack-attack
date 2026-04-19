@@ -1,3 +1,9 @@
+# TD mode / dashboard / registry gotchas (HISTORICAL — legacy tick-step engine)
+
+> **Status: historical.** The content below documents the pre-pivot tick-step engine in `src/core/` + `src/capabilities/` and the old dashboard (`src/dashboard/`, removed). The shipping Physics TD game uses a different real-time engine under `src/sim/` — none of these phase-ordering, FORWARDED-event, or wave-tuning gotchas apply to current game code. Preserved for anyone spelunking through old tests in `tests/unit/` and `tests/integration/td/` that still cover the legacy engine. See `simulation-tick.md` for orientation.
+
+---
+
 # TD mode / dashboard / registry gotchas (Stage 3a–3d)
 
 ## Stage 3a engine contract gotchas

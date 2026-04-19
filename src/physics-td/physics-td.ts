@@ -19,13 +19,18 @@ import { wireWorkers } from "./wire-workers";
 import * as hud from "./hud-bridge";
 import { Viability, DAMAGE_PER_FAILURE } from "./viability";
 import { validateTopology } from "./validate-topology";
+import { formatTopologyError, COMPONENT_TYPE_LABEL } from "./topology-error-messages";
 import { computeSlaPenalty } from "./wave-penalty";
 import { ComponentDossierStore } from "./dossier-store";
 import { showDossier } from "./show-dossier";
 import { bindInfoPanel, type InfoPanelHandle } from "./component-info-panel";
+import { ComponentMetricsAggregator } from "./component-metrics";
 import type { ComponentId } from "@core/types/ids";
 import { injectNavBar } from "../auth/index";
 import { resolveInitialSession } from "../auth-gate";
+import { mountChatbotDrawer } from "../chatbot/chatbot-drawer";
+import { serializeContextForChat } from "../chatbot/serialize-context";
+import type { ChatRequest } from "../chatbot/chat-client";
 
 const CLIENT_ID = "client" as ComponentId;
 // Drain budget after wave duration: extra real-seconds for in-flight packets to retire.
@@ -77,6 +82,7 @@ async function main(): Promise<void> {
   // Per-wave positions for the sim-to-renderer adapter (tracks placed positions).
   let positions = new Map<ComponentId, { x: number; y: number }>();
   const componentTypes = new Map<ComponentId, string>();
+  const componentLabels = new Map<ComponentId, string | undefined>();
 
   // Mutable refs for late-bound UX wiring.
   const refs: {
@@ -103,6 +109,7 @@ async function main(): Promise<void> {
   let perComponentDrops: Map<ComponentId, { total: number; byReason: Map<string, number> }> = new Map();
   let perComponentProcessed: Map<ComponentId, number> = new Map();
   const seenPacketIds = new Set<string>();
+  const metricsAggregator = new ComponentMetricsAggregator();
 
   // Campaign-wide viability pool. Drains per failed request; at 0 the
   // player restarts from wave 1 (page reload).
@@ -119,6 +126,35 @@ async function main(): Promise<void> {
   // because onPhaseChange is only called during gameplay, after assignment).
   let infoPanel!: InfoPanelHandle;
 
+  /**
+   * Re-run the pre-sim topology validator and publish human-readable
+   * messages into the HUD's mirror div. Called after every topology change
+   * in build phase so the player sees live feedback instead of waiting for
+   * READY. Cheap (BFS over a tiny graph); no throttling required.
+   *
+   * Reads `sim` from closure so it picks up the post-clearWaveWorld
+   * replacement instance.
+   */
+  function revalidateTopology(): void {
+    if (controller.phase !== "build") {
+      hud.setTopologyErrors([]);
+      return;
+    }
+    const wave = CAMPAIGN_WAVES[controller.currentWaveIndex];
+    if (!wave) {
+      hud.setTopologyErrors([]);
+      return;
+    }
+    // Empty canvas (only the client) — nothing to validate, show nothing.
+    if (sim.components.size === 0) {
+      hud.setTopologyErrors([]);
+      return;
+    }
+    const errors = validateTopology(sim, wave.wave, CLIENT_ID, componentTypes);
+    controller.lastTopologyErrors = errors;
+    hud.setTopologyErrors(errors.map(formatTopologyError));
+  }
+
   const controller = new PhysicsCampaignController({
     waves: CAMPAIGN_WAVES.map((w) => ({ id: w.id, startBudget: w.startBudget, revenue: w.wave.revenue })),
     componentCosts: COMPONENT_COSTS,
@@ -126,10 +162,22 @@ async function main(): Promise<void> {
       onPlaced: (type, id, gridPos) => {
         positions.set(id, gridPos);
         componentTypes.set(id, type);
-        refs.placement?.applyPlacement(type, id, gridPos);
+        // Auto-generate a human-friendly label ("Server 1", "Data Cache 2")
+        // based on the 1-based index among already-placed components of
+        // this type (the just-placed id was already recorded above).
+        let index = 0;
+        for (const t of componentTypes.values()) {
+          if (t === type) index += 1;
+        }
+        const typeDisplay = COMPONENT_TYPE_LABEL.get(type) ?? type;
+        const autoLabel = `${typeDisplay} ${index}`;
+        componentLabels.set(id, autoLabel);
+        refs.placement?.applyPlacement(type, id, gridPos, autoLabel);
+        revalidateTopology();
       },
       onConnected: (sourceId, targetId, forwardId, backId) => {
         refs.connect?.applyConnection(sourceId, targetId, forwardId, backId);
+        revalidateTopology();
       },
       onComponentDeleted: (id) => {
         // Remove all sim connections touching this component; renderer side is
@@ -143,7 +191,9 @@ async function main(): Promise<void> {
         sim.clients.delete(id);
         positions.delete(id);
         componentTypes.delete(id);
+        componentLabels.delete(id);
         renderer.removeComponent(id);
+        revalidateTopology();
       },
       onConnectionDeleted: (forwardId) => {
         const fwd = sim.connections.get(forwardId);
@@ -154,6 +204,7 @@ async function main(): Promise<void> {
           sim.connections.delete(twinId);
           renderer.removeConnection(twinId);
         }
+        revalidateTopology();
       },
       onPhaseChange: (phase, waveIndex) => {
         const wave = CAMPAIGN_WAVES[waveIndex];
@@ -164,10 +215,12 @@ async function main(): Promise<void> {
           hud.setStatus("Build phase — place components, READY when done");
           hud.setReadyDisabled(false);
           setupClientForBuild();
+          revalidateTopology();
         } else if (phase === "simulate") {
           hud.setStatus("Wave running — tick 0/100");
           hud.setReadyDisabled(true);
           hudCtrl.hideBriefing();
+          hud.setTopologyErrors([]);
         } else if (phase === "won") {
           infoPanel.hide();
           hud.setStatus("Wave WON");
@@ -195,6 +248,7 @@ async function main(): Promise<void> {
     componentTypes,
     getDrops: () => perComponentDrops,
     getProcessed: () => perComponentProcessed,
+    getMetrics: (id) => metricsAggregator.getMetricsFor(id),
   });
 
   // ─── Dev +$100 button (testing aid; remove before ship) ────────────
@@ -370,6 +424,7 @@ async function main(): Promise<void> {
     perComponentDrops = new Map();
     perComponentProcessed = new Map();
     seenPacketIds.clear();
+    metricsAggregator.reset();
 
     // Pre-sim topology validation — non-blocking. Stores errors on the
     // controller so a future HUD warning UI can surface them.
@@ -429,6 +484,14 @@ async function main(): Promise<void> {
         }
       }
       adapter.syncFrame(driver.tickEvents);
+
+      // Per-component live metrics aggregator + sprite stress indicator.
+      metricsAggregator.update(sim, driver.tickEvents, sim.simTime);
+      for (const id of sim.components.keys()) {
+        if ((id as unknown as string) === (CLIENT_ID as unknown as string)) continue;
+        const m = metricsAggregator.getMetricsFor(id);
+        renderer.updateComponent(id, { stress: { stressed: m.stressed, dropping: m.dropping } });
+      }
 
       if (failuresThisFrame > 0) {
         viability.damage(failuresThisFrame * DAMAGE_PER_FAILURE);
@@ -702,8 +765,10 @@ async function main(): Promise<void> {
     sim.activePackets.length = 0;
     positions.clear();
     componentTypes.clear();
+    componentLabels.clear();
     perComponentDrops = new Map();
     perComponentProcessed = new Map();
+    metricsAggregator.reset();
     // Fresh sim instance to wipe internal merge maps + revenue ledger.
     sim = new Sim({ seed: 1 });
     // PlacementUX/ConnectUX hold a Sim reference — rebuild them so they
@@ -718,6 +783,54 @@ async function main(): Promise<void> {
     // Repaint the client visual for the next build phase.
     setupClientForBuild();
   }
+
+  // ─── Chatbot tutor drawer ───────────────────────────────────────────
+  const levelId =
+    (window as unknown as { __stackAttackLevelId?: StackAttackLevelId | null })
+      .__stackAttackLevelId ?? undefined;
+  mountChatbotDrawer({
+    host: document.body,
+    getContext: (): ChatRequest | null => {
+      const waveEntry = CAMPAIGN_WAVES[controller.currentWaveIndex];
+      if (!waveEntry) return null;
+      const avgLatency =
+        metrics.latencyCount > 0 ? metrics.latencySum / metrics.latencyCount : 0;
+      const dropRate =
+        metrics.totalRequests > 0 ? metrics.drops / metrics.totalRequests : 0;
+      const delivered = metrics.responded + metrics.terminated;
+      const availability =
+        metrics.totalRequests > 0 ? delivered / metrics.totalRequests : 1;
+      const currentTick =
+        controller.phase === "simulate"
+          ? Math.max(0, (performance.now() - waveStartMs) / 1000)
+          : 0;
+      return serializeContextForChat({
+        sim,
+        wave: waveEntry.wave,
+        waveId: waveEntry.id,
+        waveTitle: waveEntry.title,
+        sla: waveEntry.sla,
+        metricsAggregator: controller.phase === "simulate" ? metricsAggregator : null,
+        componentTypes,
+        componentLabels,
+        mode: "build",
+        hintLevel: "coach",
+        levelId: levelId ?? undefined,
+        liveMetrics: {
+          availability,
+          avgLatencySeconds: avgLatency,
+          dropRate,
+          currentTickSeconds: currentTick,
+        },
+        recentEvents: [],
+        conversationHistory: [],
+        userMessage: "",
+      });
+    },
+    onHighlight: () => {
+      // TODO: wire component flash when renderer exposes a highlight API.
+    },
+  });
 
   // ─── Initial paint ──────────────────────────────────────────────────
   hud.setWavePill(1, CAMPAIGN_WAVES.length);

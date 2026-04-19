@@ -1082,6 +1082,52 @@ body.renderer-iso .cp-briefing-load-label {
   margin-left: 10px;
 }
 
+/* ─── Topology errors panel ─────────────────────────────────────── */
+body.renderer-iso .cp-topology-errors {
+  min-width: 0;
+  padding: 12px 14px;
+  border-color: rgba(245, 158, 11, 0.5);
+}
+body.renderer-iso .cp-topology-errors-header {
+  font-family: var(--cp-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cp-amber, #f59e0b);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(245, 158, 11, 0.25);
+}
+body.renderer-iso .cp-topology-errors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+body.renderer-iso .cp-topology-error-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--sc-ink, #e1e4ed);
+}
+body.renderer-iso .cp-topology-error-dot {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--cp-amber, #f59e0b);
+  color: var(--cp-amber, #f59e0b);
+  font-family: var(--cp-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 12px;
+}
+body.renderer-iso .cp-topology-error-text {
+  flex: 1 1 auto;
+}
+
 /* ─── Toast ─────────────────────────────────────────────────────── */
 body.renderer-iso .cp-toast {
   position: fixed;

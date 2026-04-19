@@ -61,6 +61,7 @@ function buildHud(): void {
   buildResourcesPanel(rightCol);
   buildViabilityPanel(rightCol);
   buildBriefingPanel(rightCol);
+  buildTopologyErrorsPanel(rightCol);
 
   buildInfoPanel(root);
   buildPaletteStrip(root);
@@ -217,6 +218,101 @@ function buildBriefingPanel(root: HTMLElement): void {
 
   p.append(body);
   root.append(p);
+}
+
+// ─── Topology errors panel (right column, below briefing) ────────────
+// Shows a compact list of pre-sim validator errors so the player sees
+// WHY the current topology will fail before pressing READY. Hidden when
+// the topology is valid.
+
+function buildTopologyErrorsPanel(root: HTMLElement): void {
+  const p = panel("cp-topology-errors cp-hidden");
+  p.id = "cp-topology-errors-panel";
+
+  const header = div("cp-topology-errors-header");
+  header.id = "cp-topology-errors-header";
+  header.textContent = "TOPOLOGY ERRORS";
+  p.append(header);
+
+  const list = div("cp-topology-errors-list");
+  list.id = "cp-topology-errors-list";
+  p.append(list);
+
+  root.append(p);
+
+  // Observe the hidden mirror div — each child (data-topology-error) is one
+  // error message. Re-render the list + update the header count on change.
+  const source = document.getElementById("td-topology-errors");
+  const sync = (): void => {
+    const rows = source
+      ? Array.from(source.querySelectorAll<HTMLElement>("[data-topology-error]"))
+      : [];
+    while (list.firstChild) list.removeChild(list.firstChild);
+    if (rows.length === 0) {
+      p.classList.add("cp-hidden");
+      header.textContent = "TOPOLOGY ERRORS";
+      return;
+    }
+    p.classList.remove("cp-hidden");
+    header.textContent = `TOPOLOGY ERRORS (${rows.length})`;
+    for (const row of rows) {
+      const item = div("cp-topology-error-row");
+      const dot = document.createElement("span");
+      dot.className = "cp-topology-error-dot";
+      dot.textContent = "!";
+      item.append(dot);
+      const text = document.createElement("span");
+      text.className = "cp-topology-error-text";
+      text.textContent = row.textContent ?? "";
+      item.append(text);
+      list.append(item);
+    }
+  };
+  if (!source) {
+    requestAnimationFrame(() => buildTopologyErrorsPanel_rebind(p, header, list));
+    return;
+  }
+  sync();
+  const observer = new MutationObserver(sync);
+  observer.observe(source, { childList: true, subtree: true, characterData: true });
+}
+
+function buildTopologyErrorsPanel_rebind(
+  p: HTMLElement,
+  header: HTMLElement,
+  list: HTMLElement,
+): void {
+  const source = document.getElementById("td-topology-errors");
+  if (!source) {
+    requestAnimationFrame(() => buildTopologyErrorsPanel_rebind(p, header, list));
+    return;
+  }
+  const sync = (): void => {
+    const rows = Array.from(source.querySelectorAll<HTMLElement>("[data-topology-error]"));
+    while (list.firstChild) list.removeChild(list.firstChild);
+    if (rows.length === 0) {
+      p.classList.add("cp-hidden");
+      header.textContent = "TOPOLOGY ERRORS";
+      return;
+    }
+    p.classList.remove("cp-hidden");
+    header.textContent = `TOPOLOGY ERRORS (${rows.length})`;
+    for (const row of rows) {
+      const item = div("cp-topology-error-row");
+      const dot = document.createElement("span");
+      dot.className = "cp-topology-error-dot";
+      dot.textContent = "!";
+      item.append(dot);
+      const text = document.createElement("span");
+      text.className = "cp-topology-error-text";
+      text.textContent = row.textContent ?? "";
+      item.append(text);
+      list.append(item);
+    }
+  };
+  sync();
+  const observer = new MutationObserver(sync);
+  observer.observe(source, { childList: true, subtree: true, characterData: true });
 }
 
 function briefingValueRow(parent: HTMLElement, label: string): HTMLElement {

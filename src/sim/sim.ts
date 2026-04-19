@@ -166,6 +166,9 @@ export class Sim {
         count: packet.requests.length,
       });
       this.revenueByPacketId.delete(packet.id);
+      if (packet.direction === "forward") {
+        this.notifyCircuitBreakersAlongPath(packet, component.id, "failure");
+      }
       return;
     }
     const egressEdges: { id: ConnectionId; speed: number; targetZone: Zone | null }[] = [];
@@ -200,7 +203,7 @@ export class Sim {
         return;
       }
       const outcome = cap.onArriveRequest(packet, ctx);
-      this.applyOutcome(outcome, component.id);
+      this.applyOutcome(outcome, component.id, packet);
     } else {
       for (const cap of component.capabilities) {
         cap.onArriveResponse?.(packet, ctx);
@@ -286,7 +289,7 @@ export class Sim {
     }
   }
 
-  private applyOutcome(outcome: Outcome, componentId: ComponentId): void {
+  private applyOutcome(outcome: Outcome, componentId: ComponentId, sourcePacket: Packet): void {
     switch (outcome.kind) {
       case "forward":
         for (const emit of outcome.emit) {
@@ -295,6 +298,7 @@ export class Sim {
         return;
       case "drop":
         this.lastStepEvents.push({ kind: "drop", componentId, reason: outcome.reason, count: outcome.count });
+        this.notifyCircuitBreakersAlongPath(sourcePacket, componentId, "failure");
         return;
       case "terminate":
         this.lastStepEvents.push({
@@ -304,9 +308,10 @@ export class Sim {
           latencySeconds: this.simTime - this.currentArrivalSpawnedAt,
           count: outcome.count,
         });
+        this.notifyCircuitBreakersAlongPath(sourcePacket, componentId, "success");
         return;
       case "multi":
-        for (const child of outcome.outcomes) this.applyOutcome(child, componentId);
+        for (const child of outcome.outcomes) this.applyOutcome(child, componentId, sourcePacket);
         return;
       case "split":
         this.mergeByParent.set(outcome.mergeKey, {
@@ -346,7 +351,53 @@ export class Sim {
         resp.speed = effectiveEdgeSpeed(twin, this.components);
         this.revenueByPacketId.set(resp.id, { revenue: outcome.revenueOnDelivery, count: outcome.count });
         this.activePackets.push(resp);
+        this.notifyCircuitBreakersAlongPath(sourcePacket, componentId, "success");
         return;
+      }
+    }
+  }
+
+  /**
+   * Walks the forward-direction packet's traversed path and notifies any
+   * CircuitBreakerCapability along it. The path is derived from
+   * `packet.route` (edges traversed before the current arrival) plus the
+   * current ingress edge (`packet.edgeId`) — mapping each edge to its
+   * upstream `from.componentId`. Deduplicates by component id and skips the
+   * component where the outcome was produced (`selfComponentId`) to avoid
+   * self-reporting when a CB itself drops a packet while OPEN.
+   *
+   * Duck-types via `reportFailure` + `reportSuccess` to keep this decoupled
+   * from CircuitBreakerCapability's concrete type.
+   */
+  private notifyCircuitBreakersAlongPath(
+    packet: Packet,
+    selfComponentId: ComponentId,
+    kind: "failure" | "success",
+  ): void {
+    const visited = new Set<ComponentId>();
+    visited.add(selfComponentId);
+    const edges: ConnectionId[] = [...packet.route, packet.edgeId];
+    for (let i = edges.length - 1; i >= 0; i--) {
+      const edgeId = edges[i]!;
+      const conn = this.connections.get(edgeId);
+      if (!conn) continue;
+      const upstreamId = conn.from.componentId;
+      if (visited.has(upstreamId)) continue;
+      visited.add(upstreamId);
+      const comp = this.components.get(upstreamId);
+      if (!comp) continue;
+      for (const cap of comp.capabilities) {
+        const maybeCB = cap as unknown as {
+          reportFailure?: (tick: number) => void;
+          reportSuccess?: () => void;
+        };
+        if (typeof maybeCB.reportFailure !== "function") continue;
+        if (typeof maybeCB.reportSuccess !== "function") continue;
+        if (kind === "failure") {
+          maybeCB.reportFailure(this.simTime);
+        } else {
+          maybeCB.reportSuccess();
+        }
       }
     }
   }

@@ -78,9 +78,9 @@ function buildQueueWorkerTopology() {
 }
 
 const mc = new NoOpModeController({
-  requestsPerTick: 0,
-  typeWeights: {},
-  origins: [],
+  targetEntryPointId: "x" as ComponentId,
+  intensity: 0,
+  requestType: "api_read",
 });
 
 describe("pullFromBuffers", () => {

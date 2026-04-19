@@ -200,6 +200,30 @@
         transform: none !important;
       }
     }
+    .section-header {
+      font-family: var(--pi-font-display);
+      font-size: 11px;
+      letter-spacing: 0.28em;
+      color: var(--pi-pink);
+      text-transform: uppercase;
+      margin: 40px 0 18px;
+    }
+    .section-header::before {
+      content: "▸ ";
+      color: var(--pi-orange);
+    }
+    .section-header:first-of-type { margin-top: 8px; }
+
+    .card--diagnose {
+      background: #ffb454;
+    }
+    .card--diagnose .portrait--brand {
+      background: linear-gradient(135deg, #feda75 0%, #fa7e1e 25%, #d62976 50%, #962fbf 75%, #4f5bd5 100%);
+      color: var(--pi-cream);
+      font-size: 22px;
+      letter-spacing: -0.02em;
+      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+    }
   </style>
 </head>
 <body>
@@ -211,7 +235,8 @@
 
     <h1 class="title">SELECT LEVEL</h1>
 
-    <nav class="grid" aria-label="Level selection">
+    <p class="section-header">Campaign · Build From Scratch</p>
+    <nav class="grid" aria-label="Campaign levels">
       <a class="card" href="./game.html?level=url-shortener">
         <div class="portrait portrait--brand portrait--bitly" aria-label="bit.ly">
           <span class="brand">bit.ly</span>
@@ -237,19 +262,74 @@
         </div>
         <span class="tag">GO ▸</span>
       </a>
+    </nav>
 
-      <div class="card card--locked" aria-disabled="true" aria-label="Build Instagram — coming soon">
-        <div class="portrait portrait--brand portrait--instagram" aria-label="Instagram">
+    <p class="section-header">Diagnose Mode · Inherit &amp; Fix</p>
+    <nav class="grid" aria-label="Diagnose levels">
+      <a class="card card--diagnose" href="./diagnose.html?level=instagram-1">
+        <div class="portrait portrait--brand" aria-label="Instagram">
           <span class="brand">IG</span>
         </div>
         <div class="meta">
-          <div class="name">BUILD INSTAGRAM</div>
-          <span class="badge badge--medium">MEDIUM</span>
-          <div class="desc">Feeds, stories, and a lot of photo uploads. Fan-out reads with write spikes you can't drop on the floor.</div>
+          <div class="name">CELEBRITY POST</div>
+          <span class="badge badge--easy">DIAG 01</span>
+          <div class="desc">A celebrity just posted. Hot traffic is hammering one profile. Find the bottleneck, fix it before the SLA breaks.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag tag--soon">COMING<br>SOON</span>
-      </div>
+        <span class="tag">FIX ▸</span>
+      </a>
+
+      <a class="card card--diagnose" href="./diagnose.html?level=instagram-2">
+        <div class="portrait portrait--brand" aria-label="Instagram">
+          <span class="brand">IG</span>
+        </div>
+        <div class="meta">
+          <div class="name">SUNSET UPLOAD WAVE</div>
+          <span class="badge badge--medium">DIAG 02</span>
+          <div class="desc">Golden hour = mass uploads. Your Streaming Server is idle while API Servers drown. What's the rewire?</div>
+          <div class="record">⭐ no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX ▸</span>
+      </a>
+
+      <a class="card card--diagnose" href="./diagnose.html?level=instagram-3">
+        <div class="portrait portrait--brand" aria-label="Instagram">
+          <span class="brand">IG</span>
+        </div>
+        <div class="meta">
+          <div class="name">NOTIFICATIONS AVALANCHE</div>
+          <span class="badge badge--medium">DIAG 03</span>
+          <div class="desc">Breaking news event → likes + notifications flood. Queues backing up. Workers can't keep up.</div>
+          <div class="record">⭐ no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX ▸</span>
+      </a>
+
+      <a class="card card--diagnose" href="./diagnose.html?level=instagram-4">
+        <div class="portrait portrait--brand" aria-label="Instagram">
+          <span class="brand">IG</span>
+        </div>
+        <div class="meta">
+          <div class="name">COLD ZONE SYNDROME</div>
+          <span class="badge badge--hard">DIAG 04</span>
+          <div class="desc">Growing in Asia. Pings from Tokyo take 800ms. Stand up an APAC replica and route with DNS/GTM.</div>
+          <div class="record">⭐ no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX ▸</span>
+      </a>
+
+      <a class="card card--diagnose" href="./diagnose.html?level=instagram-5">
+        <div class="portrait portrait--brand" aria-label="Instagram">
+          <span class="brand">IG</span>
+        </div>
+        <div class="meta">
+          <div class="name">THE CASCADIA EVENT</div>
+          <span class="badge badge--hard">DIAG 05</span>
+          <div class="desc">Major event viral moment. Infrastructure stressed, chaos events incoming. This is what you've been training for.</div>
+          <div class="record">⭐ no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX ▸</span>
+      </a>
     </nav>
   </div>
   <script type="module" src="./crt-overlay.ts"></script>

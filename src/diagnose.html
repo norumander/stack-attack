@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stack Attack — Diagnose Mode</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./cyberpunk-hud.css" />
+  <link rel="stylesheet" href="./chatbot/chatbot-drawer.css" />
+  <link rel="stylesheet" href="./auth/auth.css" />
+  <style>
+    html, body { margin: 0; padding: 0; background: #0a1420; color: #ccddee; font-family: monospace; overflow: hidden; }
+    #canvas-host { position: absolute; inset: 0; }
+    .td-hud-mirror { display: none; }
+    #td-diagnose-briefing {
+      position: fixed;
+      top: 80px;
+      right: 24px;
+      max-width: 360px;
+      padding: 16px;
+      background: rgba(30, 50, 80, 0.6);
+      border: 1px solid rgba(94, 240, 255, 0.3);
+      border-radius: 6px;
+      color: #ccddee;
+      font-size: 13px;
+      line-height: 1.5;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-host"></div>
+
+  <!-- Inherited-system briefing card (distinct from campaign's build-from-scratch briefing). -->
+  <div id="td-diagnose-briefing">Loading diagnose level…</div>
+
+  <!-- Mirror divs used by the HUD / boot to communicate state. -->
+  <div class="td-hud-mirror">
+    <div id="td-hud-wave">Diagnose</div>
+    <div id="td-hud-phase">build</div>
+    <div id="td-hud-budget">$0</div>
+    <div id="td-status">Loading…</div>
+
+    <div id="td-topology-errors"></div>
+
+    <div id="td-briefing-title">Diagnose Mode</div>
+    <div id="td-briefing-traffic"></div>
+    <div id="td-briefing-budget"></div>
+    <div id="td-briefing-threshold"></div>
+    <div id="td-briefing-components"></div>
+
+    <div id="td-info-panel" hidden>
+      <button id="td-info-panel-close">×</button>
+      <div id="td-info-panel-header"></div>
+      <div id="td-info-panel-description"></div>
+      <ul id="td-info-panel-caps"></ul>
+      <div id="td-info-panel-stats"></div>
+      <button id="td-info-panel-details">DETAILS</button>
+    </div>
+
+    <button id="td-ready-btn">READY</button>
+
+    <button class="td-palette-btn" data-type="server">+ Server $100</button>
+    <button class="td-palette-btn" data-type="database">+ Database $200</button>
+    <button class="td-palette-btn" data-type="data_cache">+ Data Cache $150</button>
+    <button class="td-palette-btn" data-type="load_balancer">+ Load Balancer $175</button>
+    <button class="td-palette-btn" data-type="cdn">+ CDN $200</button>
+    <button class="td-palette-btn" data-type="api_gateway">+ API Gateway $250</button>
+    <button class="td-palette-btn" data-type="queue">+ Queue $125</button>
+    <button class="td-palette-btn" data-type="worker">+ Worker $150</button>
+    <button class="td-palette-btn" data-type="streaming_server">+ Streaming $250</button>
+    <button class="td-palette-btn" data-type="dns_gtm">+ DNS / GTM $200</button>
+  </div>
+
+  <script type="module" src="./diagnose-boot.ts"></script>
+</body>
+</html>

@@ -19,8 +19,21 @@ function makeComp(capacityPerSecond = 10): SimComponent {
   });
 }
 
-function tick(cap: AutoScaleCapability, comp: SimComponent, dt: number, simTime: number): void {
+/**
+ * Step order mirrors `Sim.step()`: refill first, then the caller's `consume`
+ * callback runs (representing arrivals), then capabilities see the step.
+ * This ordering matters now that AutoScale reads consumedThisStep — if refill
+ * runs *after* consume the consumption record is wiped before onStep sees it.
+ */
+function tick(
+  cap: AutoScaleCapability,
+  comp: SimComponent,
+  dt: number,
+  simTime: number,
+  consume?: () => void,
+): void {
   comp.refillBucket(dt);
+  consume?.();
   const ctx: StepContext = { dt, simTime };
   cap.onStep!(ctx, comp);
 }
@@ -63,10 +76,12 @@ describe("AutoScaleCapability", () => {
   it("does not bump when utilization stays under threshold", () => {
     const c = makeComp(10);
     const a = enableAutoScale(c);
-    // 10 steps of 0.1s each — consume only 10% of bucket capacity per tick.
+    // 30 steps of 0.1s each = 3s sim time. Consume 0.1 tokens/step
+    // → 1 token/sec on a 10/s bucket → windowed util ≈ 0.1, well below 0.8.
     for (let i = 0; i < 30; i++) {
-      c.bucket!.tryConsume(1); // 10% util
-      tick(a, c, 0.1, i * 0.1);
+      tick(a, c, 0.1, i * 0.1, () => {
+        c.bucket!.tryConsume(0.1);
+      });
     }
     expect(c.tier).toBe(1);
   });
@@ -76,11 +91,12 @@ describe("AutoScaleCapability", () => {
     const events: AutoScaleEvent[] = [];
     const a = enableAutoScale(c);
     a.on((ev) => events.push(ev));
-    // Saturate every tick for 2.5s; expect one bump (the 2nd second crosses
-    // sustainSeconds=2, then cooldown=5s prevents a second bump).
-    for (let i = 0; i < 25; i++) {
-      c.bucket!.tryConsume(c.bucket!.available()); // drain fully → util = 1
-      tick(a, c, 0.1, i * 0.1);
+    // Saturate every tick for 3s to let the 1s window ramp up and the 2s
+    // sustain window accumulate. One bump, then cooldown suppresses more.
+    for (let i = 0; i < 30; i++) {
+      tick(a, c, 0.1, i * 0.1, () => {
+        c.bucket!.tryConsume(c.bucket!.available()); // drain fully
+      });
     }
     expect(c.tier).toBe(2);
     expect(events).toHaveLength(1);
@@ -92,11 +108,12 @@ describe("AutoScaleCapability", () => {
     const events: AutoScaleEvent[] = [];
     const a = enableAutoScale(c);
     a.on((ev) => events.push(ev));
-    // 10 seconds saturated. Bumps should fire at ~2s and then after
-    // cooldown (5s) + another sustain window (2s) ≈ 9s → exactly two bumps.
-    for (let i = 0; i < 100; i++) {
-      c.bucket!.tryConsume(c.bucket!.available());
-      tick(a, c, 0.1, i * 0.1);
+    // ~15s saturated. With a 1s window ramp + 2s sustain + 5s cooldown, expect
+    // at least two bumps within the run.
+    for (let i = 0; i < 150; i++) {
+      tick(a, c, 0.1, i * 0.1, () => {
+        c.bucket!.tryConsume(c.bucket!.available());
+      });
     }
     expect(events.length).toBeGreaterThanOrEqual(2);
     expect(c.tier).toBeGreaterThanOrEqual(3);
@@ -109,12 +126,54 @@ describe("AutoScaleCapability", () => {
     a.on((ev) => events.push(ev));
     // Run for a very long saturated time — enough for far more than MAX_TIER bumps.
     for (let i = 0; i < 1000; i++) {
-      c.bucket!.tryConsume(c.bucket!.available());
-      tick(a, c, 0.1, i * 0.1);
+      tick(a, c, 0.1, i * 0.1, () => {
+        c.bucket!.tryConsume(c.bucket!.available());
+      });
     }
     expect(c.tier).toBe(MAX_TIER);
     expect(events.length).toBe(MAX_TIER - 1);
     expect(c.getEffectiveCapacity()).toBe(10 * MAX_TIER);
+  });
+
+  it("smooths sparse arrivals: windowed util stays stable, never falsely trips", () => {
+    // Sparse but consistent: 1 packet every 0.2s on a 10/s bucket.
+    // Instantaneous util spikes to 0.1 then drops to 0 as the bucket refills —
+    // would never cross 0.8. The windowed average is a true rate of
+    // (1 token / 0.2s) / 10 = 0.05 → safely under threshold and never trips.
+    const c = makeComp(10);
+    const events: AutoScaleEvent[] = [];
+    const a = enableAutoScale(c);
+    a.on((ev) => events.push(ev));
+    const dt = 0.1;
+    for (let i = 0; i < 100; i++) {
+      tick(a, c, dt, i * dt, () => {
+        // Send a packet every other tick.
+        if (i % 2 === 0) c.bucket!.tryConsume(1);
+      });
+    }
+    expect(c.tier).toBe(1);
+    expect(events).toHaveLength(0);
+    // Windowed consumption rate ≈ 5 tokens/sec (util ≈ 0.5) — stable.
+    expect(a._windowConsumedRate()).toBeGreaterThan(4);
+    expect(a._windowConsumedRate()).toBeLessThan(6);
+  });
+
+  it("triggers when windowed utilization stays >0.8 for 2s (arrivals below instantaneous saturation)", () => {
+    // Consume 0.9/step on 10/s bucket with dt=0.1 → 9 tokens/sec → util 0.9.
+    // Bucket available dips only slightly each tick (instant sample ~0.09),
+    // but the windowed rate correctly reads 0.9 → crosses threshold.
+    const c = makeComp(10);
+    const events: AutoScaleEvent[] = [];
+    const a = enableAutoScale(c);
+    a.on((ev) => events.push(ev));
+    const dt = 0.1;
+    for (let i = 0; i < 40; i++) {
+      tick(a, c, dt, i * dt, () => {
+        c.bucket!.tryConsume(0.9);
+      });
+    }
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    expect(c.tier).toBeGreaterThanOrEqual(2);
   });
 
   it("is skipped on components without a bucket (no crash, no bump)", () => {

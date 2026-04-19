@@ -133,11 +133,16 @@ export interface ComponentRenderState {
   readonly highlightSprite: Sprite;
   readonly label: Text;
   readonly pendingLabel: Text;
+  /** Short identifier badge rendered above the sprite ("Server 1"). */
+  readonly nameBadge: Text;
   type: string;
   gridX: number;
   gridY: number;
   chipStrip?: Container;
   utilBar?: Graphics;
+  stressRing?: Graphics;
+  stressPhase?: number;
+  stressState?: { stressed: boolean; dropping: boolean };
 }
 
 export interface ComponentLayer {
@@ -147,6 +152,8 @@ export interface ComponentLayer {
   update(id: ComponentId, update: ComponentUpdate): void;
   get(id: ComponentId): ComponentRenderState | undefined;
   all(): IterableIterator<[ComponentId, ComponentRenderState]>;
+  /** Per-frame tick for stress-indicator pulse animation. */
+  tick(deltaMs: number): void;
 }
 
 export function createComponentLayer(textures: ComponentTextureMap): ComponentLayer {
@@ -192,11 +199,29 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     pendingLabel.y = -34;
     pendingLabel.visible = false;
 
+    // Short-identifier badge above the sprite ("Server 1", "Profile DB").
+    // Rendered in muted cyan to fit the cyberpunk palette without competing
+    // with utilization color on the sprite itself.
+    const nameBadge = new Text({
+      text: visual.label ?? "",
+      style: {
+        fontFamily: "system-ui, sans-serif",
+        fontSize: 10,
+        fontWeight: "600",
+        fill: 0xcdeeff,
+        align: "center",
+      },
+    });
+    nameBadge.anchor.set(0.5, 1);
+    nameBadge.y = -46;
+    nameBadge.visible = Boolean(visual.label);
+
     const inner = new Container();
     inner.addChild(baseSprite);
     inner.addChild(highlightSprite);
     inner.addChild(label);
     inner.addChild(pendingLabel);
+    inner.addChild(nameBadge);
 
     const world = gridToWorld(visual.gridPosition.x, visual.gridPosition.y);
     inner.x = world.x;
@@ -211,6 +236,7 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
       highlightSprite,
       label,
       pendingLabel,
+      nameBadge,
       type: visual.type,
       gridX: visual.gridPosition.x,
       gridY: visual.gridPosition.y,
@@ -293,6 +319,60 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     if (u.cacheKeys !== undefined) {
       applyCacheKeysImpl(state, u.cacheKeys);
     }
+
+    if (u.stress !== undefined) {
+      applyStress(state, u.stress);
+    }
+  };
+
+  const applyStress = (
+    state: ComponentRenderState,
+    stress: { stressed: boolean; dropping: boolean },
+  ): void => {
+    state.stressState = stress;
+    if (!stress.stressed && !stress.dropping) {
+      if (state.stressRing) {
+        state.stressRing.clear();
+        state.stressRing.visible = false;
+      }
+      return;
+    }
+    if (!state.stressRing) {
+      state.stressRing = new Graphics();
+      state.stressRing.y = -4;
+      state.stressPhase = 0;
+      // Draw below label so it doesn't cover text.
+      state.container.addChildAt(state.stressRing, 0);
+    }
+    state.stressRing.visible = true;
+    redrawStressRing(state);
+  };
+
+  const redrawStressRing = (state: ComponentRenderState): void => {
+    if (!state.stressRing || !state.stressState) return;
+    const { stressed, dropping } = state.stressState;
+    state.stressRing.clear();
+    if (!stressed && !dropping) return;
+    // Dropping wins visually — red pulsing outline; otherwise orange.
+    const color = dropping ? 0xef4444 : 0xff9500;
+    const phase = state.stressPhase ?? 0;
+    // 0..1 oscillation (stopped at 1 when not dropping).
+    const pulse = dropping ? 0.5 + 0.5 * Math.sin(phase) : 1;
+    const alpha = dropping ? 0.35 + 0.55 * pulse : 0.55;
+    const radius = 22 + (dropping ? 3 * pulse : 0);
+    state.stressRing.circle(0, 0, radius).stroke({ color, width: 2, alpha });
+  };
+
+  const tick = (deltaMs: number): void => {
+    // Advance the pulse phase for all stressed components. Only redraw
+    // ones currently dropping (the stressed-only ring is static).
+    const dt = deltaMs / 1000;
+    for (const state of states.values()) {
+      if (!state.stressState || !state.stressRing) continue;
+      if (!state.stressState.dropping) continue;
+      state.stressPhase = (state.stressPhase ?? 0) + dt * 6; // ~1 Hz × 2π≈6.28
+      redrawStressRing(state);
+    }
   };
 
   return {
@@ -302,5 +382,6 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     update,
     get: (id) => states.get(id),
     all: () => states.entries(),
+    tick,
   };
 }
