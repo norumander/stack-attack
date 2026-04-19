@@ -9,6 +9,8 @@ import { CachingCapability } from "@sim/capabilities/caching";
 import { LoadBalancerCapability } from "@sim/capabilities/load-balancer";
 import { QueueCapability } from "@sim/capabilities/queue";
 import { WorkerCapability } from "@sim/capabilities/worker";
+import { BlobStorageCapability } from "@sim/capabilities/blob-storage";
+import { CircuitBreakerCapability } from "@sim/capabilities/circuit-breaker";
 import { validateTopology } from "../../../src/physics-td/validate-topology";
 import type { WaveDef, WaveComposition } from "@sim/wave";
 import type { ComponentId, ConnectionId, PortId } from "@core/types/ids";
@@ -111,9 +113,12 @@ describe("validateTopology", () => {
     expect(errors).toEqual([]);
   });
 
-  it("Client → Queue → Worker for api_read — no_handler error (worker only handles async)", () => {
-    // Queue forwards non-async reads to worker; worker doesn't handle
-    // api_read (terminal only for async_work). BFS should flag no_handler.
+  it("Client → Queue → Worker for api_read — no_egress error at Worker", () => {
+    // Queue forwards non-async reads to Worker. Worker is now a forwarder
+    // for non-async types (matches runtime: packet passes through to
+    // component egress). Worker has no downstream egress here, so BFS
+    // flags no_egress at Worker (previously this test expected no_handler
+    // because Worker was incorrectly treated as role="none" for non-async).
     const sim = new Sim({ seed: 1 });
     addClient(sim);
     sim.addComponent(makeQueue("q"));
@@ -124,7 +129,39 @@ describe("validateTopology", () => {
     expect(errors.length).toBeGreaterThanOrEqual(1);
     const err = errors.find((e) => e.requestType === "api_read");
     expect(err).toBeDefined();
-    expect(err!.reason).toBe("no_handler");
+    expect(err!.reason).toBe("no_egress");
+    expect(err!.componentId).toBe("w");
+  });
+
+  it("Client → LB → Worker → Server → DB for api_read is valid (Worker forwards non-async)", () => {
+    // Regression: Worker in the middle of a sync chain must NOT invalidate
+    // api_read. Runtime passes the packet through Worker's component egress
+    // to Server → DB, which terminates.
+    const sim = new Sim({ seed: 1 });
+    addClient(sim);
+    sim.addComponent(makeLB("lb"));
+    sim.addComponent(makeWorker("w"));
+    sim.addComponent(makeServer("server"));
+    sim.addComponent(makeDB("db"));
+    connect(sim, CLIENT_ID, "lb" as ComponentId, 1);
+    connect(sim, "lb" as ComponentId, "w" as ComponentId, 2);
+    connect(sim, "w" as ComponentId, "server" as ComponentId, 3);
+    connect(sim, "server" as ComponentId, "db" as ComponentId, 4);
+    const errors = validateTopology(sim, makeWave(), CLIENT_ID);
+    expect(errors).toEqual([]);
+  });
+
+  it("Client → Queue → Worker → DB for async_work is valid (Worker terminates async)", () => {
+    const sim = new Sim({ seed: 1 });
+    addClient(sim);
+    sim.addComponent(makeQueue("q"));
+    sim.addComponent(makeWorker("w"));
+    sim.addComponent(makeDB("db"));
+    connect(sim, CLIENT_ID, "q" as ComponentId, 1);
+    connect(sim, "q" as ComponentId, "w" as ComponentId, 2);
+    connect(sim, "w" as ComponentId, "db" as ComponentId, 3);
+    const errors = validateTopology(sim, makeWave({ asyncRatio: 1 }), CLIENT_ID);
+    expect(errors).toEqual([]);
   });
 
   it("Client → Load-Balancer (no egress) — no_egress error at LB", () => {
@@ -214,6 +251,58 @@ describe("validateTopology", () => {
     expect(errors.find((e) => e.requestType === "api_read")).toBeUndefined();
     const asyncErr = errors.find((e) => e.requestType === "async_work");
     expect(asyncErr).toBeDefined();
+  });
+
+  it("BlobStorage terminates large_payload (reachable through Client → Blob)", () => {
+    const sim = new Sim({ seed: 1 });
+    addClient(sim);
+    sim.addComponent(new SimComponent({
+      id: "blob" as ComponentId,
+      capabilities: [new BlobStorageCapability({
+        revenuePerWrite: 1, revenuePerRead: 1, revenuePerStream: 1,
+      })],
+    }));
+    connect(sim, CLIENT_ID, "blob" as ComponentId, 1);
+    // large_payload path terminates at blob.
+    const errors = validateTopology(sim, makeWave({ largeRatio: 1 }), CLIENT_ID);
+    expect(errors.find((e) => e.requestType === "large_payload")).toBeUndefined();
+    // api_read correctly flags no_handler at blob (BlobStorage drops
+    // non-large/non-stream with reason "unsupported" at runtime).
+    const readErr = errors.find((e) => e.requestType === "api_read");
+    expect(readErr).toBeDefined();
+    expect(readErr!.reason).toBe("no_handler");
+  });
+
+  it("BlobStorage drops api_write (Client → Blob for writeRatio=1 fails no_handler)", () => {
+    const sim = new Sim({ seed: 1 });
+    addClient(sim);
+    sim.addComponent(new SimComponent({
+      id: "blob" as ComponentId,
+      capabilities: [new BlobStorageCapability({
+        revenuePerWrite: 1, revenuePerRead: 1, revenuePerStream: 1,
+      })],
+    }));
+    connect(sim, CLIENT_ID, "blob" as ComponentId, 1);
+    const errors = validateTopology(sim, makeWave({ writeRatio: 1 }), CLIENT_ID);
+    const err = errors.find((e) => e.requestType === "api_write");
+    expect(err).toBeDefined();
+    expect(err!.reason).toBe("no_handler");
+  });
+
+  it("CircuitBreaker forwards to downstream terminal (valid sync chain)", () => {
+    const sim = new Sim({ seed: 1 });
+    addClient(sim);
+    sim.addComponent(new SimComponent({
+      id: "cb" as ComponentId,
+      capabilities: [new CircuitBreakerCapability({
+        failureThreshold: 3, cooldownSeconds: 1,
+      })],
+    }));
+    sim.addComponent(makeDB("db"));
+    connect(sim, CLIENT_ID, "cb" as ComponentId, 1);
+    connect(sim, "cb" as ComponentId, "db" as ComponentId, 2);
+    const errors = validateTopology(sim, makeWave(), CLIENT_ID);
+    expect(errors).toEqual([]);
   });
 
   it("Empty topology (only client with no connections) flags no_handler for api_read", () => {

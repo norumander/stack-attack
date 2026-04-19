@@ -38,29 +38,41 @@ type Role = "terminal" | "forwarder" | "none";
 /**
  * Classify a capability by id for a given request type.
  *
- * Terminal ids (can satisfy a request on arrival):
- *  - processing: terminates writes, responds to reads (handles all request types)
- *  - caching: can respond on cache hit (optimistic — treat as terminal for reads/large)
- *  - gateway: terminates auth; forwards non-auth
- *  - streaming: terminates stream; forwards non-stream
- *  - worker: terminates async items pulled from queue (treat as terminal for async_work)
+ * Contract:
+ *  - "terminal" — explicitly handles AND terminates (responds/stores/reserves)
+ *  - "forwarder" — may pass the type through to egress (either because the
+ *    capability explicitly forwards, OR because it simply doesn't match and
+ *    the packet continues via component egress at runtime)
+ *  - "none" — the capability will drop/reject the type (rare; only blob_storage
+ *    currently drops-on-mismatch via its "unsupported" branch)
  *
- * Forwarders (pass through to egress if available):
- *  - forwarding, load-balancer, geo-routing, queue (non-async)
+ * Terminal per type:
+ *  - processing: terminates writes, responds to reads (all non-specialty types)
+ *  - caching: responds on cache hit (optimistic — terminal for reads / large reads)
+ *  - gateway: terminates auth; forwards others
+ *  - streaming: terminates stream; forwards others
+ *  - worker: terminates async items pulled from queue; forwards others (doesn't
+ *    destroy the packet — runtime passes through via component egress)
+ *  - blob_storage: terminal for large_payload and stream_data; drops others
+ *
+ * Pure forwarders (any type): forwarding, load-balancer, geo-routing, queue
+ * (non-async forwarded, async held → implicitly satisfied by downstream worker),
+ * circuit_breaker (CLOSED forwards all; OPEN is runtime chaos, not a static
+ * flag), auto-scale (second-capability, never on arrival path).
  */
 function classify(capId: string, type: RequestType): Role {
   switch (capId) {
     case "processing":
-      // ProcessingCapability terminates reads + writes. Treat it as
-      // non-terminal for specialty types (stream_data, async_work) that
-      // need dedicated handlers (streaming / worker). Being optimistic
-      // for auth_required: processing can satisfy it if no gateway is
-      // upstream (validator only checks reachability, not correctness).
-      if (type === "stream_data" || type === "async_work") return "none";
+      // ProcessingCapability doesn't inspect stream/async flags — at runtime
+      // it terminates writes / responds to reads regardless. But the
+      // validator prefers dedicated handlers (streaming, worker) for those
+      // specialty types; treat processing as forwarder there so BFS doesn't
+      // prematurely satisfy, but not "none" because the component egress
+      // will still carry the packet toward a real handler if one exists.
+      if (type === "stream_data" || type === "async_work") return "forwarder";
       return "terminal";
     case "caching":
-      // Can terminate reads on hit; forwards on miss. Optimistic: treat
-      // as terminal for read-like traffic, forwarder for writes.
+      // Can terminate reads on hit; forwards misses + writes + specialties.
       if (type === "api_read" || type === "large_payload") return "terminal";
       return "forwarder";
     case "gateway":
@@ -71,14 +83,30 @@ function classify(capId: string, type: RequestType): Role {
       return "forwarder";
     case "worker":
       if (type === "async_work") return "terminal";
-      // Worker is not an arrival-path capability for non-async; be optimistic
-      // and consider it "none" so BFS won't dead-end through it.
+      // For non-async, Worker doesn't claim the packet — runtime flows it
+      // to component egress. Treat as forwarder so validator matches runtime
+      // behavior in chains like Client → LB → Worker → Server → DB.
+      return "forwarder";
+    case "blob_storage":
+      // Terminal for large_payload + stream_data. Explicitly drops
+      // everything else with reason "unsupported".
+      if (type === "large_payload" || type === "stream_data") return "terminal";
       return "none";
     case "queue":
-      // Queue holds async until worker pulls — but validator treats queue
-      // as a forwarder (non-async flows to egress). Async flowing into queue
-      // is implicitly satisfied by a downstream worker — queue itself is
-      // not terminal in the BFS sense.
+      // Queue holds async until worker pulls; forwards non-async to egress.
+      // Async satisfaction depends on a downstream worker being reachable,
+      // so treat queue itself as forwarder — BFS will keep walking.
+      return "forwarder";
+    case "circuit_breaker":
+      // CLOSED: forwards to first egress. OPEN/HALF_OPEN is a runtime chaos
+      // concern, not a static topology flag. Treat as forwarder.
+      return "forwarder";
+    case "auto-scale":
+      // Second-capability attached via enableAutoScale. Never the arrival
+      // path; returns drop(0) if invoked. A component bearing auto-scale
+      // always has a primary capability in slot 0, so this case only
+      // matters when auto-scale shows up as a later cap — should not
+      // block the BFS at that component.
       return "forwarder";
     case "forwarding":
     case "load-balancer":
