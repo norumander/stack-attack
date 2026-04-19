@@ -61,13 +61,25 @@ export type ArrivalContext = {
   readonly reserveBandwidth?: (edgeId: ConnectionId, amount: number, durationSeconds: number) => boolean;
 };
 
+export type StepContext = {
+  readonly dt: number;
+  readonly simTime: number;
+};
+
 export type SimCapability = {
   readonly id: string;
   onArriveRequest(packet: Packet, ctx: ArrivalContext): Outcome;
   onArriveResponse?(packet: Packet, ctx: ArrivalContext): void;
+  /** Optional per-tick hook. Called once per sim step for every capability
+   * attached to every component, before arrival dispatch. Used by AutoScale
+   * to sample utilization. `parent` is the component the capability is
+   * attached to — capabilities do not otherwise hold that reference. */
+  onStep?(ctx: StepContext, parent: import("./component").SimComponent): void;
 };
 
 export type SimEvent =
   | { readonly kind: "drop"; readonly componentId: ComponentId; readonly reason: string; readonly count: number }
   | { readonly kind: "terminate"; readonly componentId: ComponentId; readonly revenue: number; readonly latencySeconds: number; readonly count: number }
-  | { readonly kind: "respond-delivered"; readonly componentId: ComponentId; readonly revenue: number; readonly latencySeconds: number; readonly count: number };
+  | { readonly kind: "respond-delivered"; readonly componentId: ComponentId; readonly revenue: number; readonly latencySeconds: number; readonly count: number }
+  | { readonly kind: "component-crashed"; readonly componentId: ComponentId; readonly flushedPackets: number }
+  | { readonly kind: "connection-severed"; readonly connectionId: ConnectionId; readonly twinId: ConnectionId | null; readonly flushedPackets: number };

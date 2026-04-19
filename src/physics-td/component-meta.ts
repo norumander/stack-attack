@@ -138,6 +138,21 @@ export const COMPONENT_META: Readonly<Record<string, ComponentMeta>> = {
       tip: "Streams are expensive — each one ties up a bandwidth slot. Place a Streaming Server when a wave brings video traffic.",
     },
   },
+  circuit_breaker: {
+    displayName: "Circuit Breaker",
+    description: "Fails fast when downstream is unhealthy — drops requests while OPEN, probes before closing.",
+    capabilitiesHuman: [
+      "Forwards requests while CLOSED",
+      "Drops requests immediately while OPEN (after failure threshold)",
+      "Admits limited probes in HALF_OPEN; success → CLOSED, failure → OPEN",
+    ],
+    dossier: {
+      body: "A Circuit Breaker protects a stressed downstream by fast-failing traffic once failures pile up. After a cooldown it admits a probe to test recovery before fully reopening the path.",
+      wire: "Server → Circuit Breaker → Downstream",
+      handles: "Any request path that should fail fast when the downstream is in trouble",
+      tip: "Place in front of a component that's flapping under chaos — it stops the cascade and lets the downstream recover.",
+    },
+  },
   dns_gtm: {
     displayName: "DNS / GTM",
     description: "Global Traffic Manager — routes each request to its origin zone deterministically.",
@@ -150,6 +165,21 @@ export const COMPONENT_META: Readonly<Record<string, ComponentMeta>> = {
       wire: "Client → DNS/GTM → [na-east Server, eu-west Server]",
       handles: "Zone-tagged requests — routed to the matching zone's egress",
       tip: "Place a DNS/GTM at the front of a multi-zone topology so each region's traffic lands on its own stack.",
+    },
+  },
+  blob_storage: {
+    displayName: "Blob Storage",
+    description: "Terminal object store for large payloads and streams — high capacity, backs CDNs and streaming.",
+    capabilitiesHuman: [
+      "Accepts large_payload requests (reads respond, writes terminate)",
+      "Absorbs stream_data with reserved ingress bandwidth",
+      "High throughput (60/sec)",
+    ],
+    dossier: {
+      body: "Blob Storage is the backend for heavy content — images, video, downloads, streams. High capacity, terminal (nothing forwards past it). Pair with a CDN at the edge and a Streaming Server for live media, or place directly behind a Server for large-asset reads.",
+      wire: "CDN → Blob Storage  or  Streaming Server → Blob Storage",
+      handles: "Large-asset reads/writes and stream requests",
+      tip: "When a wave is heavy on images, video, or streams, Blob Storage is the destination. Its high capacity soaks up traffic that would crush a normal Server.",
     },
   },
 };

@@ -9,6 +9,8 @@ import { QueueCapability } from "@sim/capabilities/queue";
 import { WorkerCapability } from "@sim/capabilities/worker";
 import { StreamingCapability } from "@sim/capabilities/streaming";
 import { GeoRoutingCapability } from "@sim/capabilities/geo-routing";
+import { BlobStorageCapability } from "@sim/capabilities/blob-storage";
+import { CircuitBreakerCapability } from "@sim/capabilities/circuit-breaker";
 import type { WaveRevenue } from "@sim/wave";
 
 export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
@@ -22,6 +24,8 @@ export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
   ["worker", 150],
   ["streaming_server", 250],
   ["dns_gtm", 200],
+  ["blob_storage", 200],
+  ["circuit_breaker", 150],
 ]);
 
 /** Sprite type used by the renderer to pick the iso tile graphic. */
@@ -36,11 +40,26 @@ export const COMPONENT_SPRITE_TYPE: ReadonlyMap<string, string> = new Map([
   ["worker", "worker"],
   ["streaming_server", "streaming_server"],
   ["dns_gtm", "dns_gtm"],
+  ["blob_storage", "blob_storage"],
+  ["circuit_breaker", "circuit_breaker"],
 ]);
+
+export const CLIENT_FACING_COMPONENT_TYPES: ReadonlySet<string> = new Set([
+  "server",
+  "cdn",
+  "api_gateway",
+  "load_balancer",
+  "streaming_server",
+  "dns_gtm",
+]);
+
+export function isClientFacing(type: string): boolean {
+  return CLIENT_FACING_COMPONENT_TYPES.has(type);
+}
 
 export const COMPONENT_FACTORY: ReadonlyArray<string> = [
   "server", "database", "data_cache", "load_balancer", "cdn", "api_gateway",
-  "queue", "worker", "streaming_server", "dns_gtm",
+  "queue", "worker", "streaming_server", "dns_gtm", "blob_storage", "circuit_breaker",
 ];
 
 export function buildSimComponent(
@@ -50,7 +69,11 @@ export function buildSimComponent(
 ): SimComponent | null {
   switch (type) {
     case "server":
-      return new SimComponent({ id, capabilities: [new ForwardingCapability()] });
+      return new SimComponent({
+        id,
+        capabilities: [new ForwardingCapability()],
+        capacityPerSecond: 30,
+      });
     case "database":
       return new SimComponent({
         id,
@@ -96,6 +119,23 @@ export function buildSimComponent(
       return new SimComponent({
         id,
         capabilities: [new GeoRoutingCapability()],
+      });
+    case "blob_storage":
+      return new SimComponent({
+        id,
+        capabilities: [
+          new BlobStorageCapability({
+            revenuePerWrite: revenue.perWrite,
+            revenuePerRead: revenue.perRead,
+            revenuePerStream: revenue.perStream,
+          }),
+        ],
+        capacityPerSecond: 60,
+      });
+    case "circuit_breaker":
+      return new SimComponent({
+        id,
+        capabilities: [new CircuitBreakerCapability({ failureThreshold: 5, cooldownSeconds: 2 })],
       });
     default:
       return null;

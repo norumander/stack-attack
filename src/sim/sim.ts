@@ -8,6 +8,7 @@ import { mintPacketId, mintRequestId } from "./packet";
 import { advancePackets, collectArrivals } from "./edge-physics";
 import { launchDueSnakes, populateSnakes } from "./snake";
 import { WorkerCapability } from "./capabilities/worker";
+import { effectiveEdgeSpeed } from "./zone-latency";
 
 export type SimOptions = {
   readonly seed: number;
@@ -19,6 +20,7 @@ export class Sim {
   readonly connections: Map<ConnectionId, SimConnection> = new Map();
   readonly activePackets: Packet[] = [];
   readonly lastStepEvents: SimEvent[] = [];
+  readonly crashedComponents: Set<ComponentId> = new Set();
   simTime = 0;
   readonly rng: () => number;
   private readonly revenueByPacketId: Map<PacketId, { revenue: number; count: number }> = new Map();
@@ -72,7 +74,7 @@ export class Sim {
     this.releaseExpiredReservations();
     for (const c of this.components.values()) c.refillBucket(dt);
     populateSnakes(this.clients, this.simTime + dt);
-    launchDueSnakes(this.clients, this.connections, this.activePackets, this.simTime + dt, this.rng);
+    launchDueSnakes(this.clients, this.connections, this.activePackets, this.simTime + dt, this.rng, this.components);
     this.pullFromWorkers(dt);
     advancePackets(this.activePackets, dt);
     const { arriving, remaining } = collectArrivals(this.activePackets);
@@ -81,7 +83,73 @@ export class Sim {
     for (const packet of arriving) {
       this.dispatchArrival(packet);
     }
+    // Per-capability onStep hook — runs after arrivals so utilization samples
+    // reflect this step's consumption. AutoScale uses this; most capabilities
+    // do not implement it.
+    const stepCtx = { dt, simTime: this.simTime };
+    for (const comp of this.components.values()) {
+      for (const cap of comp.capabilities) {
+        cap.onStep?.(stepCtx, comp);
+      }
+    }
     this.simTime += dt;
+  }
+
+  /**
+   * Chaos primitive: mark a component as crashed. Subsequent incoming packets
+   * destined for it are dropped; any in-flight packets currently targeting it
+   * are flushed immediately. Idempotent.
+   */
+  crashComponent(id: ComponentId): void {
+    if (this.crashedComponents.has(id)) return;
+    if (!this.components.has(id)) return;
+    this.crashedComponents.add(id);
+    let flushed = 0;
+    const kept: Packet[] = [];
+    for (const p of this.activePackets) {
+      const edge = this.connections.get(p.edgeId);
+      if (edge && edge.to.componentId === id) {
+        flushed += 1;
+        this.revenueByPacketId.delete(p.id);
+        continue;
+      }
+      kept.push(p);
+    }
+    this.activePackets.length = 0;
+    this.activePackets.push(...kept);
+    this.lastStepEvents.push({ kind: "component-crashed", componentId: id, flushedPackets: flushed });
+  }
+
+  /**
+   * Chaos primitive: sever a connection (and its twin). Both forward and back
+   * edges are removed from the topology; any in-flight packets riding either
+   * edge are flushed. Idempotent.
+   */
+  severConnection(id: ConnectionId): void {
+    const conn = this.connections.get(id);
+    if (!conn) return;
+    const twinId = conn.twinId;
+    const twin = twinId ? this.connections.get(twinId) : undefined;
+    this.connections.delete(id);
+    if (twin) this.connections.delete(twin.id);
+    let flushed = 0;
+    const kept: Packet[] = [];
+    for (const p of this.activePackets) {
+      if (p.edgeId === id || (twin && p.edgeId === twin.id)) {
+        flushed += 1;
+        this.revenueByPacketId.delete(p.id);
+        continue;
+      }
+      kept.push(p);
+    }
+    this.activePackets.length = 0;
+    this.activePackets.push(...kept);
+    this.lastStepEvents.push({
+      kind: "connection-severed",
+      connectionId: id,
+      twinId: twin ? twin.id : null,
+      flushedPackets: flushed,
+    });
   }
 
   private dispatchArrival(packet: Packet): void {
@@ -90,11 +158,21 @@ export class Sim {
     if (!edge) return;
     const component = this.components.get(edge.to.componentId);
     if (!component) return;
+    if (this.crashedComponents.has(component.id)) {
+      this.lastStepEvents.push({
+        kind: "drop",
+        componentId: component.id,
+        reason: "component_crashed",
+        count: packet.requests.length,
+      });
+      this.revenueByPacketId.delete(packet.id);
+      return;
+    }
     const egressEdges: { id: ConnectionId; speed: number; targetZone: Zone | null }[] = [];
     for (const conn of this.connections.values()) {
       if (conn.from.componentId === component.id && conn.direction === "forward") {
         const target = this.components.get(conn.to.componentId);
-        egressEdges.push({ id: conn.id, speed: conn.speed, targetZone: target?.zone ?? null });
+        egressEdges.push({ id: conn.id, speed: effectiveEdgeSpeed(conn, this.components), targetZone: target?.zone ?? null });
       }
     }
     const ctx: ArrivalContext = {
@@ -157,7 +235,7 @@ export class Sim {
               requests: [],
               edgeId: twin.id,
               progress: 0,
-              speed: twin.speed,
+              speed: effectiveEdgeSpeed(twin, this.components),
               spawnedAt: merge.originalSpawnedAt,
               parentId: parentPacketId,
               direction: "back",
@@ -203,7 +281,7 @@ export class Sim {
       if (!nextTwin) return;
       packet.edgeId = nextTwin.id;
       packet.progress = 0;
-      packet.speed = nextTwin.speed;
+      packet.speed = effectiveEdgeSpeed(nextTwin, this.components);
       this.activePackets.push(packet);
     }
   }
@@ -265,7 +343,7 @@ export class Sim {
         }
         resp.edgeId = twin.id;
         resp.progress = 0;
-        resp.speed = twin.speed;
+        resp.speed = effectiveEdgeSpeed(twin, this.components);
         this.revenueByPacketId.set(resp.id, { revenue: outcome.revenueOnDelivery, count: outcome.count });
         this.activePackets.push(resp);
         return;

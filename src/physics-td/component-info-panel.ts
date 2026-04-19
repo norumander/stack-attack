@@ -1,6 +1,11 @@
 import type { Sim } from "@sim/sim";
 import type { ComponentId } from "@core/types/ids";
 import { COMPONENT_META } from "./component-meta";
+// TODO(autoscale-ux): add UX entry point to call enableAutoScale(comp) on
+// an existing Server or Database — likely a right-click context menu item
+// in this info panel (e.g. "Enable AutoScale"). The capability already
+// handles tier bumps + cooldown; UI only needs to attach it and surface
+// the current tier / "scaled" events. See src/sim/capabilities/auto-scale.ts.
 import { COMPONENT_COSTS } from "./component-factory";
 import { ComponentDossierStore } from "./dossier-store";
 import { showDossier } from "./show-dossier";
@@ -98,7 +103,8 @@ export function bindInfoPanel(deps: InfoPanelDeps): InfoPanelHandle {
     clearChildren(stats!);
     if (deps.controller.phase !== "simulate") return;
     if (comp.bucket && comp.capacityPerSecond && comp.capacityPerSecond > 0) {
-      const pct = Math.max(0, Math.min(100, Math.round(100 * (1 - comp.bucket.available() / comp.capacityPerSecond))));
+      const effective = comp.getEffectiveCapacity();
+      const pct = Math.max(0, Math.min(100, Math.round(100 * (1 - comp.bucket.available() / effective))));
       stats!.appendChild(statRow("Utilization", `${pct}%`));
     } else {
       stats!.appendChild(statRow("Utilization", "unbounded"));
