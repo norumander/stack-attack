@@ -150,8 +150,8 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
     startBudget: 400,
     chaosSchedule: [
       { atSeconds: 3, kind: "crash_component", targetRole: "any_server" },
-      { atSeconds: 7, kind: "crash_component", targetRole: "any_server" },
-      { atSeconds: 10, kind: "sever_connection", targetRole: "any_connection_to_database" },
+      { atSeconds: 6, kind: "sever_connection", targetRole: "any_connection_to_database" },
+      { atSeconds: 9, kind: "crash_component", targetRole: "any_server" },
     ],
   },
   {
@@ -201,7 +201,7 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
     briefing: "~270 req/sec slam the platform mid-crash. Static capacity collapses. Enable AutoScale on Servers and Databases — tiers bump under sustained load — and ride out the spike.",
     narrative: "Going viral at internet scale. Infrastructure must be elastic: AutoScale on Servers and DBs auto-bumps capacity tiers as utilization pins 80%+.",
     wave: {
-      intensity: 130,
+      intensity: 160,
       packetRate: 12,
       duration: 15,
       composition: { writeRatio: 0.15, authRatio: 0.1, streamRatio: 0.2, largeRatio: 0.3, asyncRatio: 0.1 },
@@ -210,10 +210,10 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
       streamConfig: { duration: 1.5, bandwidth: 20 },
       entryClients: [CLIENT_ID],
     },
-    sla: { availability: 0.6, maxAvgLatencySeconds: 2, maxDropRate: 0.4 },
+    sla: { availability: 0.5, maxAvgLatencySeconds: 2, maxDropRate: 0.5 },
     startBudget: 400,
     chaosSchedule: [
-      { atSeconds: 5, kind: "crash_component", targetRole: "any_server" },
+      { atSeconds: 4, kind: "crash_component", targetRole: "any_server" },
       { atSeconds: 10, kind: "crash_component", targetRole: "any_server" },
     ],
   },
