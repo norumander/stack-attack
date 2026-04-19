@@ -10,8 +10,11 @@ import type { SLAThresholds } from "@sim/sla";
 import { buildSimComponent, COMPONENT_COSTS } from "../physics-td/component-factory";
 import { wireWorkers } from "../physics-td/wire-workers";
 import { validateTopology, type TopologyError } from "../physics-td/validate-topology";
+import { applyChaosEvent, type ChaosEvent } from "../physics-td/chaos";
+import { enableAutoScale } from "@sim/capabilities/auto-scale";
 import { scoreResult, type Verdict } from "./scoring";
 import type { TopologyDef } from "./topology-builder";
+import type { WaveMetrics } from "@sim/sla";
 
 export type { TopologyDef } from "./topology-builder";
 
@@ -85,11 +88,19 @@ function buildSimFromTopology(
   sim.addClient(client);
 
   let totalCost = 0;
+  const autoScaleSet = new Set(topology.autoScaleIds);
   for (const def of topology.components) {
     const id = def.id as ComponentId;
-    const comp = buildSimComponent(def.type, id, wave.revenue);
+    const comp = buildSimComponent(def.type, id, wave.revenue, def.zone);
     if (!comp) {
       throw new Error(`Unknown component type: ${def.type}`);
+    }
+    if (autoScaleSet.has(def.id)) {
+      enableAutoScale(comp);
+      if (process.env.PLAYTEST_DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log(`[playtest] autoscale enabled on ${def.id}`);
+      }
     }
     sim.addComponent(comp);
     componentTypes.set(id, def.type);
@@ -141,7 +152,7 @@ export function simulatePlaytest(
   sla: SLAThresholds,
   startBudget: number,
   topology: TopologyDef,
-  opts?: { seed?: number; durationOverride?: number },
+  opts?: { seed?: number; durationOverride?: number; chaosSchedule?: ReadonlyArray<ChaosEvent> },
 ): PlaytestResult {
   const seed = opts?.seed ?? 42;
   const duration = opts?.durationOverride ?? wave.duration;
@@ -192,10 +203,20 @@ export function simulatePlaytest(
 
   // Fresh sim for the actual run.
   const { sim } = buildSimFromTopology(topology, wave, seed);
-  const metrics = runWave(sim, {
-    durationSeconds: duration,
-    drainSeconds: DEFAULT_DRAIN_SECONDS,
-  });
+  const metrics = opts?.chaosSchedule && opts.chaosSchedule.length > 0
+    ? runWaveWithChaos(sim, {
+        durationSeconds: duration,
+        drainSeconds: DEFAULT_DRAIN_SECONDS,
+        chaosSchedule: opts.chaosSchedule,
+      })
+    : runWave(sim, {
+        durationSeconds: duration,
+        drainSeconds: DEFAULT_DRAIN_SECONDS,
+      });
+  if (process.env.PLAYTEST_DEBUG) {
+    // eslint-disable-next-line no-console
+    console.log(`[playtest] tiers for ${topology.label}:`, [...sim.components.values()].map((c) => `${c.id}=t${c.tier}`).join(" "));
+  }
 
   const denom = Math.max(1, metrics.totalRequests);
   const resolved = metrics.responded + metrics.terminated;
@@ -230,4 +251,65 @@ export function simulatePlaytest(
     score: scoring.score,
     verdict: scoring.verdict,
   };
+}
+
+/**
+ * runWave variant that fires a chaos schedule at each event's `atSeconds`
+ * mark. Mirrors `runWave` in sim/test-harness.ts. Chaos events are applied
+ * once each when elapsed sim time crosses their `atSeconds` threshold.
+ */
+function runWaveWithChaos(
+  sim: Sim,
+  opts: { durationSeconds: number; drainSeconds: number; chaosSchedule: ReadonlyArray<ChaosEvent> },
+): WaveMetrics {
+  const step = 1 / 60;
+  const totalSimTime = opts.durationSeconds + opts.drainSeconds;
+  const totalSteps = Math.ceil(totalSimTime / step);
+  let responded = 0;
+  let terminated = 0;
+  let drops = 0;
+  let totalRevenue = 0;
+  let latencySum = 0;
+  let latencyCount = 0;
+  let totalRequests = 0;
+  const seenIds = new Set<string>();
+  const fired = new Set<number>();
+  let elapsed = 0;
+  for (let i = 0; i < totalSteps; i += 1) {
+    for (let k = 0; k < opts.chaosSchedule.length; k += 1) {
+      if (fired.has(k)) continue;
+      const ev = opts.chaosSchedule[k]!;
+      if (ev.atSeconds <= elapsed) {
+        applyChaosEvent(ev, sim);
+        fired.add(k);
+      }
+    }
+    sim.step(step);
+    elapsed += step;
+    for (const p of sim.activePackets) {
+      if (p.direction !== "forward") continue;
+      if (p.parentId !== null) continue;
+      if (!seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        totalRequests += p.requests.length;
+      }
+    }
+    for (const ev of sim.lastStepEvents) {
+      if (ev.kind === "drop") drops += ev.count;
+      if (ev.kind === "terminate") {
+        terminated += ev.count;
+        totalRevenue += ev.revenue;
+        latencySum += ev.latencySeconds;
+        latencyCount += 1;
+      }
+      if (ev.kind === "respond-delivered") {
+        responded += ev.count;
+        totalRevenue += ev.revenue;
+        latencySum += ev.latencySeconds;
+        latencyCount += 1;
+      }
+    }
+  }
+  const avgLatencySeconds = latencyCount > 0 ? latencySum / latencyCount : 0;
+  return { totalRequests, responded, terminated, drops, avgLatencySeconds, totalRevenue };
 }

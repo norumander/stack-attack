@@ -12,6 +12,7 @@ import { GeoRoutingCapability } from "@sim/capabilities/geo-routing";
 import { BlobStorageCapability } from "@sim/capabilities/blob-storage";
 import { CircuitBreakerCapability } from "@sim/capabilities/circuit-breaker";
 import type { WaveRevenue } from "@sim/wave";
+import type { Zone } from "@sim/types";
 
 export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
   ["server", 100],
@@ -66,59 +67,71 @@ export function buildSimComponent(
   type: string,
   id: ComponentId,
   revenue: WaveRevenue,
+  zone?: Zone,
 ): SimComponent | null {
+  const z = zone !== undefined ? { zone } : {};
   switch (type) {
     case "server":
       return new SimComponent({
         id,
         capabilities: [new ForwardingCapability()],
         capacityPerSecond: 30,
+        ...z,
       });
     case "database":
       return new SimComponent({
         id,
         capabilities: [new ProcessingCapability({ revenuePerWrite: revenue.perWrite, revenuePerRead: revenue.perRead })],
         capacityPerSecond: 30,
+        ...z,
       });
     case "data_cache":
       return new SimComponent({
         id,
         capabilities: [new CachingCapability({ capacity: 32, revenuePerRead: revenue.perRead })],
+        ...z,
       });
     case "load_balancer":
       return new SimComponent({
         id,
         capabilities: [new LoadBalancerCapability()],
+        ...z,
       });
     case "cdn":
       return new SimComponent({
         id,
         capabilities: [new CachingCapability({ capacity: 24, revenuePerRead: revenue.perRead, largeOnly: true })],
+        ...z,
       });
     case "api_gateway":
       return new SimComponent({
         id,
         capabilities: [new GatewayCapability({ revenuePerAuth: revenue.perAuth })],
+        ...z,
       });
     case "queue":
       return new SimComponent({
         id,
         capabilities: [new QueueCapability({ capacity: 64 })],
+        ...z,
       });
     case "worker":
       return new SimComponent({
         id,
         capabilities: [new WorkerCapability({ pullRate: 30, revenuePerItem: revenue.perAsync }, null)],
+        ...z,
       });
     case "streaming_server":
       return new SimComponent({
         id,
         capabilities: [new StreamingCapability({ revenuePerStream: revenue.perStream })],
+        ...z,
       });
     case "dns_gtm":
       return new SimComponent({
         id,
         capabilities: [new GeoRoutingCapability()],
+        ...z,
       });
     case "blob_storage":
       return new SimComponent({
@@ -131,11 +144,13 @@ export function buildSimComponent(
           }),
         ],
         capacityPerSecond: 60,
+        ...z,
       });
     case "circuit_breaker":
       return new SimComponent({
         id,
         capabilities: [new CircuitBreakerCapability({ failureThreshold: 5, cooldownSeconds: 2 })],
+        ...z,
       });
     default:
       return null;
