@@ -1,7 +1,9 @@
 import type { ComponentId, ConnectionId } from "@core/types/ids";
 import type { Packet } from "./types";
 import type { SimClient } from "./client";
+import type { SimComponent } from "./component";
 import type { SimConnection } from "./connection";
+import { effectiveEdgeSpeed } from "./zone-latency";
 
 export function populateSnakes(clients: ReadonlyMap<ComponentId, SimClient>, _simTime: number): void {
   for (const client of clients.values()) {
@@ -32,6 +34,7 @@ export function launchDueSnakes(
   activePackets: Packet[],
   simTime: number,
   rng: () => number,
+  components?: ReadonlyMap<ComponentId, SimComponent>,
 ): void {
   for (const client of clients.values()) {
     while (client.nextLaunchTime <= simTime && client.snake.length > 0) {
@@ -44,7 +47,7 @@ export function launchDueSnakes(
       const idx = Math.floor(rng() * egresses.length);
       const chosen = egresses[idx]!;
       head.edgeId = chosen.id;
-      head.speed = chosen.speed;
+      head.speed = components ? effectiveEdgeSpeed(chosen, components) : chosen.speed;
       head.progress = 0;
       activePackets.push(head);
       client.nextLaunchTime += 1 / client.packetRate;
