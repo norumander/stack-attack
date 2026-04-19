@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import { CAMPAIGN_WAVES } from "../../../../src/physics-td/waves";
 
 describe("CAMPAIGN_WAVES catalog", () => {
-  it("includes W1..W4 Netflix-themed waves in order", () => {
-    expect(CAMPAIGN_WAVES.map((w) => w.id)).toEqual(["w1", "w2", "w3", "w4"]);
+  it("includes W1..W8 Netflix-themed waves in order", () => {
+    expect(CAMPAIGN_WAVES.map((w) => w.id)).toEqual([
+      "w1", "w2", "w3", "w4", "w5", "w6", "w7", "w8",
+    ]);
   });
 
   it("Wave 3 carries heavy largeRatio and ~20% authRatio for CDN + Gateway rescue", () => {
@@ -28,10 +30,12 @@ describe("CAMPAIGN_WAVES catalog", () => {
     expect(w1!.startBudget).toBeGreaterThanOrEqual(300);
   });
 
-  it("SLA availability tightens/loosens progressively and duration stays in 8–12s", () => {
+  it("SLA availability tightens/loosens progressively and duration stays in 8–15s", () => {
     for (const w of CAMPAIGN_WAVES) {
       expect(w.wave.duration).toBeGreaterThanOrEqual(8);
-      expect(w.wave.duration).toBeLessThanOrEqual(12);
+      // Later waves (W5+ chaos, W7 global, W8 viral) run longer to give
+      // chaos schedules and multi-region backbones time to play out.
+      expect(w.wave.duration).toBeLessThanOrEqual(15);
     }
   });
 });

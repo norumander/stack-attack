@@ -2,7 +2,7 @@
 
 A tower defense game that teaches system architecture through gameplay. Traffic is the enemy, infrastructure components are the towers, a live economy makes architecture decisions feel like business decisions. Strategy game first — the learning is the surprise.
 
-**Current stage:** Physics TD with rate-limited Server (30 req/sec) + Redis-style backend-only Data Cache. Classic TD, sandbox mode, and all associated infrastructure removed. 698 tests, typecheck clean.
+**Current stage:** Physics TD campaign extended to 8 waves (Launch → Viral Moment). Waves 5–8 introduce chaos schedules (W5, W8), Streaming Server (W6), multi-zone DNS/GTM routing (W7) and AutoScale markers (W8). 702 tests, typecheck clean (modulo the two pre-existing known errors).
 
 ## Context hub
 
