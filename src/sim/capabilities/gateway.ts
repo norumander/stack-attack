@@ -12,7 +12,7 @@ export class GatewayCapability implements SimCapability {
     const allAuth = packet.requests.every((r) => r.requiresAuth);
     const noneAuth = packet.requests.every((r) => !r.requiresAuth);
     if (allAuth) {
-      return { kind: "terminate", revenue: this.opts.revenuePerAuth * packet.requests.length };
+      return { kind: "terminate", revenue: this.opts.revenuePerAuth * packet.requests.length, count: packet.requests.length };
     }
     if (noneAuth) {
       const egress = ctx.egressEdges[0];

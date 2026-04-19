@@ -43,8 +43,8 @@ export type Packet = {
 
 export type Outcome =
   | { readonly kind: "forward"; readonly emit: ReadonlyArray<{ edgeId: ConnectionId; packet: Packet }> }
-  | { readonly kind: "terminate"; readonly revenue: number }
-  | { readonly kind: "respond"; readonly responsePacket: Packet; readonly revenueOnDelivery: number }
+  | { readonly kind: "terminate"; readonly revenue: number; readonly count: number }
+  | { readonly kind: "respond"; readonly responsePacket: Packet; readonly revenueOnDelivery: number; readonly count: number }
   | { readonly kind: "drop"; readonly reason: string; readonly count: number }
   | { readonly kind: "multi"; readonly outcomes: readonly Outcome[] }
   | { readonly kind: "split"; readonly emit: ReadonlyArray<{ edgeId: ConnectionId; packet: Packet }>; readonly mergeKey: PacketId; readonly expectedChildren: number; readonly ingressEdgeId: ConnectionId; readonly preSplitRoute: ReadonlyArray<ConnectionId> };
@@ -69,5 +69,5 @@ export type SimCapability = {
 
 export type SimEvent =
   | { readonly kind: "drop"; readonly componentId: ComponentId; readonly reason: string; readonly count: number }
-  | { readonly kind: "terminate"; readonly componentId: ComponentId; readonly revenue: number; readonly latencySeconds: number }
-  | { readonly kind: "respond-delivered"; readonly componentId: ComponentId; readonly revenue: number; readonly latencySeconds: number };
+  | { readonly kind: "terminate"; readonly componentId: ComponentId; readonly revenue: number; readonly latencySeconds: number; readonly count: number }
+  | { readonly kind: "respond-delivered"; readonly componentId: ComponentId; readonly revenue: number; readonly latencySeconds: number; readonly count: number };

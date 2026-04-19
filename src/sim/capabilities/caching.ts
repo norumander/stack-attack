@@ -102,6 +102,7 @@ export class CachingCapability implements SimCapability {
         kind: "respond",
         responsePacket: response,
         revenueOnDelivery: this.opts.revenuePerRead * hits.length,
+        count: hits.length,
       });
     }
     if (misses.length > 0) {

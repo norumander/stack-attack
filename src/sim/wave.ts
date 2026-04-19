@@ -18,6 +18,7 @@ export type WaveRevenue = {
   readonly perWrite: number;
   readonly perAuth: number;
   readonly perStream: number;
+  readonly perAsync: number;
 };
 
 export type WaveDef = {

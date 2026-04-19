@@ -77,7 +77,7 @@ async function main(): Promise<void> {
     revenue: 0,
     latencySum: 0,
     latencyCount: 0,
-    totalPackets: 0,
+    totalRequests: 0,
   };
   let perComponentDrops: Map<ComponentId, { total: number; byReason: Map<string, number> }> = new Map();
   let perComponentProcessed: Map<ComponentId, number> = new Map();
@@ -89,13 +89,17 @@ async function main(): Promise<void> {
   let dead = false;
   let lastWavePenalty = 0;
   let lastWaveAvailability = 1;
+  let lastWaveAvgLatency = 0;
+  let lastWaveAvailShortfall = 0;
+  let lastWaveLatencyOvershoot = 0;
+  let lastWaveProcessedByComponent: ReadonlyMap<ComponentId, number> = new Map();
 
   // Forward declaration — assigned after controller construction (closure safe
   // because onPhaseChange is only called during gameplay, after assignment).
   let infoPanel!: InfoPanelHandle;
 
   const controller = new PhysicsCampaignController({
-    waves: CAMPAIGN_WAVES.map((w) => ({ id: w.id, startBudget: w.startBudget })),
+    waves: CAMPAIGN_WAVES.map((w) => ({ id: w.id, startBudget: w.startBudget, revenue: w.wave.revenue })),
     componentCosts: COMPONENT_COSTS,
     callbacks: {
       onPlaced: (type, id, gridPos) => {
@@ -171,6 +175,14 @@ async function main(): Promise<void> {
     getDrops: () => perComponentDrops,
     getProcessed: () => perComponentProcessed,
   });
+
+  // ─── Dev +$100 button (testing aid; remove before ship) ────────────
+  const devGrantBtn = document.getElementById("td-dev-grant-btn");
+  if (devGrantBtn) {
+    devGrantBtn.addEventListener("click", () => {
+      controller.devGrant(100);
+    });
+  }
 
   // ─── Dev wave-jump selector ─────────────────────────────────────────
   const devSelect = document.getElementById("td-dev-wave-select") as HTMLSelectElement | null;
@@ -332,7 +344,7 @@ async function main(): Promise<void> {
       revenue: 0,
       latencySum: 0,
       latencyCount: 0,
-      totalPackets: 0,
+      totalRequests: 0,
     };
     perComponentDrops = new Map();
     perComponentProcessed = new Map();
@@ -356,42 +368,38 @@ async function main(): Promise<void> {
     lastFrame = now;
     if (driver && adapter) {
       driver.tick(delta);
-      // Count fresh top-level packets (parentId === null) as denominator.
+      // Count requests in fresh top-level packets (parentId === null) as denominator.
       for (const p of sim.activePackets) {
         const id = p.id as unknown as string;
         if (p.parentId === null && !seenPacketIds.has(id)) {
           seenPacketIds.add(id);
-          metrics.totalPackets += 1;
-          console.warn("[td-pkt] new packet seen, totalPackets now:", metrics.totalPackets, "simTime:", sim.simTime);
+          metrics.totalRequests += p.requests.length;
         }
-      }
-      if (driver.tickEvents.length > 0) {
-        console.warn("[td-events] tick events:", driver.tickEvents.map(e => e.kind).join(","));
       }
       let failuresThisFrame = 0;
       for (const ev of driver.tickEvents) {
         if (ev.kind === "drop") {
-          metrics.drops += 1;
-          failuresThisFrame += 1;
+          metrics.drops += ev.count;
+          failuresThisFrame += ev.count;
           const compId = ev.componentId as ComponentId;
           let tally = perComponentDrops.get(compId);
           if (!tally) { tally = { total: 0, byReason: new Map() }; perComponentDrops.set(compId, tally); }
-          tally.total += 1;
-          tally.byReason.set(ev.reason, (tally.byReason.get(ev.reason) ?? 0) + 1);
+          tally.total += ev.count;
+          tally.byReason.set(ev.reason, (tally.byReason.get(ev.reason) ?? 0) + ev.count);
         } else if (ev.kind === "terminate") {
-          metrics.terminated += 1;
+          metrics.terminated += ev.count;
           metrics.revenue += ev.revenue;
           metrics.latencySum += ev.latencySeconds;
           metrics.latencyCount += 1;
           const compId = ev.componentId as ComponentId;
-          perComponentProcessed.set(compId, (perComponentProcessed.get(compId) ?? 0) + 1);
+          perComponentProcessed.set(compId, (perComponentProcessed.get(compId) ?? 0) + ev.count);
         } else if (ev.kind === "respond-delivered") {
-          metrics.responded += 1;
+          metrics.responded += ev.count;
           metrics.revenue += ev.revenue;
           metrics.latencySum += ev.latencySeconds;
           metrics.latencyCount += 1;
           const compId = ev.componentId as ComponentId;
-          perComponentProcessed.set(compId, (perComponentProcessed.get(compId) ?? 0) + 1);
+          perComponentProcessed.set(compId, (perComponentProcessed.get(compId) ?? 0) + ev.count);
         }
       }
       adapter.syncFrame(driver.tickEvents);
@@ -427,14 +435,6 @@ async function main(): Promise<void> {
 
       if (now >= drainDeadline) {
         // Wave done — evaluate SLA.
-        console.warn("[td-sla] wave end metrics:", JSON.stringify({
-          totalPackets: metrics.totalPackets,
-          responded: metrics.responded,
-          terminated: metrics.terminated,
-          drops: metrics.drops,
-          activePackets: sim.activePackets.length,
-          simTime: sim.simTime,
-        }));
         const wave = CAMPAIGN_WAVES[controller.currentWaveIndex]!;
         const avgLatency =
           metrics.latencyCount > 0 ? metrics.latencySum / metrics.latencyCount : 0;
@@ -442,7 +442,7 @@ async function main(): Promise<void> {
         adapter = null;
         const penalty = computeSlaPenalty(
           {
-            totalPackets: metrics.totalPackets,
+            totalRequests: metrics.totalRequests,
             responded: metrics.responded,
             terminated: metrics.terminated,
             drops: metrics.drops,
@@ -453,6 +453,10 @@ async function main(): Promise<void> {
         );
         lastWavePenalty = penalty.dollars;
         lastWaveAvailability = penalty.actualAvailability;
+        lastWaveAvgLatency = avgLatency;
+        lastWaveAvailShortfall = penalty.availabilityShortfallPct;
+        lastWaveLatencyOvershoot = penalty.latencyOvershootPct;
+        lastWaveProcessedByComponent = new Map(perComponentProcessed);
         if (penalty.dollars > 0) {
           controller.applyPenalty(penalty.dollars);
         }
@@ -487,12 +491,20 @@ async function main(): Promise<void> {
     stats.appendChild(earnedRow);
     const slaRow = document.createElement("div");
     slaRow.className = "cp-win-stat";
-    slaRow.textContent = `SLA     ${(lastWaveAvailability * 100).toFixed(1)}%`;
+    slaRow.textContent = `Avail   ${(lastWaveAvailability * 100).toFixed(1)}%`;
     stats.appendChild(slaRow);
+    const latRow = document.createElement("div");
+    latRow.className = "cp-win-stat";
+    latRow.textContent = `Latency ${lastWaveAvgLatency.toFixed(2)}s`;
+    stats.appendChild(latRow);
     if (lastWavePenalty > 0) {
       const penaltyRow = document.createElement("div");
       penaltyRow.className = "cp-win-stat";
-      penaltyRow.textContent = `Penalty −$${lastWavePenalty}`;
+      const causes: string[] = [];
+      if (lastWaveAvailShortfall > 0) causes.push(`avail −${lastWaveAvailShortfall.toFixed(1)}pt`);
+      if (lastWaveLatencyOvershoot > 0) causes.push(`lat +${lastWaveLatencyOvershoot.toFixed(0)}%`);
+      const cause = causes.length > 0 ? ` (${causes.join(", ")})` : "";
+      penaltyRow.textContent = `Penalty −$${lastWavePenalty}${cause}`;
       stats.appendChild(penaltyRow);
     }
     const budgetRow = document.createElement("div");
@@ -500,6 +512,21 @@ async function main(): Promise<void> {
     budgetRow.textContent = `Budget  $${controller.budget}`;
     stats.appendChild(budgetRow);
     modal.appendChild(stats);
+
+    // Per-component "served requests" breakdown (shows whether cache/CDN actually absorbed traffic).
+    if (lastWaveProcessedByComponent.size > 0) {
+      const servedHeader = document.createElement("div");
+      servedHeader.className = "cp-win-next-header";
+      servedHeader.textContent = "SERVED BY";
+      modal.appendChild(servedHeader);
+      const servedList = document.createElement("div");
+      servedList.className = "cp-win-preview-rows";
+      for (const [compId, count] of lastWaveProcessedByComponent) {
+        const type = componentTypes.get(compId) ?? (compId as unknown as string);
+        servedList.appendChild(winPreviewRow(type, String(count)));
+      }
+      modal.appendChild(servedList);
+    }
 
     // Preview of next wave if there is one.
     const nextIndex = waveIndex + 1;

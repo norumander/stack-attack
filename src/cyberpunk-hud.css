@@ -268,7 +268,7 @@ body.renderer-iso .cp-right-col {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-width: 300px;
+  width: 220px;
   max-height: calc(100vh - 56px);
   overflow-y: auto;
   pointer-events: none;
@@ -279,8 +279,8 @@ body.renderer-iso .cp-right-col > .cp-panel {
 }
 
 body.renderer-iso .cp-resources {
-  min-width: 220px;
-  padding: 12px 20px 14px;
+  min-width: 0;
+  padding: 10px 14px 12px;
 }
 
 body.renderer-iso .cp-res-row {
@@ -299,10 +299,10 @@ body.renderer-iso .cp-res-row + .cp-res-row {
 body.renderer-iso .cp-res-key {
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.2em;
   color: var(--sc-ink-dim);
   text-transform: uppercase;
-  min-width: 72px;
+  min-width: 0;
 }
 
 body.renderer-iso .cp-res-val {
@@ -318,8 +318,8 @@ body.renderer-iso .cp-res-val {
    ================================================================ */
 
 body.renderer-iso .cp-briefing {
-  min-width: 300px;
-  padding: 16px 20px;
+  min-width: 0;
+  padding: 14px 14px;
 }
 
 body.renderer-iso .cp-briefing-title {
@@ -351,9 +351,9 @@ body.renderer-iso .cp-brief-key {
   color: var(--sc-ink-dim);
   font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  min-width: 90px;
+  min-width: 60px;
   padding-top: 2px;
 }
 

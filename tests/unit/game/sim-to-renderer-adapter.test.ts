@@ -115,7 +115,7 @@ describe("SimToRendererAdapter", () => {
     const { sim } = boot();
     const renderer = new MockRenderer();
     const adapter = new SimToRendererAdapter(sim, renderer, new Map());
-    sim.lastStepEvents.push({ kind: "respond-delivered", componentId: "a" as ComponentId, revenue: 5, latencySeconds: 0.2 });
+    sim.lastStepEvents.push({ kind: "respond-delivered", componentId: "a" as ComponentId, revenue: 5, latencySeconds: 0.2, count: 1 });
     adapter.syncFrame();
     expect(renderer.respondedFlashed).toEqual(["a"]);
   });

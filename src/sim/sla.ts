@@ -5,7 +5,7 @@ export type SLAThresholds = {
 };
 
 export type WaveMetrics = {
-  readonly totalPackets: number;
+  readonly totalRequests: number;
   readonly responded: number;
   readonly terminated: number;
   readonly drops: number;
@@ -22,7 +22,7 @@ export type SLAResult = {
 export function evaluateSLA(metrics: WaveMetrics, sla: SLAThresholds): SLAResult {
   const reasons: string[] = [];
   const totalResolved = metrics.responded + metrics.terminated;
-  const denom = Math.max(1, metrics.totalPackets);
+  const denom = Math.max(1, metrics.totalRequests);
   const availability = totalResolved / denom;
   const dropRate = metrics.drops / denom;
   if (availability < sla.availability) {

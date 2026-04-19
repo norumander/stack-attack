@@ -11,7 +11,7 @@ const wave: WaveDef = {
   duration: 60,
   composition: { writeRatio: 0, authRatio: 0, streamRatio: 0, largeRatio: 0, asyncRatio: 0 },
   keyDistribution: { kind: "uniform", spaceSize: 100 },
-  revenue: { perRead: 1, perWrite: 1, perAuth: 1, perStream: 1 },
+  revenue: { perRead: 1, perWrite: 1, perAuth: 1, perStream: 1, perAsync: 1 },
   zoneDistribution: new Map<string, number>([["NA", 0.5], ["EU", 0.3], ["AP", 0.2]]),
   entryClients: ["c1" as ComponentId],
 };

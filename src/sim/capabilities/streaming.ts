@@ -32,6 +32,6 @@ export class StreamingCapability implements SimCapability {
     const maxDuration = Math.max(...packet.requests.map((r) => r.stream?.duration ?? 0));
     const ok = ctx.reserveBandwidth?.(ctx.ingressEdgeId, totalBandwidth, maxDuration) ?? false;
     if (!ok) return { kind: "drop", reason: "bandwidth_saturated", count: packet.requests.length };
-    return { kind: "terminate", revenue: this.opts.revenuePerStream * packet.requests.length };
+    return { kind: "terminate", revenue: this.opts.revenuePerStream * packet.requests.length, count: packet.requests.length };
   }
 }

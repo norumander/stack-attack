@@ -21,11 +21,12 @@ export class Sim {
   readonly lastStepEvents: SimEvent[] = [];
   simTime = 0;
   readonly rng: () => number;
-  private readonly revenueByPacketId: Map<PacketId, number> = new Map();
+  private readonly revenueByPacketId: Map<PacketId, { revenue: number; count: number }> = new Map();
   private readonly mergeByParent: Map<PacketId, {
     expectedChildren: number;
     receivedChildren: number;
     accumulatedRevenue: number;
+    accumulatedCount: number;
     ingressEdgeId: ConnectionId;
     preSplitRoute: ConnectionId[];
     originalSpawnedAt: number;
@@ -132,8 +133,9 @@ export class Sim {
         const merge = this.mergeByParent.get(parentPacketId);
         if (merge !== undefined) {
           merge.receivedChildren += 1;
-          const childRevenue = this.revenueByPacketId.get(packet.id) ?? 0;
-          merge.accumulatedRevenue += childRevenue;
+          const child = this.revenueByPacketId.get(packet.id) ?? { revenue: 0, count: 0 };
+          merge.accumulatedRevenue += child.revenue;
+          merge.accumulatedCount += child.count;
           this.revenueByPacketId.delete(packet.id);
           this.parentOfChild.delete(packet.parentId!);
           if (merge.receivedChildren >= merge.expectedChildren) {
@@ -146,6 +148,7 @@ export class Sim {
                 componentId: component.id,
                 revenue: merge.accumulatedRevenue,
                 latencySeconds: this.simTime - merge.originalSpawnedAt,
+                count: merge.accumulatedCount,
               });
               return;
             }
@@ -160,7 +163,7 @@ export class Sim {
               direction: "back",
               route: [...merge.preSplitRoute],
             };
-            this.revenueByPacketId.set(merged.id, merge.accumulatedRevenue);
+            this.revenueByPacketId.set(merged.id, { revenue: merge.accumulatedRevenue, count: merge.accumulatedCount });
             this.activePackets.push(merged);
           }
           return; // child retires at LB — do not fall through to route-pop
@@ -170,26 +173,28 @@ export class Sim {
       const poppedEdgeId = packet.route.pop();
       if (poppedEdgeId === undefined) {
         // No upstream left — response has returned to origin.
-        const revenue = this.revenueByPacketId.get(packet.id) ?? 0;
+        const rec = this.revenueByPacketId.get(packet.id) ?? { revenue: 0, count: 0 };
         this.revenueByPacketId.delete(packet.id);
         this.lastStepEvents.push({
           kind: "respond-delivered",
           componentId: component.id,
-          revenue,
+          revenue: rec.revenue,
           latencySeconds: this.simTime - packet.spawnedAt,
+          count: rec.count,
         });
         return;
       }
       const nextRequestEdgeId = packet.route[packet.route.length - 1];
       if (nextRequestEdgeId === undefined) {
         // Reached origin — route is now empty; response delivered.
-        const revenue = this.revenueByPacketId.get(packet.id) ?? 0;
+        const rec = this.revenueByPacketId.get(packet.id) ?? { revenue: 0, count: 0 };
         this.revenueByPacketId.delete(packet.id);
         this.lastStepEvents.push({
           kind: "respond-delivered",
           componentId: component.id,
-          revenue,
+          revenue: rec.revenue,
           latencySeconds: this.simTime - packet.spawnedAt,
+          count: rec.count,
         });
         return;
       }
@@ -219,6 +224,7 @@ export class Sim {
           componentId,
           revenue: outcome.revenue,
           latencySeconds: this.simTime - this.currentArrivalSpawnedAt,
+          count: outcome.count,
         });
         return;
       case "multi":
@@ -229,6 +235,7 @@ export class Sim {
           expectedChildren: outcome.expectedChildren,
           receivedChildren: 0,
           accumulatedRevenue: 0,
+          accumulatedCount: 0,
           ingressEdgeId: outcome.ingressEdgeId,
           preSplitRoute: [...outcome.preSplitRoute],
           originalSpawnedAt: this.currentArrivalSpawnedAt,
@@ -252,13 +259,14 @@ export class Sim {
             componentId,
             revenue: outcome.revenueOnDelivery,
             latencySeconds: this.simTime - this.currentArrivalSpawnedAt,
+            count: outcome.count,
           });
           return;
         }
         resp.edgeId = twin.id;
         resp.progress = 0;
         resp.speed = twin.speed;
-        this.revenueByPacketId.set(resp.id, outcome.revenueOnDelivery);
+        this.revenueByPacketId.set(resp.id, { revenue: outcome.revenueOnDelivery, count: outcome.count });
         this.activePackets.push(resp);
         return;
       }
@@ -278,6 +286,7 @@ export class Sim {
               componentId: comp.id,
               revenue: cap.opts.revenuePerItem * pulled.requests.length,
               latencySeconds: this.simTime - pulled.spawnedAt,
+              count: pulled.requests.length,
             });
           }
         }

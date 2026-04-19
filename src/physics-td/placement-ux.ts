@@ -82,7 +82,7 @@ export class PlacementUX {
     componentId: ComponentId,
     gridPos: { x: number; y: number },
   ): void {
-    const comp = buildSimComponent(type, componentId);
+    const comp = buildSimComponent(type, componentId, this.controller.currentWaveRevenue());
     if (!comp) return;
     this.sim.addComponent(comp);
     const sprite = COMPONENT_SPRITE_TYPE.get(type) ?? "server";

@@ -11,8 +11,8 @@ describe("PhysicsCampaignController", () => {
     };
     const controller = new PhysicsCampaignController({
       waves: [
-        { id: "test-1", startBudget: 500 },
-        { id: "test-2", startBudget: 700 },
+        { id: "test-1", startBudget: 500, revenue: { perRead: 1, perWrite: 1, perAuth: 1, perStream: 1, perAsync: 1 } },
+        { id: "test-2", startBudget: 700, revenue: { perRead: 1, perWrite: 1, perAuth: 1, perStream: 1, perAsync: 1 } },
       ],
       componentCosts: new Map([["server", 100], ["data_cache", 150]]),
       callbacks: {

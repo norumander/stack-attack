@@ -38,7 +38,7 @@ function responder(revenue: number, backSpeed: number): SimCapability {
         direction: "back",
         route: [...p.route, ctx.ingressEdgeId],
       };
-      return { kind: "respond", responsePacket: response, revenueOnDelivery: revenue };
+      return { kind: "respond", responsePacket: response, revenueOnDelivery: revenue, count: p.requests.length };
     },
   };
 }

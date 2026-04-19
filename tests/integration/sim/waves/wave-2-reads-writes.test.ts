@@ -30,7 +30,7 @@ class ServerDispatcherCapability implements SimCapability {
         direction: "back",
         route: [...packet.route, ctx.ingressEdgeId],
       };
-      return { kind: "respond", responsePacket: response, revenueOnDelivery: this.revenuePerRead * packet.requests.length };
+      return { kind: "respond", responsePacket: response, revenueOnDelivery: this.revenuePerRead * packet.requests.length, count: packet.requests.length };
     }
     const egress = ctx.egressEdges[0];
     if (!egress) return { kind: "drop", reason: "no_egress", count: packet.requests.length };
@@ -55,7 +55,7 @@ const WAVE_2: WaveDef = {
   duration: 5,
   composition: { writeRatio: 0.3, authRatio: 0, streamRatio: 0, largeRatio: 0, asyncRatio: 0 },
   keyDistribution: { kind: "uniform", spaceSize: 50 },
-  revenue: { perRead: 1, perWrite: 2, perAuth: 0, perStream: 0 },
+  revenue: { perRead: 1, perWrite: 2, perAuth: 0, perStream: 0, perAsync: 1 },
   entryClients: ["client" as ComponentId],
 };
 

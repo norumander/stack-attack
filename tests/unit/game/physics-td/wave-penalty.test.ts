@@ -10,7 +10,7 @@ describe("computeSlaPenalty", () => {
   it("zero penalty when SLA is met", () => {
     const result = computeSlaPenalty(
       {
-        totalPackets: 100,
+        totalRequests: 100,
         responded: 95,
         terminated: 0,
         drops: 5,
@@ -27,7 +27,7 @@ describe("computeSlaPenalty", () => {
     // 80% served, target 90% → 10 points short → $100
     const result = computeSlaPenalty(
       {
-        totalPackets: 100,
+        totalRequests: 100,
         responded: 80,
         terminated: 0,
         drops: 20,
@@ -43,7 +43,7 @@ describe("computeSlaPenalty", () => {
     // 85% avail (5 pts short → $50) and 3s latency vs 2s target (50% over → $500, but combined caps)
     const result = computeSlaPenalty(
       {
-        totalPackets: 100,
+        totalRequests: 100,
         responded: 85,
         terminated: 0,
         drops: 15,
@@ -58,7 +58,7 @@ describe("computeSlaPenalty", () => {
   it("caps the penalty", () => {
     const result = computeSlaPenalty(
       {
-        totalPackets: 100,
+        totalRequests: 100,
         responded: 0,
         terminated: 0,
         drops: 100,

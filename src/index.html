@@ -17,6 +17,15 @@
 <body>
   <div id="canvas-host"></div>
 
+  <!-- DEV: +$100 budget grant button (remove before ship). -->
+  <button id="td-dev-grant-btn"
+          style="position: fixed; top: 8px; right: 8px; z-index: 9999;
+                 padding: 8px 14px; background: #ffd700; color: #111;
+                 border: 2px solid #000; border-radius: 4px; font-weight: bold;
+                 font-family: monospace; cursor: pointer;">
+    DEV +$100
+  </button>
+
   <!-- Mirror divs observed by cyberpunk-hud.ts. Writing to these updates the
        visible HUD without us needing to touch the HUD's internal DOM. -->
   <div class="td-hud-mirror">

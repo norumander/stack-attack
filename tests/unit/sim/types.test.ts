@@ -33,8 +33,8 @@ describe("sim types", () => {
     };
     const outcomes: Outcome[] = [
       { kind: "forward", emit: [{ edgeId: packet.edgeId, packet }] },
-      { kind: "terminate", revenue: 5 },
-      { kind: "respond", responsePacket: { ...packet, direction: "back" }, revenueOnDelivery: 0 },
+      { kind: "terminate", revenue: 5, count: 1 },
+      { kind: "respond", responsePacket: { ...packet, direction: "back" }, revenueOnDelivery: 0, count: 0 },
       { kind: "drop", reason: "overloaded", count: 1 },
     ];
     expect(outcomes.length).toBe(4);

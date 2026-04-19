@@ -17,7 +17,7 @@ export function runWave(sim: Sim, opts: RunWaveOptions): WaveMetrics {
   let totalRevenue = 0;
   let latencySum = 0;
   let latencyCount = 0;
-  let totalPackets = 0;
+  let totalRequests = 0;
   const seenIds = new Set<string>();
   for (let i = 0; i < totalSteps; i += 1) {
     sim.step(step);
@@ -26,19 +26,19 @@ export function runWave(sim: Sim, opts: RunWaveOptions): WaveMetrics {
       if (p.parentId !== null) continue;
       if (!seenIds.has(p.id)) {
         seenIds.add(p.id);
-        totalPackets += 1;
+        totalRequests += p.requests.length;
       }
     }
     for (const ev of sim.lastStepEvents) {
       if (ev.kind === "drop") drops += ev.count;
       if (ev.kind === "terminate") {
-        terminated += 1;
+        terminated += ev.count;
         totalRevenue += ev.revenue;
         latencySum += ev.latencySeconds;
         latencyCount += 1;
       }
       if (ev.kind === "respond-delivered") {
-        responded += 1;
+        responded += ev.count;
         totalRevenue += ev.revenue;
         latencySum += ev.latencySeconds;
         latencyCount += 1;
@@ -46,5 +46,5 @@ export function runWave(sim: Sim, opts: RunWaveOptions): WaveMetrics {
     }
   }
   const avgLatencySeconds = latencyCount > 0 ? latencySum / latencyCount : 0;
-  return { totalPackets, responded, terminated, drops, avgLatencySeconds, totalRevenue };
+  return { totalRequests, responded, terminated, drops, avgLatencySeconds, totalRevenue };
 }

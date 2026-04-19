@@ -1,10 +1,12 @@
 import type { ComponentId, ConnectionId } from "@core/types/ids";
+import type { WaveRevenue } from "@sim/wave";
 
 export type Phase = "build" | "simulate" | "won" | "campaign-complete";
 
 export type WaveSlot = {
   readonly id: string;
   readonly startBudget: number;
+  readonly revenue: WaveRevenue;
 };
 
 export type PlaceResult =
@@ -122,6 +124,16 @@ export class PhysicsCampaignController {
     if (this.phase !== "build") return;
     this.phase = "simulate";
     this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
+  }
+
+  currentWaveRevenue(): WaveRevenue {
+    return this.opts.waves[this.currentWaveIndex]!.revenue;
+  }
+
+  /** Dev affordance — grant cash for playtesting. Remove before ship. */
+  devGrant(dollars: number): void {
+    this.budget += dollars;
+    this.opts.callbacks.onBudgetChange(this.budget);
   }
 
   onWaveEnd(): void {

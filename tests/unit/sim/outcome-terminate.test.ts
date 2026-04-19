@@ -9,7 +9,7 @@ import type { ComponentId, ConnectionId, PortId } from "@core/types/ids";
 const terminator: SimCapability = {
   id: "terminator",
   onArriveRequest(): Outcome {
-    return { kind: "terminate", revenue: 42 };
+    return { kind: "terminate", revenue: 42, count: 1 };
   },
 };
 

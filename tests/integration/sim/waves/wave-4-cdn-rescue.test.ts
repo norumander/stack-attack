@@ -44,7 +44,7 @@ const WAVE_4: WaveDef = {
   duration: 5,
   composition: { writeRatio: 0, authRatio: 0, streamRatio: 0, largeRatio: 0.5, asyncRatio: 0 },
   keyDistribution: { kind: "zipf", alpha: 1.07, spaceSize: 100 },
-  revenue: { perRead: 1, perWrite: 0, perAuth: 0, perStream: 0 },
+  revenue: { perRead: 1, perWrite: 0, perAuth: 0, perStream: 0, perAsync: 1 },
   entryClients: ["client" as ComponentId],
 };
 

@@ -20,7 +20,7 @@ export function computeSlaPenalty(
   metrics: WaveMetrics,
   thresholds: SLAThresholds,
 ): SlaPenalty {
-  const denom = Math.max(1, metrics.totalPackets);
+  const denom = Math.max(1, metrics.totalRequests);
   const actualAvailability = (metrics.responded + metrics.terminated) / denom;
   const availabilityShortfallPct = Math.max(
     0,

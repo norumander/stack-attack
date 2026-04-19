@@ -25,7 +25,7 @@ export class ProcessingCapability implements SimCapability {
       return { kind: "drop", reason: "overloaded", count };
     }
     if (anyWrite) {
-      return { kind: "terminate", revenue: this.opts.revenuePerWrite * count };
+      return { kind: "terminate", revenue: this.opts.revenuePerWrite * count, count };
     }
     // Read: generate response that retraces via route.
     const response: Packet = {
@@ -43,6 +43,7 @@ export class ProcessingCapability implements SimCapability {
       kind: "respond",
       responsePacket: response,
       revenueOnDelivery: this.opts.revenuePerRead * count,
+      count,
     };
   }
 }
