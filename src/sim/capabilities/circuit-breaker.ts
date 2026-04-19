@@ -16,8 +16,6 @@ export type CircuitOpenEvent = {
   readonly at: number;
 };
 
-// TODO(lane-e): reportFailure/reportSuccess not yet wired — chaos integration will hook into downstream drops/timeouts
-
 /**
  * Sim-compatible circuit breaker.
  *
