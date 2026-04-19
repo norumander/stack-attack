@@ -57,6 +57,39 @@ body::after {
   mix-blend-mode: multiply;
 }
 
+/* Roll-bar: a soft highlight band that sweeps top-to-bottom every few
+   seconds, then pauses — the classic CRT refresh artifact. Sits above
+   the static scanlines. Honors prefers-reduced-motion. */
+body::before {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 22vh;
+  pointer-events: none;
+  z-index: 10500;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.18) 30%,
+    rgba(0, 0, 0, 0.42) 50%,
+    rgba(0, 0, 0, 0.18) 70%,
+    transparent 100%
+  );
+  mix-blend-mode: multiply;
+  transform: translateY(-120%);
+  animation: sa-rollbar 7s linear infinite;
+}
+@keyframes sa-rollbar {
+  0%   { transform: translateY(-120%); }
+  35%  { transform: translateY(560%);  }
+  100% { transform: translateY(560%);  }
+}
+@media (prefers-reduced-motion: reduce) {
+  body::before { animation: none; }
+}
+
 /* ─── Login overlay ──────────────────────────────────────────────── */
 .sa-login-overlay {
   position: fixed;
