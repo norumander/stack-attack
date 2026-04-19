@@ -2,46 +2,62 @@
 
 ## Tech stack
 
-React + TypeScript + Pixi.js planned for the UI stage (not yet built). Simulation layer is **pure TypeScript, framework-agnostic** — no React, Next.js, or Vercel imports allowed until the UI stage. TypeScript's type system enforces the capability pattern at compile time; branded IDs and strict settings catch whole classes of bugs at the type layer.
+TypeScript + Pixi.js v8 + Vite. Supabase (auth + edge functions + Postgres). Deno for the one edge function (`supabase/functions/stack-attack-chat/`). No React, no Next.js. The legacy tick-step engine in `src/core/` is framework-agnostic TypeScript; the Physics TD game is built on the newer real-time `Sim` engine in `src/sim/`.
+
+TypeScript is strict with `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`. Branded IDs (`ComponentId`, `ConnectionId`, `PacketId`, `RequestId`) catch cross-domain mix-ups at the type layer.
 
 ## Source layout
 
-- `src/core/` — engine, state, component, capability, types, mode interfaces, registry
-- `src/core/engine/` — one file per tick step (29 files), plus helpers (rng, throughput, visit-order, etc.)
-- `src/capabilities/` — concrete capability implementations (e.g. `ProcessingCapability`)
-- `src/sim/` — physics sim engine (Sim, packets, capabilities)
-- `src/physics-td/` — game logic (campaign, UX, waves, HUD bridge)
-- `src/render/` — cyberpunk isometric renderer
-- `src/sim-demo/` — BrowserDriver, SimToRendererAdapter
+Top-level:
+- `src/sim/` — physics sim engine (`Sim.step(dt)`, packets, snake, capabilities, SLA)
+- `src/physics-td/` — game logic: campaign, waves, chaos, UX, metrics, diagnose-wave hint engine
+- `src/diagnose/` — Diagnose-mode controller + level schema + framework boot
+- `src/chatbot/` — browser-side chat client (no UI yet)
+- `src/render/` + `src/render/cyberpunk/` — Pixi v8 isometric renderer
+- `src/sim-demo/` — `BrowserDriver` + `SimToRendererAdapter` bridge sim to renderer
+- `src/auth/` — Supabase auth, leaderboard, profile, game progress
+- `src/playtest/` — headless runner for Diagnose topology validation
+- `src/core/` + `src/capabilities/` — legacy tick-step engine (still compiled/tested; Physics TD does not use this)
+
+See `implementation-status.md` for what each produces.
 
 ## Commands
 
 ```bash
-pnpm test                              # run full suite (~11s, 613 tests)
-pnpm test tests/unit/<name>.test.ts    # run a single file (~1s)
-pnpm typecheck                         # strict tsc --noEmit
-pnpm dev                               # start Vite dashboard
+pnpm test                              # full suite (760 tests + 6 skipped, ~5s)
+pnpm test tests/unit/<name>.test.ts    # single file (~1s)
+pnpm typecheck                         # strict tsc --noEmit (2 pre-existing known errors)
+pnpm dev                               # Vite at localhost:5173/
+pnpm exec vite build                   # production build (there IS a "build" script, this also works)
 ```
 
 - **Package manager:** `pnpm` (uses `pnpm-lock.yaml`).
-- **Test layout:** vitest runs `tests/**/*.test.ts`. Unit in `tests/unit/`, integration in `tests/integration/`, mode-agnostic stubs in `tests/harness/`. See `test-harness.md` for fixtures.
-- **Path aliases:** `@core/*`, `@sim/*`, `@capabilities/*`, `@harness/*`. Must be mirrored in both `tsconfig.json` paths and `vitest.config.ts` resolve.alias — changing one without the other silently breaks tests or typecheck.
-- **TypeScript:** strict with `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`. ESM — relative imports use `.js` extension on `.ts` sources (bundler moduleResolution). Branded IDs (`RequestId`, `ComponentId`, etc.) require `as RequestId` casts in test fixtures.
-- **Specs and plans:** designs in `docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`. Phase 1 is built in sequential stages with explicit exit criteria — write the next stage's plan only after the previous stage merges and its interfaces are locked.
-- **Phase 1 scope reminder:** pure TypeScript simulation. Vercel-plugin skill suggestions that fire on `package.json`/`tsconfig.json` writes are false positives in this phase.
+- **Test layout:** vitest runs `tests/**/*.test.ts`. Unit in `tests/unit/`, integration in `tests/integration/`, mode-agnostic stubs in `tests/harness/`, playtest research in `tests/playtest/` (non-blocking). See `test-harness.md` for fixtures.
+- **Path aliases:** `@core/*`, `@sim/*`, `@capabilities/*`, `@harness/*`. Must be mirrored in both `tsconfig.json` `paths` and `vite.config.ts` `resolve.alias` — changing one without the other silently breaks tests or typecheck.
+- **Vite multi-entry:** `vite.config.ts` declares four HTML entries: `landing`, `levels`, `game`, `diagnose`. Adding a new HTML page requires updating `rollupOptions.input`.
+- **TypeScript:** strict, ESM, `moduleResolution: bundler`. Relative imports use `.js` extension on `.ts` sources. Branded ID casts (`as ComponentId`) are required in test fixtures.
+
+## Known-good typecheck floor
+
+Two pre-existing errors unrelated to current work. Clean typecheck = exactly these two lines:
+
+- `tests/unit/pull-from-buffers.test.ts:81` — `requestsPerTick` not on `FixedIntensityConfig`.
+- `tests/unit/game/sim-to-renderer-adapter.test.ts:8` — missing `@dashboard/render/topology-renderer` alias (dashboard was removed, this test file wasn't).
+
+If `pnpm typecheck` reports anything else, your changes introduced it.
 
 ## Session start — always fetch origin
 
-`git fetch origin && git rev-list --count HEAD..origin/main`. If nonzero, rebase/branch off the new main before starting work. This is critical when multiple agents (yours and teammates') are active — stale baselines silently create merge conflicts and duplicate fixes. Re-fetch at the start of each new slice when executing a multi-task plan, not after every commit.
+`git fetch origin && git rev-list --count HEAD..origin/main`. If nonzero, rebase/branch off the new main before starting work. Critical when multiple agents are active — stale baselines silently create merge conflicts and duplicate fixes.
 
 ## Branching and pushing
 
-- **Push feature branches proactively at slice boundaries.** When a meaningful unit of work completes (e.g. "Slice A done, all tests green"), `git push -u origin feature/<name>` (first push) or `git push` (subsequent). Not after every commit — too noisy. This makes WIP discoverable: teammates (and their agents) can `git ls-remote origin 'refs/heads/feature/*'` to see live branches before starting parallel work on the same files. Only push when tests are green.
-- **Before starting a new feature branch:** `git ls-remote origin 'refs/heads/feature/*'` to surface any in-flight work that might conflict. If a teammate already has a branch touching the files you'd touch, coordinate before branching.
+- **Push feature branches at slice boundaries** (`git push -u origin feature/<name>`), not after every commit. Only when tests are green.
+- **Before starting a new feature branch:** `git ls-remote origin 'refs/heads/feature/*'` to surface in-flight work that might conflict.
 - **Tag a rollback anchor** (`git tag <stage>-pre-merge`) before non-trivial merges.
 
 ## Debugging heuristics
 
-- **Vite forwards browser `console.warn` / `console.error` to dev server stdout.** Use `console.warn` (not `console.log`) for diagnostic output that should reach the terminal during `pnpm dev`. Tag with a prefix like `[td-tick]` / `[td-phase]` for grep filtering. Lets the controller debug the dashboard from the dev server log instead of needing copy-paste from browser DevTools.
-- **Renderer bugs: dump the engine events first, theorize second.** When the dashboard looks wrong (wrong color, wrong component pulsing, dots on the wrong edge), write a one-tick unit test that constructs the suspect topology, runs `engine.tick(mc)` once, and dumps `state.lastTickEvents` filtered to the relevant request. If the event sequence is correct, the bug is in `state-to-renderer.ts` or `pixi-topology-renderer.ts` — not the engine. Stage 3c's "orange edges on cyan reads" bug took three wrong fixes (pool state, stroke bleed, temporal stagger) before a Wave-2 write-trace diagnostic test proved the engine emitted exactly one SERVED-at-Database with no spurious FORWARDEDs, which pointed directly at the renderer's simultaneous-spawn composite.
-- **Wave duration ≠ total run ticks.** `WaveDefinition.duration` is the traffic-generation window only. The engine continues ticking after traffic stops until `isWaveDrained` returns true (queue empties or times out via TTL). UI tick counters must compute `tickInWave = state.currentTick - waveStartTick` and either cap at `wave.duration` or show a separate "draining" indicator past that point.
+- **Vite forwards browser `console.warn` / `console.error` to dev server stdout.** Use `console.warn` (not `console.log`) for diagnostic output that should reach the terminal during `pnpm dev`. Tag with a prefix like `[sim]` / `[campaign]` for grep filtering.
+- **Renderer bugs: dump sim events first, theorize second.** When the renderer looks wrong (wrong color, wrong packet on wrong edge), write a short unit test that runs a targeted `Sim.step(dt)` sequence and dumps `sim.lastStepEvents`. If the event sequence is correct, the bug is in the renderer bridge (`src/sim-demo/sim-to-renderer.ts`) or a Pixi layer, not the sim.
+- **Pixi v8 API quirks:** `await app.init({...})` is async; `Graphics` uses `g.rect(x,y,w,h).fill(color)`; `Text` is `new Text({ text, style })`. No `beginFill`/`drawRect`.

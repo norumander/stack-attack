@@ -2,7 +2,7 @@
 
 A tower defense game that teaches system architecture through gameplay. Traffic is the enemy, infrastructure components are the towers, a live economy makes architecture decisions feel like business decisions. Strategy game first — the learning is the surprise.
 
-**Current stage:** Physics TD campaign extended to 8 waves (Launch → Viral Moment). Waves 5–8 introduce chaos schedules (W5, W8), Streaming Server (W6), multi-zone DNS/GTM routing (W7) and AutoScale markers (W8). 702 tests, typecheck clean.
+**Current stage:** Physics TD is the shipping mode — 8-wave Netflix campaign (Launch → Viral Moment) covering reads, writes, async/batch, chaos, streaming, multi-zone routing, and auto-scale. Supporting systems landed: per-component live metrics + stress indicators (`component-metrics.ts`), component labels + info panel, Diagnose-mode framework (`src/diagnose/` — controller + level schema shipped, content levels in progress), AI chatbot (Supabase Edge Function → Claude backend + right-edge drawer UI in both modes), multi-egress topology validator, and a topology-builder DSL in `src/playtest/` for Diagnose levels. Typecheck clean.
 
 ## Context hub
 

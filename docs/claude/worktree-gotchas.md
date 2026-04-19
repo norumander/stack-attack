@@ -6,7 +6,7 @@ Project-local convention: `git worktree add .worktrees/<branch> -b <branch>`. `.
 
 ## `node_modules` shortcut
 
-`ln -sf /Users/normanettedgui/development/capstone/node_modules .worktrees/<name>/node_modules` lets a fresh worktree run `pnpm test` / `pnpm typecheck` immediately without a separate install. Remove the symlink before `git worktree remove` (or use `--force`).
+`ln -sf <repo-root>/node_modules .worktrees/<name>/node_modules` (on Windows, a junction via `mklink /J`) lets a fresh worktree run `pnpm test` / `pnpm typecheck` immediately without a separate install. Remove the symlink before `git worktree remove` (or use `--force`).
 
 ## `pnpm install` required after merging a branch that added a dep
 
@@ -18,7 +18,7 @@ Stage 3c's `pixi.js@8.17.1` hit this: merge landed cleanly, 645/645 tests green,
 
 The Bash tool's shell spawns from its last cwd — once that directory is gone, every subsequent command (including `cd /elsewhere && ...`) hard-fails with "Working directory no longer exists" and the session has to restart.
 
-Do worktree cleanup from a **different** cwd: run `git -C /Users/normanettedgui/development/capstone worktree remove .worktrees/<name>` with the Bash tool's current cwd already outside the worktree, or delegate to a subagent.
+Do worktree cleanup from a **different** cwd: run `git -C <repo-root> worktree remove .worktrees/<name>` with the Bash tool's current cwd already outside the worktree, or delegate to a subagent.
 
 ## Subagents and worktree drift
 
