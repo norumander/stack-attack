@@ -354,7 +354,7 @@ async function main(): Promise<void> {
     // Pre-sim topology validation — non-blocking. Stores errors on the
     // controller so a future HUD warning UI can surface them.
     // TODO: surface these as a pre-wave HUD warning panel.
-    controller.lastTopologyErrors = validateTopology(sim, wave.wave, CLIENT_ID);
+    controller.lastTopologyErrors = validateTopology(sim, wave.wave, CLIENT_ID, componentTypes);
 
     adapter = new SimToRendererAdapter(sim, renderer, positions);
     driver = new BrowserDriver(sim, { stepSeconds: 1 / 60 });

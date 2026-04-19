@@ -44,6 +44,19 @@ export const COMPONENT_SPRITE_TYPE: ReadonlyMap<string, string> = new Map([
   ["circuit_breaker", "circuit_breaker"],
 ]);
 
+export const CLIENT_FACING_COMPONENT_TYPES: ReadonlySet<string> = new Set([
+  "server",
+  "cdn",
+  "api_gateway",
+  "load_balancer",
+  "streaming_server",
+  "dns_gtm",
+]);
+
+export function isClientFacing(type: string): boolean {
+  return CLIENT_FACING_COMPONENT_TYPES.has(type);
+}
+
 export const COMPONENT_FACTORY: ReadonlyArray<string> = [
   "server", "database", "data_cache", "load_balancer", "cdn", "api_gateway",
   "queue", "worker", "streaming_server", "dns_gtm", "blob_storage", "circuit_breaker",
@@ -56,7 +69,11 @@ export function buildSimComponent(
 ): SimComponent | null {
   switch (type) {
     case "server":
-      return new SimComponent({ id, capabilities: [new ForwardingCapability()] });
+      return new SimComponent({
+        id,
+        capabilities: [new ForwardingCapability()],
+        capacityPerSecond: 30,
+      });
     case "database":
       return new SimComponent({
         id,

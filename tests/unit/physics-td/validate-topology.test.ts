@@ -305,6 +305,39 @@ describe("validateTopology", () => {
     expect(errors).toEqual([]);
   });
 
+  it("Client → Database (backend-only as entry) returns backend_only_as_entry error", () => {
+    const sim = new Sim({ seed: 1 });
+    addClient(sim);
+    sim.addComponent(makeDB("db"));
+    connect(sim, CLIENT_ID, "db" as ComponentId, 1);
+    const types = new Map<ComponentId, string>([["db" as ComponentId, "database"]]);
+    const errors = validateTopology(sim, makeWave(), CLIENT_ID, types);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.reason).toBe("backend_only_as_entry");
+    expect(errors[0]!.componentId).toBe("db");
+    expect(errors[0]!.componentType).toBe("database");
+    expect(errors[0]!.requestType).toBe("*");
+  });
+
+  it("Client → Cache → DB (Cache backend-only as entry) returns backend_only_as_entry error", () => {
+    const sim = new Sim({ seed: 1 });
+    addClient(sim);
+    sim.addComponent(makeCache("cache"));
+    sim.addComponent(makeDB("db"));
+    connect(sim, CLIENT_ID, "cache" as ComponentId, 1);
+    connect(sim, "cache" as ComponentId, "db" as ComponentId, 2);
+    const types = new Map<ComponentId, string>([
+      ["cache" as ComponentId, "data_cache"],
+      ["db" as ComponentId, "database"],
+    ]);
+    const errors = validateTopology(sim, makeWave(), CLIENT_ID, types);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.reason).toBe("backend_only_as_entry");
+    expect(errors[0]!.componentId).toBe("cache");
+    expect(errors[0]!.componentType).toBe("data_cache");
+    expect(errors[0]!.requestType).toBe("*");
+  });
+
   it("Empty topology (only client with no connections) flags no_handler for api_read", () => {
     const sim = new Sim({ seed: 1 });
     addClient(sim);

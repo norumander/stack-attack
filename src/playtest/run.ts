@@ -69,8 +69,9 @@ function buildSimFromTopology(
   topology: TopologyDef,
   wave: WaveDef,
   seed: number,
-): { sim: Sim; totalCost: number } {
+): { sim: Sim; totalCost: number; componentTypes: Map<ComponentId, string> } {
   const sim = new Sim({ seed });
+  const componentTypes = new Map<ComponentId, string>();
 
   const ts = new TrafficSource(wave, makeSimRng(seed));
   const client = new SimClient({
@@ -91,6 +92,7 @@ function buildSimFromTopology(
       throw new Error(`Unknown component type: ${def.type}`);
     }
     sim.addComponent(comp);
+    componentTypes.set(id, def.type);
     totalCost += COMPONENT_COSTS.get(def.type) ?? 0;
   }
 
@@ -131,7 +133,7 @@ function buildSimFromTopology(
   }
 
   wireWorkers(sim);
-  return { sim, totalCost };
+  return { sim, totalCost, componentTypes };
 }
 
 export function simulatePlaytest(
@@ -151,7 +153,7 @@ export function simulatePlaytest(
   try {
     const built = buildSimFromTopology(topology, wave, seed);
     totalCost = built.totalCost;
-    topologyErrors = validateTopology(built.sim, wave, CLIENT_ID);
+    topologyErrors = validateTopology(built.sim, wave, CLIENT_ID, built.componentTypes);
   } catch (e) {
     // Unknown component type, bad wiring — treat as a single invalid error.
     topologyErrors = [

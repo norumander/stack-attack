@@ -3,6 +3,7 @@ import type { Sim } from "@sim/sim";
 import type { WaveDef } from "@sim/wave";
 import type { SimComponent } from "@sim/component";
 import type { SimCapability } from "@sim/types";
+import { isClientFacing } from "./component-factory";
 
 /**
  * Pre-sim topology validator. BFS from the entry client along forward
@@ -29,7 +30,7 @@ export interface TopologyError {
   requestType: string;
   componentId: ComponentId;
   componentType: string;
-  reason: "no_handler" | "no_egress";
+  reason: "no_handler" | "no_egress" | "backend_only_as_entry";
 }
 
 /** Role of a capability for a given request type. */
@@ -238,7 +239,33 @@ export function validateTopology(
   sim: Sim,
   wave: WaveDef,
   entryClientId: ComponentId,
+  componentTypes?: ReadonlyMap<ComponentId, string>,
 ): TopologyError[] {
+  // Find the client's first forward-hop target — the "entry component" that
+  // actually receives user traffic. That component must be client-facing under
+  // the Redis-style backend-only rule.
+  let firstHopId: ComponentId | null = null;
+  for (const conn of sim.connections.values()) {
+    if (conn.direction !== "forward") continue;
+    if (conn.from.componentId !== entryClientId) continue;
+    firstHopId = conn.to.componentId;
+    break;
+  }
+
+  if (firstHopId && componentTypes) {
+    const entryType = componentTypes.get(firstHopId);
+    if (entryType && !isClientFacing(entryType)) {
+      return [
+        {
+          requestType: "*",
+          componentId: firstHopId,
+          componentType: entryType,
+          reason: "backend_only_as_entry",
+        },
+      ];
+    }
+  }
+
   const errors: TopologyError[] = [];
   const types = enumerateRequestTypes(wave);
   for (const type of types) {
