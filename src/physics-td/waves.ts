@@ -84,7 +84,7 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
   {
     id: "w2",
     title: "Wave 2 — Growth Spike",
-    briefing: "Mainstream press coverage hits. ~60 req/sec — reads dominate and hot titles repeat. One Server drowns. Split load across a second Server with a Load Balancer, and share a Data Cache behind the Servers so hot titles skip the Database.",
+    briefing: "Mainstream press coverage hits. ~60 req/sec — reads dominate and hot titles repeat. One Server's 30/sec capacity drowns under the sync load. Split load across a second Server with a Load Balancer, and share a Data Cache behind the Servers so hot titles skip the Database.",
     narrative: "The press discovers Netflix. Spread traffic with a Load Balancer onto a second Server, and share a backend Data Cache so hot titles skip the DB — classic scale-out with a Redis-style cache.",
     wave: {
       intensity: 60,
