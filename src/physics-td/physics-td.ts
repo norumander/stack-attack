@@ -90,23 +90,6 @@ async function main(): Promise<void> {
   let lastWavePenalty = 0;
   let lastWaveAvailability = 1;
 
-  // Delete mode toggle (fallback to right-click). When ON, normal click on a
-  // component or connection deletes it instead of placing/connecting.
-  let deleteMode = false;
-  function setDeleteMode(enabled: boolean): void {
-    deleteMode = enabled;
-    deleteToggleBtn?.classList.toggle("cp-placing", enabled);
-    document.body.style.cursor = enabled ? "not-allowed" : "";
-    if (enabled) {
-      // Exit placement so a queued ghost doesn't fight the delete handler.
-      refs.placement?.exitPlacingMode();
-      refs.connect?.cancel();
-      hud.setStatus("DELETE MODE — click a component or connection to remove (refunds budget)");
-    } else {
-      hud.setStatus("Build phase — place components and click READY");
-    }
-  }
-
   // Forward declaration — assigned after controller construction (closure safe
   // because onPhaseChange is only called during gameplay, after assignment).
   let infoPanel!: InfoPanelHandle;
@@ -155,7 +138,6 @@ async function main(): Promise<void> {
           hudCtrl.updateBriefing(computeBriefingForCampaignWave(wave));
           hud.setStatus("Build phase — place components, READY when done");
           hud.setReadyDisabled(false);
-          setDeleteMode(false);
           setupClientForBuild();
         } else if (phase === "simulate") {
           hud.setStatus("Wave running — tick 0/100");
@@ -232,7 +214,6 @@ async function main(): Promise<void> {
     renderer,
     controller,
     () => refs.placement?.isPlacing() ?? false,
-    () => deleteMode,
   );
 
   // ─── Wire palette buttons via HUD controller ────────────────────────
@@ -248,10 +229,6 @@ async function main(): Promise<void> {
     btn.replaceWith(fresh);
     fresh.addEventListener("click", async (e) => {
       e.preventDefault();
-      if (deleteMode) {
-        // Toggling palette in delete mode exits delete mode first.
-        setDeleteMode(false);
-      }
       if (!dossierStore.hasSeen(type)) {
         const cost = COMPONENT_COSTS.get(type) ?? 0;
         await showDossier(type, cost);
@@ -261,46 +238,10 @@ async function main(): Promise<void> {
     });
   }
 
-  // ─── Add DELETE MODE toggle button to the palette strip ─────────────
-  let deleteToggleBtn: HTMLButtonElement | null = null;
-  const paletteCells = document.querySelector(".cp-palette-cells");
-  if (paletteCells) {
-    deleteToggleBtn = document.createElement("button");
-    deleteToggleBtn.type = "button";
-    deleteToggleBtn.className = "cp-palette-cell";
-    deleteToggleBtn.dataset.type = "__delete__";
-    deleteToggleBtn.style.borderColor = "#ff4d6a";
-    const icon = document.createElement("div");
-    icon.className = "cp-palette-icon";
-    icon.textContent = "✕";
-    icon.style.fontSize = "20px";
-    icon.style.color = "#ff4d6a";
-    icon.style.display = "flex";
-    icon.style.alignItems = "center";
-    icon.style.justifyContent = "center";
-    icon.style.height = "100%";
-    deleteToggleBtn.append(icon);
-    const name = document.createElement("div");
-    name.className = "cp-palette-name";
-    name.textContent = "Delete";
-    deleteToggleBtn.append(name);
-    const cost = document.createElement("div");
-    cost.className = "cp-palette-cost cp-mono";
-    cost.textContent = "REFUND";
-    cost.style.color = "#ff4d6a";
-    deleteToggleBtn.append(cost);
-    deleteToggleBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      if (controller.phase !== "build") return;
-      setDeleteMode(!deleteMode);
-    });
-    paletteCells.append(deleteToggleBtn);
-  }
-
   // ─── Right-click to delete (component or connection) ────────────────
   // Bind contextmenu to BOTH the host and the canvas itself — Pixi's canvas
-  // can intercept events depending on stacking + pointer-events. Belt and
-  // suspenders: bind both, and dedupe via preventDefault.
+  // can intercept events depending on stacking; binding both + preventDefault
+  // keeps the browser menu away and guarantees delivery.
   function handleContextMenu(ev: MouseEvent): void {
     ev.preventDefault();
     if (controller.phase !== "build") return;
@@ -314,38 +255,20 @@ async function main(): Promise<void> {
       if (ok) hudCtrl.showToast("Deleted — budget refunded");
       return;
     }
-    // No component under cursor — try connection.
-    // hitTestConnection is not on the public interface; the renderer handles
-    // connection clicks via onConnectionPointerDown. For right-click we use
-    // delete mode instead — fall through silently here.
+    const connId = renderer.hitTestConnection(ev.clientX, ev.clientY);
+    if (connId !== null) {
+      // Controller tracks forward ids only; resolve a back-lane hit to its
+      // forward twin via sim's twinId mapping.
+      const conn = sim.connections.get(connId);
+      const canonicalId =
+        conn?.direction === "back" ? (conn.twinId ?? connId) : connId;
+      const ok = controller.tryDeleteConnection(canonicalId);
+      if (ok) hudCtrl.showToast("Connection deleted");
+    }
   }
   host.addEventListener("contextmenu", handleContextMenu);
   const canvas = renderer.getCanvas();
   if (canvas) canvas.addEventListener("contextmenu", handleContextMenu);
-
-  // ─── Connection click in delete mode → delete it ────────────────────
-  renderer.onConnectionPointerDown((connId) => {
-    if (controller.phase !== "build") return;
-    if (!deleteMode) return;
-    const ok = controller.tryDeleteConnection(connId);
-    if (ok) hudCtrl.showToast("Connection deleted");
-  });
-
-  // ─── Component click in delete mode → delete it ─────────────────────
-  // The renderer fires onPointerDown for component clicks. We add ours
-  // BEFORE PlacementUX/ConnectUX are wired so we can short-circuit when
-  // delete mode is active. Easiest: subscribe and check deleteMode flag.
-  renderer.onPointerDown((ev) => {
-    if (!deleteMode) return;
-    if (controller.phase !== "build") return;
-    if (!ev.hit) return;
-    if (ev.hit.componentId === CLIENT_ID) {
-      hudCtrl.showToast("Cannot delete the client");
-      return;
-    }
-    const ok = controller.tryDeleteComponent(ev.hit.componentId);
-    if (ok) hudCtrl.showToast("Deleted — budget refunded");
-  });
 
   // Client visual lives on the board during build phase so the player can
   // see the entry point and route to it. The SimClient (with TrafficSource)
@@ -738,7 +661,6 @@ async function main(): Promise<void> {
       renderer,
       controller,
       () => refs.placement?.isPlacing() ?? false,
-      () => deleteMode,
     );
     // Repaint the client visual for the next build phase.
     setupClientForBuild();

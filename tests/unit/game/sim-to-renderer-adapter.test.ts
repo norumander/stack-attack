@@ -31,6 +31,7 @@ class MockRenderer implements TopologyRenderer {
   setPlacementGhost(): void {}
   setConnectionMode(): void {}
   hitTest(): null { return null; }
+  hitTestConnection(): null { return null; }
   screenToGrid(): { x: number; y: number } { return { x: 0, y: 0 }; }
   worldToScreen(): { x: number; y: number } { return { x: 0, y: 0 }; }
   onPointerDown(_cb: (ev: RendererPointerEvent) => void): () => void { return () => {}; }

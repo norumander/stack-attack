@@ -75,6 +75,8 @@ export interface TopologyRenderer {
 
   // ─ Input queries (screen-space ↔ world-space) ─────────────────────────
   hitTest(screenX: number, screenY: number): { componentId: ComponentId } | null;
+  /** Nearest connection (forward or back lane) within a ~10px threshold, else null. */
+  hitTestConnection(screenX: number, screenY: number): ConnectionId | null;
   screenToGrid(screenX: number, screenY: number): { x: number; y: number };
   worldToScreen(gridPos: { x: number; y: number }): { x: number; y: number };
 

@@ -404,7 +404,7 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     canvas.style.cursor = "grab";
   }
 
-  private hitTestConnection(screenX: number, screenY: number): ConnectionId | null {
+  hitTestConnection(screenX: number, screenY: number): ConnectionId | null {
     if (!this.connectionLayer) return null;
     const w = this.screenToWorld(screenX, screenY);
     // Threshold matches the outer cable width (12px) plus a forgiving margin.

@@ -26,10 +26,8 @@ export class ConnectUX {
     private readonly renderer: TopologyRenderer,
     private readonly controller: PhysicsCampaignController,
     private readonly placementIsActive: () => boolean,
-    private readonly suppress: () => boolean = () => false,
   ) {
     this.renderer.onPointerDown((ev) => {
-      if (this.suppress()) return;
       if (this.placementIsActive()) return;
       if (this.controller.phase !== "build") return;
       if (!ev.hit) {
