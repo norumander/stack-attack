@@ -118,36 +118,22 @@
       box-shadow: 0 -3px 0 var(--pi-pink), 0 -10px 0 rgba(126, 37, 83, 0.25);
     }
 
-    .queue {
+    .client {
       position: absolute;
-      left: 36px; right: 36px; bottom: 36px;
-      display: flex;
-      align-items: flex-end;
-      gap: 16px;
+      left: 50%;
+      bottom: 36px;
+      transform: translateX(-50%);
       z-index: 3;
-    }
-    .queue img {
+      width: 192px;
+      height: 192px;
       display: block;
-      width: 108px;
-      height: 108px;
-    }
-    .queue .s1 { animation: bob 1.1s steps(2) infinite; }
-    .queue .s2 { animation: bob 1.1s steps(2) infinite 0.2s; }
-    .queue .s3 { animation: bob 1.1s steps(2) infinite 0.4s; }
-    .queue .s4 {
-      margin-left: auto;
-      transform: scaleX(-1);
-      animation: bob-flip 1.1s steps(2) infinite 0.6s;
-    }
-    @keyframes bob      { 50% { transform: translateY(-4px); } }
-    @keyframes bob-flip {
-      0%, 100% { transform: scaleX(-1) translateY(0); }
-      50%      { transform: scaleX(-1) translateY(-4px); }
     }
 
     .bubble {
       position: absolute;
-      left: 78px; bottom: 160px;
+      left: 50%;
+      bottom: 210px;
+      transform: translateX(-50%);
       z-index: 4;
       font-family: var(--pi-font-body);
       font-size: 20px;
@@ -157,11 +143,12 @@
       border: 3px solid var(--pi-ink);
       box-shadow: 4px 4px 0 var(--pi-ink);
       letter-spacing: 0.02em;
+      white-space: nowrap;
     }
     .bubble::after {
       content: "";
       position: absolute;
-      left: 18px; bottom: -13px;
+      left: calc(50% - 10px); bottom: -13px;
       width: 0; height: 0;
       border-left: 10px solid transparent;
       border-right: 10px solid transparent;
@@ -170,7 +157,7 @@
     .bubble::before {
       content: "";
       position: absolute;
-      left: 20px; bottom: -10px;
+      left: calc(50% - 8px); bottom: -10px;
       width: 0; height: 0;
       border-left: 8px solid transparent;
       border-right: 8px solid transparent;
@@ -178,15 +165,10 @@
       z-index: 1;
     }
 
-    @media (prefers-reduced-motion: reduce) {
-      .queue .s1, .queue .s2, .queue .s3, .queue .s4 { animation: none !important; }
-    }
-
     @media (max-width: 640px) {
       .stage { padding: 20px 22px; }
-      .queue { gap: 8px; }
-      .queue img { width: 72px; height: 72px; }
-      .bubble { left: 46px; bottom: 118px; font-size: 16px; }
+      .client { width: 128px; height: 128px; }
+      .bubble { bottom: 148px; font-size: 16px; }
       .wordmark {
         text-shadow:
           3px 3px 0 var(--pi-pink),
@@ -215,12 +197,8 @@
 
     <div class="bubble" aria-hidden="true">GET /api/me</div>
 
-    <div class="queue" aria-hidden="true">
-      <img class="s1" src="./assets/stack-attack/client-south.png" alt="">
-      <img class="s2" src="./assets/stack-attack/client-east.png"  alt="">
-      <img class="s3" src="./assets/stack-attack/client-south.png" alt="">
-      <img class="s4" src="./assets/stack-attack/client-east.png"  alt="">
-    </div>
+    <img class="client" src="./assets/stack-attack/client-typing.gif" alt="" aria-hidden="true">
+
   </main>
   <script type="module" src="./landing-boot.ts"></script>
 </body>
