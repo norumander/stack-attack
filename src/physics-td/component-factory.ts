@@ -9,6 +9,7 @@ import { QueueCapability } from "@sim/capabilities/queue";
 import { WorkerCapability } from "@sim/capabilities/worker";
 import { StreamingCapability } from "@sim/capabilities/streaming";
 import { GeoRoutingCapability } from "@sim/capabilities/geo-routing";
+import { BlobStorageCapability } from "@sim/capabilities/blob-storage";
 import type { WaveRevenue } from "@sim/wave";
 
 export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
@@ -22,6 +23,7 @@ export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
   ["worker", 150],
   ["streaming_server", 250],
   ["dns_gtm", 200],
+  ["blob_storage", 200],
 ]);
 
 /** Sprite type used by the renderer to pick the iso tile graphic. */
@@ -36,11 +38,12 @@ export const COMPONENT_SPRITE_TYPE: ReadonlyMap<string, string> = new Map([
   ["worker", "worker"],
   ["streaming_server", "streaming_server"],
   ["dns_gtm", "dns_gtm"],
+  ["blob_storage", "blob_storage"],
 ]);
 
 export const COMPONENT_FACTORY: ReadonlyArray<string> = [
   "server", "database", "data_cache", "load_balancer", "cdn", "api_gateway",
-  "queue", "worker", "streaming_server", "dns_gtm",
+  "queue", "worker", "streaming_server", "dns_gtm", "blob_storage",
 ];
 
 export function buildSimComponent(
@@ -96,6 +99,18 @@ export function buildSimComponent(
       return new SimComponent({
         id,
         capabilities: [new GeoRoutingCapability()],
+      });
+    case "blob_storage":
+      return new SimComponent({
+        id,
+        capabilities: [
+          new BlobStorageCapability({
+            revenuePerWrite: revenue.perWrite,
+            revenuePerRead: revenue.perRead,
+            revenuePerStream: revenue.perStream,
+          }),
+        ],
+        capacityPerSecond: 60,
       });
     default:
       return null;
