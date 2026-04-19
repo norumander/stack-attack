@@ -20,6 +20,7 @@ export default defineConfig({
         landing: resolve(srcDir, "index.html"),
         levels: resolve(srcDir, "levels.html"),
         game: resolve(srcDir, "game.html"),
+        diagnose: resolve(srcDir, "diagnose.html"),
       },
     },
   },
