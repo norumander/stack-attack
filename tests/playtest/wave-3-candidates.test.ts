@@ -12,7 +12,7 @@ import { printRankedTable, slaLine } from "./_candidates-helpers";
  */
 
 const W3 = CAMPAIGN_WAVES[2]!;
-const CUMULATIVE_BUDGET_W3 = 1225;
+const CUMULATIVE_BUDGET_W3 = 1450;
 
 describe("wave 3 — candidate architectures", () => {
   it.skip("ranked sweep", () => {

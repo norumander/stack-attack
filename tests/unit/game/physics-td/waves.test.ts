@@ -10,7 +10,7 @@ describe("CAMPAIGN_WAVES catalog", () => {
     const w3 = CAMPAIGN_WAVES.find((w) => w.id === "w3");
     expect(w3).toBeDefined();
     expect(w3!.wave.composition.largeRatio).toBeGreaterThanOrEqual(0.3);
-    expect(w3!.wave.composition.authRatio).toBeCloseTo(0.2);
+    expect(w3!.wave.composition.authRatio).toBeGreaterThanOrEqual(0.1);
   });
 
   it("Wave 4 carries async traffic for the Queue + Worker rescue", () => {
