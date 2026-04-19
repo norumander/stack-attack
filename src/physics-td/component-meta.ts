@@ -138,6 +138,21 @@ export const COMPONENT_META: Readonly<Record<string, ComponentMeta>> = {
       tip: "Streams are expensive — each one ties up a bandwidth slot. Place a Streaming Server when a wave brings video traffic.",
     },
   },
+  circuit_breaker: {
+    displayName: "Circuit Breaker",
+    description: "Fails fast when downstream is unhealthy — drops requests while OPEN, probes before closing.",
+    capabilitiesHuman: [
+      "Forwards requests while CLOSED",
+      "Drops requests immediately while OPEN (after failure threshold)",
+      "Admits limited probes in HALF_OPEN; success → CLOSED, failure → OPEN",
+    ],
+    dossier: {
+      body: "A Circuit Breaker protects a stressed downstream by fast-failing traffic once failures pile up. After a cooldown it admits a probe to test recovery before fully reopening the path.",
+      wire: "Server → Circuit Breaker → Downstream",
+      handles: "Any request path that should fail fast when the downstream is in trouble",
+      tip: "Place in front of a component that's flapping under chaos — it stops the cascade and lets the downstream recover.",
+    },
+  },
   dns_gtm: {
     displayName: "DNS / GTM",
     description: "Global Traffic Manager — routes each request to its origin zone deterministically.",
