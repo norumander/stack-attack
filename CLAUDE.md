@@ -2,7 +2,7 @@
 
 A tower defense game that teaches system architecture through gameplay. Traffic is the enemy, infrastructure components are the towers, a live economy makes architecture decisions feel like business decisions. Strategy game first — the learning is the surprise.
 
-**Current stage:** Physics TD campaign extended to 8 waves (Launch → Viral Moment). Waves 5–8 introduce chaos schedules (W5, W8), Streaming Server (W6), multi-zone DNS/GTM routing (W7) and AutoScale markers (W8). 702 tests, typecheck clean (modulo the two pre-existing known errors).
+**Current stage:** Physics TD campaign extended to 8 waves (Launch → Viral Moment). Waves 5–8 introduce chaos schedules (W5, W8), Streaming Server (W6), multi-zone DNS/GTM routing (W7) and AutoScale markers (W8). 702 tests, typecheck clean.
 
 ## Context hub
 
@@ -23,7 +23,6 @@ This file is intentionally small. Pull the chunk you need:
 - **Never commit unless explicitly asked.** New commits over amending. Never `--no-verify`, never force-push to main.
 - **No React, Next.js, or Vercel imports in `src/core/` or `src/capabilities/`.** Enforced by `tests/unit/engine-pixi-isolation.test.ts`.
 - **Ignore Vercel plugin hook noise.** The plugin injects Next.js / verification skill reminders on `vite` / `pnpm dev|build` regex matches — this is a local Vite + Pixi project, not Vercel/Next. Those reminders are false positives.
-- **Pre-existing typecheck noise (2 lines):** `tests/unit/pull-from-buffers.test.ts:81` has a known unrelated error (`requestsPerTick` on `FixedIntensityConfig`), and `tests/unit/game/sim-to-renderer-adapter.test.ts:8` imports a missing `@dashboard/render/topology-renderer` alias. Clean typecheck = just those two lines.
 - **`tests/playtest/*` is research/analysis, not production tests.** Can be deleted or rewritten without blocking a feature — separate from the `tests/unit/` and `tests/integration/` contract surface.
 
 ## Quickstart
