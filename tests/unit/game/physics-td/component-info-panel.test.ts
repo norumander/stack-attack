@@ -148,6 +148,51 @@ describe("bindInfoPanel", () => {
     expect(document.getElementById("td-info-panel-stats")!.children.length).toBe(0);
   });
 
+  it("renders live-metrics section (drops-last-1s / avg response / status) when getMetrics is supplied", () => {
+    mountMirrors();
+    const sim = new Sim({ seed: 1 });
+    const db = new SimComponent({
+      id: "db1" as ComponentId,
+      capabilities: [new ProcessingCapability({ revenuePerWrite: 1, revenuePerRead: 1 })],
+      capacityPerSecond: 30,
+    });
+    sim.addComponent(db);
+    const componentTypes = new Map<ComponentId, string>([["db1" as ComponentId, "database"]]);
+    const controller = { phase: "simulate" as const };
+    const perComponentDrops = new Map<ComponentId, { total: number; byReason: Map<string, number> }>();
+    const perComponentProcessed = new Map<ComponentId, number>();
+    const renderer = makeFakeRenderer();
+    const handle = bindInfoPanel({
+      renderer,
+      getSim: () => sim,
+      controller,
+      dossierStore: new ComponentDossierStore(),
+      hudCtrl: { showToast: () => {} },
+      componentTypes,
+      getDrops: () => perComponentDrops,
+      getProcessed: () => perComponentProcessed,
+      getMetrics: () => ({
+        utilization: 0.9,
+        dropsTotal: 4,
+        dropsLastSecond: 2,
+        processedTotal: 7,
+        avgResponseSeconds: 0.25,
+        stressed: true,
+        dropping: true,
+      }),
+    });
+    handle.show("db1" as ComponentId);
+    handle.updateLiveStats();
+    const labels = Array.from(document.querySelectorAll("#td-info-panel-stats .k")).map((el) => el.textContent);
+    const values = Array.from(document.querySelectorAll("#td-info-panel-stats .v")).map((el) => el.textContent);
+    expect(labels).toContain("Drops (last 1s)");
+    expect(labels).toContain("Avg response");
+    expect(labels).toContain("Status");
+    expect(values).toContain("2");
+    expect(values).toContain("250 ms");
+    expect(values).toContain("DROPPING");
+  });
+
   it("updateLiveStats renders 'unbounded' when component has no capacity bucket", () => {
     const { handle, controller } = setup();
     handle.show("s1" as ComponentId);
