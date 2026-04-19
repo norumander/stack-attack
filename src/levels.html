@@ -103,6 +103,35 @@
     }
     .portrait img { width: 96px; height: 96px; margin-top: 6px; }
 
+    .portrait--brand {
+      padding: 0;
+      font-family: var(--pi-font-display);
+      text-align: center;
+      line-height: 1;
+    }
+    .portrait--bitly {
+      background: #ee6123;
+      color: var(--pi-cream);
+      font-size: 10px;
+      letter-spacing: 0;
+      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+    }
+    .portrait--bitly .brand {
+      display: block;
+      padding: 0 2px;
+      white-space: nowrap;
+    }
+    .portrait--netflix {
+      background: var(--pi-ink);
+      color: #e50914;
+      font-size: 44px;
+      font-weight: 700;
+      letter-spacing: -0.05em;
+      text-shadow:
+        3px 3px 0 #8a0008,
+        5px 5px 0 rgba(0, 0, 0, 0.9);
+    }
+
     .meta .name {
       font-family: var(--pi-font-display);
       font-size: 16px;
@@ -172,8 +201,8 @@
 
     <nav class="grid" aria-label="Level selection">
       <a class="card" href="./game.html?level=url-shortener">
-        <div class="portrait" aria-hidden="true">
-          <img src="./assets/stack-attack/client-south.png" alt="">
+        <div class="portrait portrait--brand portrait--bitly" aria-label="bit.ly">
+          <span class="brand">bit.ly</span>
         </div>
         <div class="meta">
           <div class="name">URL SHORTENER</div>
@@ -185,8 +214,8 @@
       </a>
 
       <a class="card" href="./game.html?level=netflix">
-        <div class="portrait" aria-hidden="true">
-          <img src="./assets/stack-attack/client-south.png" alt="">
+        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix">
+          <span class="brand">N</span>
         </div>
         <div class="meta">
           <div class="name">BUILD NETFLIX</div>
