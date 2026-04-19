@@ -18,6 +18,7 @@ import { ConnectUX } from "./connect-ux";
 import { wireWorkers } from "./wire-workers";
 import * as hud from "./hud-bridge";
 import { Viability, DAMAGE_PER_FAILURE } from "./viability";
+import { validateTopology } from "./validate-topology";
 import { computeSlaPenalty } from "./wave-penalty";
 import { ComponentDossierStore } from "./dossier-store";
 import { showDossier } from "./show-dossier";
@@ -349,6 +350,11 @@ async function main(): Promise<void> {
     perComponentDrops = new Map();
     perComponentProcessed = new Map();
     seenPacketIds.clear();
+
+    // Pre-sim topology validation — non-blocking. Stores errors on the
+    // controller so a future HUD warning UI can surface them.
+    // TODO: surface these as a pre-wave HUD warning panel.
+    controller.lastTopologyErrors = validateTopology(sim, wave.wave, CLIENT_ID);
 
     adapter = new SimToRendererAdapter(sim, renderer, positions);
     driver = new BrowserDriver(sim, { stepSeconds: 1 / 60 });
