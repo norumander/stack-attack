@@ -65,11 +65,8 @@
 
     .grid {
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       gap: 20px;
-    }
-    @media (min-width: 720px) {
-      .grid { grid-template-columns: 1fr 1fr; }
     }
 
     .card {
@@ -92,6 +89,13 @@
     }
     .card:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--pi-magenta); }
     .card:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
+
+    .card--locked {
+      opacity: 0.45;
+      filter: grayscale(0.4);
+      pointer-events: none;
+      cursor: not-allowed;
+    }
 
     .portrait {
       width: 72px; height: 72px;
@@ -131,6 +135,17 @@
         3px 3px 0 #8a0008,
         5px 5px 0 rgba(0, 0, 0, 0.9);
     }
+    .portrait--instagram {
+      background: linear-gradient(135deg, #feda75 0%, #fa7e1e 25%, #d62976 50%, #962fbf 75%, #4f5bd5 100%);
+      color: var(--pi-cream);
+      font-size: 24px;
+      letter-spacing: -0.02em;
+      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+    }
+    .portrait--instagram .brand {
+      display: block;
+      padding: 0 4px;
+    }
 
     .meta .name {
       font-family: var(--pi-font-display);
@@ -151,6 +166,7 @@
       letter-spacing: 0.16em;
     }
     .badge--easy { background: var(--pi-lime); }
+    .badge--medium { background: var(--pi-orange); }
     .badge--hard { background: var(--pi-red); color: var(--pi-cream); }
     .meta .desc {
       font-family: var(--pi-font-body);
@@ -177,6 +193,12 @@
       border: 3px solid var(--pi-bg-2);
       box-shadow: 3px 3px 0 var(--pi-bg-2);
       letter-spacing: 0.12em;
+    }
+    .tag--soon {
+      background: transparent;
+      box-shadow: none;
+      font-size: 9px;
+      letter-spacing: 0.14em;
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -225,6 +247,19 @@
         </div>
         <span class="tag">GO ▸</span>
       </a>
+
+      <div class="card card--locked" aria-disabled="true" aria-label="Build Instagram — coming soon">
+        <div class="portrait portrait--brand portrait--instagram" aria-label="Instagram">
+          <span class="brand">IG</span>
+        </div>
+        <div class="meta">
+          <div class="name">BUILD INSTAGRAM</div>
+          <span class="badge badge--medium">MEDIUM</span>
+          <div class="desc">Feeds, stories, and a lot of photo uploads. Fan-out reads with write spikes you can't drop on the floor.</div>
+          <div class="record">⭐ no record · target 99.5%</div>
+        </div>
+        <span class="tag tag--soon">COMING<br>SOON</span>
+      </div>
     </nav>
   </div>
   <script type="module" src="./levels-boot.ts"></script>
