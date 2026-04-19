@@ -19,7 +19,7 @@ import { wireWorkers } from "./wire-workers";
 import * as hud from "./hud-bridge";
 import { Viability, DAMAGE_PER_FAILURE } from "./viability";
 import { validateTopology } from "./validate-topology";
-import { formatTopologyError } from "./topology-error-messages";
+import { formatTopologyError, COMPONENT_TYPE_LABEL } from "./topology-error-messages";
 import { computeSlaPenalty } from "./wave-penalty";
 import { ComponentDossierStore } from "./dossier-store";
 import { showDossier } from "./show-dossier";
@@ -156,7 +156,16 @@ async function main(): Promise<void> {
       onPlaced: (type, id, gridPos) => {
         positions.set(id, gridPos);
         componentTypes.set(id, type);
-        refs.placement?.applyPlacement(type, id, gridPos);
+        // Auto-generate a human-friendly label ("Server 1", "Data Cache 2")
+        // based on the 1-based index among already-placed components of
+        // this type (the just-placed id was already recorded above).
+        let index = 0;
+        for (const t of componentTypes.values()) {
+          if (t === type) index += 1;
+        }
+        const typeDisplay = COMPONENT_TYPE_LABEL.get(type) ?? type;
+        const autoLabel = `${typeDisplay} ${index}`;
+        refs.placement?.applyPlacement(type, id, gridPos, autoLabel);
         revalidateTopology();
       },
       onConnected: (sourceId, targetId, forwardId, backId) => {

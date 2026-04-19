@@ -133,6 +133,8 @@ export interface ComponentRenderState {
   readonly highlightSprite: Sprite;
   readonly label: Text;
   readonly pendingLabel: Text;
+  /** Short identifier badge rendered above the sprite ("Server 1"). */
+  readonly nameBadge: Text;
   type: string;
   gridX: number;
   gridY: number;
@@ -192,11 +194,29 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     pendingLabel.y = -34;
     pendingLabel.visible = false;
 
+    // Short-identifier badge above the sprite ("Server 1", "Profile DB").
+    // Rendered in muted cyan to fit the cyberpunk palette without competing
+    // with utilization color on the sprite itself.
+    const nameBadge = new Text({
+      text: visual.label ?? "",
+      style: {
+        fontFamily: "system-ui, sans-serif",
+        fontSize: 10,
+        fontWeight: "600",
+        fill: 0xcdeeff,
+        align: "center",
+      },
+    });
+    nameBadge.anchor.set(0.5, 1);
+    nameBadge.y = -46;
+    nameBadge.visible = Boolean(visual.label);
+
     const inner = new Container();
     inner.addChild(baseSprite);
     inner.addChild(highlightSprite);
     inner.addChild(label);
     inner.addChild(pendingLabel);
+    inner.addChild(nameBadge);
 
     const world = gridToWorld(visual.gridPosition.x, visual.gridPosition.y);
     inner.x = world.x;
@@ -211,6 +231,7 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
       highlightSprite,
       label,
       pendingLabel,
+      nameBadge,
       type: visual.type,
       gridX: visual.gridPosition.x,
       gridY: visual.gridPosition.y,

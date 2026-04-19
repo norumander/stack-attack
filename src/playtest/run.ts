@@ -91,7 +91,7 @@ function buildSimFromTopology(
   const autoScaleSet = new Set(topology.autoScaleIds);
   for (const def of topology.components) {
     const id = def.id as ComponentId;
-    const comp = buildSimComponent(def.type, id, wave.revenue, def.zone);
+    const comp = buildSimComponent(def.type, id, wave.revenue, def.zone, def.label);
     if (!comp) {
       throw new Error(`Unknown component type: ${def.type}`);
     }

@@ -81,8 +81,15 @@ export class PlacementUX {
     type: string,
     componentId: ComponentId,
     gridPos: { x: number; y: number },
+    label?: string,
   ): void {
-    const comp = buildSimComponent(type, componentId, this.controller.currentWaveRevenue());
+    const comp = buildSimComponent(
+      type,
+      componentId,
+      this.controller.currentWaveRevenue(),
+      undefined,
+      label,
+    );
     if (!comp) return;
     this.sim.addComponent(comp);
     const sprite = COMPONENT_SPRITE_TYPE.get(type) ?? "server";
@@ -90,6 +97,7 @@ export class PlacementUX {
       type: sprite,
       displayName: `${type}-${(componentId as unknown as string).slice(-3)}`,
       gridPosition: gridPos,
+      ...(label !== undefined ? { label } : {}),
     });
   }
 }

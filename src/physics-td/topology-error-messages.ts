@@ -1,10 +1,12 @@
 import type { TopologyError } from "./validate-topology";
 
 /**
- * Human-readable display names per component type id. Keeps the messages
- * scannable instead of showing raw snake_case capability ids.
+ * Human-readable display names per component type id. Exported so other
+ * layers (component auto-labeling, HUD, etc.) can reuse the same mapping
+ * instead of duplicating strings. Keeps HUD messages scannable rather
+ * than showing raw snake_case capability ids.
  */
-const TYPE_LABEL: ReadonlyMap<string, string> = new Map([
+export const COMPONENT_TYPE_LABEL: ReadonlyMap<string, string> = new Map([
   ["server", "Server"],
   ["database", "Database"],
   ["data_cache", "Data Cache"],
@@ -43,7 +45,7 @@ const REQUEST_LABEL: ReadonlyMap<string, string> = new Map([
 ]);
 
 function typeLabel(type: string): string {
-  return TYPE_LABEL.get(type) ?? type;
+  return COMPONENT_TYPE_LABEL.get(type) ?? type;
 }
 
 function requestLabel(type: string): string {
