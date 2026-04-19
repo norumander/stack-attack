@@ -3,6 +3,7 @@ import type { SLAThresholds } from "@sim/sla";
 import type { TopologyDef } from "../playtest/topology-builder";
 import type { ChaosEvent } from "../physics-td/chaos";
 import { INSTAGRAM_LEVELS } from "./instagram-levels";
+import { NETFLIX_LEVELS } from "./netflix-levels";
 
 /**
  * A Diagnose Mode level: the player inherits a pre-built 15–20 component
@@ -36,10 +37,14 @@ export interface DiagnoseLevel {
 
 /**
  * Live catalogue of diagnose levels. Populated with the Instagram 5-level
- * arc. A placeholder level is exported separately from
- * `./placeholder-level.ts` purely for wiring verification and is NOT part
- * of the shipped catalogue.
+ * arc followed by the Netflix 5-level arc. A placeholder level is exported
+ * separately from `./placeholder-level.ts` purely for wiring verification
+ * and is NOT part of the shipped catalogue.
  */
-export const DIAGNOSE_LEVELS: ReadonlyArray<DiagnoseLevel> = INSTAGRAM_LEVELS;
+export const DIAGNOSE_LEVELS: ReadonlyArray<DiagnoseLevel> = [
+  ...INSTAGRAM_LEVELS,
+  ...NETFLIX_LEVELS,
+];
 
 export { INSTAGRAM_LEVELS } from "./instagram-levels";
+export { NETFLIX_LEVELS } from "./netflix-levels";
