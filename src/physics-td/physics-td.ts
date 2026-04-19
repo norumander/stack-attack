@@ -24,6 +24,14 @@ import { ComponentDossierStore } from "./dossier-store";
 import { showDossier } from "./show-dossier";
 import { bindInfoPanel, type InfoPanelHandle } from "./component-info-panel";
 import type { ComponentId } from "@core/types/ids";
+import {
+  waitForAuth,
+  getProfile,
+  showLoginOverlay,
+  hideLoginOverlay,
+  showProfileSetup,
+  injectNavBar,
+} from "../auth/index";
 
 const CLIENT_ID = "client" as ComponentId;
 // Drain budget after wave duration: extra real-seconds for in-flight packets to retire.
@@ -708,4 +716,19 @@ async function main(): Promise<void> {
   hud.setStatus("Build phase — place components and click READY");
 }
 
-void main();
+async function boot(): Promise<void> {
+  showLoginOverlay();
+  await waitForAuth();
+
+  if (!getProfile()) {
+    hideLoginOverlay();
+    await showProfileSetup();
+  } else {
+    hideLoginOverlay();
+  }
+
+  injectNavBar();
+  await main();
+}
+
+void boot();
