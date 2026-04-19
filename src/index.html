@@ -47,14 +47,6 @@
         radial-gradient(1px 1px at 14% 72%, var(--pi-cream), transparent 100%),
         radial-gradient(2px 2px at 72% 62%, var(--pi-yellow), transparent 100%);
     }
-    .scanlines {
-      position: absolute; inset: 0; pointer-events: none;
-      background: repeating-linear-gradient(
-        0deg,
-        rgba(0,0,0,0.18) 0, rgba(0,0,0,0.18) 1px,
-        transparent 1px, transparent 4px);
-    }
-
     .title-block { position: relative; z-index: 5; }
     .wordmark {
       font-family: var(--pi-font-display);
@@ -183,7 +175,6 @@
 <body>
   <main class="stage">
     <div class="stars" aria-hidden="true"></div>
-    <div class="scanlines" aria-hidden="true"></div>
 
     <div class="title-block">
       <h1 class="wordmark">STACK<em>//</em><br>ATTACK</h1>

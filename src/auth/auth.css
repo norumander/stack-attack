@@ -35,6 +35,27 @@
 @keyframes sa-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes sa-blink   { 50% { opacity: 0.35; } }
 
+/* ─── Global CRT scanline overlay ────────────────────────────────────
+   Sits above page content (including the game canvas) but below the
+   full-screen auth overlays, which render their own scanlined backdrop
+   at a higher z-index. Pointer-events off so it never intercepts
+   clicks. Declared on both html and body so it survives pages that
+   use body as the flex stage (e.g., the landing). */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9500;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.16) 0,
+    rgba(0, 0, 0, 0.16) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+}
+
 /* ─── Login overlay ──────────────────────────────────────────────── */
 .sa-login-overlay {
   position: fixed;
