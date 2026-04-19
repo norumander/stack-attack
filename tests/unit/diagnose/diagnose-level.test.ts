@@ -3,14 +3,19 @@ import { DIAGNOSE_LEVELS, type DiagnoseLevel } from "../../../src/diagnose/diagn
 import { PLACEHOLDER_DIAGNOSE_LEVEL } from "../../../src/diagnose/placeholder-level";
 
 describe("DiagnoseLevel catalogue", () => {
-  it("DIAGNOSE_LEVELS is populated with the Instagram arc (5 levels)", () => {
-    expect(DIAGNOSE_LEVELS.length).toBe(5);
+  it("DIAGNOSE_LEVELS is populated with the Instagram + Netflix arcs (10 levels)", () => {
+    expect(DIAGNOSE_LEVELS.length).toBe(10);
     expect(DIAGNOSE_LEVELS.map((l) => l.id)).toEqual([
       "instagram-1",
       "instagram-2",
       "instagram-3",
       "instagram-4",
       "instagram-5",
+      "netflix-1",
+      "netflix-2",
+      "netflix-3",
+      "netflix-4",
+      "netflix-5",
     ]);
   });
 
