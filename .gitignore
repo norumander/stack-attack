@@ -6,3 +6,4 @@ coverage/
 .vitest/
 .claude.local.md
 .superpowers/
+.env

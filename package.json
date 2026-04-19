@@ -9,7 +9,7 @@
     "dev": "vite --port 5173",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "npx serve src/dashboard/dist -s -p 3000"
+    "start": "npx serve src/dist -s -p 3000"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -19,6 +19,7 @@
     "vitest": "^2.1.0"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.103.3",
     "pixi.js": "^8.17.1"
   }
 }

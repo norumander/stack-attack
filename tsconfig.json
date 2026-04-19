@@ -13,7 +13,7 @@
     "forceConsistentCasingInFileNames": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["vitest/globals", "node"],
+    "types": ["vitest/globals", "node", "vite/client"],
     "baseUrl": ".",
     "paths": {
       "@core/*": ["src/core/*"],
