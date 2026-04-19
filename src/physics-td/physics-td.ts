@@ -31,6 +31,24 @@ const CLIENT_ID = "client" as ComponentId;
 // Drain budget after wave duration: extra real-seconds for in-flight packets to retire.
 const DRAIN_SECONDS = 4;
 
+export type StackAttackLevelId = "url-shortener" | "netflix";
+
+const KNOWN_LEVEL_IDS: ReadonlySet<string> = new Set(["url-shortener", "netflix"]);
+
+/**
+ * Parse ?level=… out of a URL query string. Exported for testability.
+ *
+ * Both known values currently route to the same `CAMPAIGN_WAVES` — the
+ * teammate owning game balance will branch on this id when the URL Shortener
+ * and Netflix campaigns diverge. Unknown values fall through to `null`.
+ */
+export function readLevelIdFromUrl(search: string): StackAttackLevelId | null {
+  const raw = new URLSearchParams(search).get("level");
+  if (raw === null) return null;
+  const normalized = raw.toLowerCase();
+  return KNOWN_LEVEL_IDS.has(normalized) ? (normalized as StackAttackLevelId) : null;
+}
+
 async function waitForHudController(): Promise<CyberpunkHudController> {
   for (let i = 0; i < 60; i += 1) {
     const ctrl = getCyberpunkHudController();
@@ -718,6 +736,12 @@ async function boot(): Promise<void> {
     window.location.href = "./index.html";
     return;
   }
+
+  // Capture ?level= so the teammate can branch on it when the URL Shortener
+  // and Netflix campaigns diverge. Currently a read-only observable marker;
+  // both known ids resolve to the same CAMPAIGN_WAVES today.
+  const levelId = readLevelIdFromUrl(window.location.search);
+  (window as unknown as { __stackAttackLevelId: StackAttackLevelId | null }).__stackAttackLevelId = levelId;
 
   injectNavBar();
   await main();

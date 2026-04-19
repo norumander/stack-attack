@@ -6,29 +6,24 @@ import { getUser, onAuthChange } from "./auth/index";
  *
  * Supabase restores sessions asynchronously — `getUser()` returns `null`
  * immediately after page load even when a valid session exists in storage.
- * This helper waits for the first `onAuthChange` event (or a short timeout)
- * and returns the resulting user, or `null` if signed out.
+ * This helper waits for Supabase's first `onAuthChange` event (fired exactly
+ * once at init, either `signed_in` with the restored user or `signed_out`)
+ * and returns the user or null.
  *
- * Used by every entry point that needs to gate on auth before rendering.
+ * No timeout: Supabase's async restore can take several seconds on a cold
+ * token refresh, and a premature null resolution would incorrectly bounce an
+ * authenticated user back to the landing page.
  */
-export function resolveInitialSession(timeoutMs = 2000): Promise<User | null> {
+export function resolveInitialSession(): Promise<User | null> {
   return new Promise((resolve) => {
     const existing = getUser();
     if (existing) {
       resolve(existing);
       return;
     }
-    let done = false;
-    const finish = (user: User | null) => {
-      if (done) return;
-      done = true;
-      unsub();
-      clearTimeout(timer);
-      resolve(user);
-    };
     const unsub = onAuthChange((event) => {
-      finish(event.type === "signed_in" ? event.user : null);
+      unsub();
+      resolve(event.type === "signed_in" ? event.user : null);
     });
-    const timer = setTimeout(() => finish(null), timeoutMs);
   });
 }
