@@ -152,4 +152,19 @@ export const COMPONENT_META: Readonly<Record<string, ComponentMeta>> = {
       tip: "Place a DNS/GTM at the front of a multi-zone topology so each region's traffic lands on its own stack.",
     },
   },
+  blob_storage: {
+    displayName: "Blob Storage",
+    description: "Terminal object store for large payloads and streams — high capacity, backs CDNs and streaming.",
+    capabilitiesHuman: [
+      "Accepts large_payload requests (reads respond, writes terminate)",
+      "Absorbs stream_data with reserved ingress bandwidth",
+      "High throughput (60/sec)",
+    ],
+    dossier: {
+      body: "Blob Storage is the backend for heavy content — images, video, downloads, streams. High capacity, terminal (nothing forwards past it). Pair with a CDN at the edge and a Streaming Server for live media, or place directly behind a Server for large-asset reads.",
+      wire: "CDN → Blob Storage  or  Streaming Server → Blob Storage",
+      handles: "Large-asset reads/writes and stream requests",
+      tip: "When a wave is heavy on images, video, or streams, Blob Storage is the destination. Its high capacity soaks up traffic that would crush a normal Server.",
+    },
+  },
 };
