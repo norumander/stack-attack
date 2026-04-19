@@ -29,10 +29,12 @@
         var(--pi-bg-2);
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      padding: 28px 36px;
+      justify-content: flex-start;
+      padding: 28px 36px 34vh;
       overflow: hidden;
     }
+    .title-block { margin-top: 8vh; }
+    .cta-row { margin-top: auto; }
     .stars {
       position: absolute; inset: 0; pointer-events: none;
       background-image:
@@ -53,7 +55,7 @@
         transparent 1px, transparent 4px);
     }
 
-    .title-block { position: relative; z-index: 5; margin-top: 6vh; }
+    .title-block { position: relative; z-index: 5; }
     .wordmark {
       font-family: var(--pi-font-display);
       font-size: clamp(40px, 9vw, 96px);
@@ -121,25 +123,25 @@
     .client {
       position: absolute;
       left: 50%;
-      bottom: 36px;
+      bottom: 16px;
       transform: translateX(-50%);
       z-index: 3;
-      width: 192px;
-      height: 192px;
+      width: 128px;
+      height: 128px;
       display: block;
     }
 
     .bubble {
       position: absolute;
       left: 50%;
-      bottom: 210px;
+      bottom: 156px;
       transform: translateX(-50%);
       z-index: 4;
       font-family: var(--pi-font-body);
-      font-size: 20px;
+      font-size: 18px;
       color: var(--pi-bg-2);
       background: var(--pi-cream);
-      padding: 6px 12px;
+      padding: 5px 11px;
       border: 3px solid var(--pi-ink);
       box-shadow: 4px 4px 0 var(--pi-ink);
       letter-spacing: 0.02em;
@@ -167,8 +169,8 @@
 
     @media (max-width: 640px) {
       .stage { padding: 20px 22px; }
-      .client { width: 128px; height: 128px; }
-      .bubble { bottom: 148px; font-size: 16px; }
+      .client { width: 96px; height: 96px; bottom: 12px; }
+      .bubble { bottom: 120px; font-size: 15px; }
       .wordmark {
         text-shadow:
           3px 3px 0 var(--pi-pink),
