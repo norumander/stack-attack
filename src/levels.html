@@ -90,12 +90,34 @@
       color: #8b8fa3;
       line-height: 1.5;
     }
+    .section-header {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.28em;
+      color: #8b8fa3;
+      text-transform: uppercase;
+      margin-top: 8px;
+    }
+    .level-card.diagnose {
+      border-color: rgba(255, 170, 94, 0.3);
+    }
+    .level-card.diagnose:hover {
+      border-color: #ffbe73;
+      box-shadow: 0 0 24px rgba(255, 170, 94, 0.25);
+    }
+    .level-card.diagnose .level-name {
+      color: #ffbe73;
+    }
+    .level-card.diagnose .level-num {
+      color: #b38a63;
+    }
   </style>
 </head>
 <body>
   <a href="./index.html" class="back">← Back</a>
   <div class="page">
     <div class="title">Select Level</div>
+    <div class="section-header">Campaign — Build From Scratch</div>
     <div class="level-grid">
       <a href="./game.html?level=url-shortener" class="level-card">
         <div class="level-num">Level 01</div>
@@ -109,6 +131,17 @@
         <div class="level-name">Build Netflix</div>
         <div class="level-desc">
           Peak-hour streaming. Writes, reads, and viewers all want the same hot titles. Scale the system before the SLA drops.
+        </div>
+      </a>
+    </div>
+
+    <div class="section-header">Diagnose Mode — Inherit &amp; Fix</div>
+    <div class="level-grid">
+      <a href="./diagnose.html" class="level-card diagnose">
+        <div class="level-num">Coming Soon</div>
+        <div class="level-name">Instagram — Inherited System</div>
+        <div class="level-desc">
+          You just joined an infra team. 15–20 components are already wired — some of them wrong. Observe symptoms, fix the architecture, meet SLA. (Framework online; content landing soon.)
         </div>
       </a>
     </div>
