@@ -120,6 +120,12 @@ export interface ComponentUpdate {
   pendingCount?: number;  // displayed in the component label
   gridPosition?: { x: number; y: number };
   cacheKeys?: ReadonlyArray<string>;
+  /**
+   * Diagnose-mode "at-a-glance" stress indicator for per-component live
+   * metrics. `stressed` tints the sprite orange; `dropping` adds a
+   * pulsing red outline. Both may be true — dropping wins visually.
+   */
+  stress?: { stressed: boolean; dropping: boolean };
 }
 
 export interface ConnectionUpdate {

@@ -24,6 +24,7 @@ import { computeSlaPenalty } from "./wave-penalty";
 import { ComponentDossierStore } from "./dossier-store";
 import { showDossier } from "./show-dossier";
 import { bindInfoPanel, type InfoPanelHandle } from "./component-info-panel";
+import { ComponentMetricsAggregator } from "./component-metrics";
 import type { ComponentId } from "@core/types/ids";
 import { injectNavBar } from "../auth/index";
 import { resolveInitialSession } from "../auth-gate";
@@ -104,6 +105,7 @@ async function main(): Promise<void> {
   let perComponentDrops: Map<ComponentId, { total: number; byReason: Map<string, number> }> = new Map();
   let perComponentProcessed: Map<ComponentId, number> = new Map();
   const seenPacketIds = new Set<string>();
+  const metricsAggregator = new ComponentMetricsAggregator();
 
   // Campaign-wide viability pool. Drains per failed request; at 0 the
   // player restarts from wave 1 (page reload).
@@ -240,6 +242,7 @@ async function main(): Promise<void> {
     componentTypes,
     getDrops: () => perComponentDrops,
     getProcessed: () => perComponentProcessed,
+    getMetrics: (id) => metricsAggregator.getMetricsFor(id),
   });
 
   // ─── Dev +$100 button (testing aid; remove before ship) ────────────
@@ -415,6 +418,7 @@ async function main(): Promise<void> {
     perComponentDrops = new Map();
     perComponentProcessed = new Map();
     seenPacketIds.clear();
+    metricsAggregator.reset();
 
     // Pre-sim topology validation — non-blocking. Stores errors on the
     // controller so a future HUD warning UI can surface them.
@@ -474,6 +478,14 @@ async function main(): Promise<void> {
         }
       }
       adapter.syncFrame(driver.tickEvents);
+
+      // Per-component live metrics aggregator + sprite stress indicator.
+      metricsAggregator.update(sim, driver.tickEvents, sim.simTime);
+      for (const id of sim.components.keys()) {
+        if ((id as unknown as string) === (CLIENT_ID as unknown as string)) continue;
+        const m = metricsAggregator.getMetricsFor(id);
+        renderer.updateComponent(id, { stress: { stressed: m.stressed, dropping: m.dropping } });
+      }
 
       if (failuresThisFrame > 0) {
         viability.damage(failuresThisFrame * DAMAGE_PER_FAILURE);
@@ -749,6 +761,7 @@ async function main(): Promise<void> {
     componentTypes.clear();
     perComponentDrops = new Map();
     perComponentProcessed = new Map();
+    metricsAggregator.reset();
     // Fresh sim instance to wipe internal merge maps + revenue ledger.
     sim = new Sim({ seed: 1 });
     // PlacementUX/ConnectUX hold a Sim reference — rebuild them so they

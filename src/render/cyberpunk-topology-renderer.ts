@@ -155,6 +155,7 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
       this.packetLayer?.tick(deltaMs);
       this.flashFx?.tick(deltaMs);
       this.snakeLayer?.tick(deltaMs);
+      this.componentLayer?.tick(deltaMs);
     });
 
     // Pointer events with pan support.
