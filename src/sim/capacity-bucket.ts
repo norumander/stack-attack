@@ -9,7 +9,7 @@ export type CapacityBucketOptions = {
  */
 export class CapacityBucket {
   private credits: number;
-  private readonly max: number;
+  private max: number;
 
   constructor(opts: CapacityBucketOptions) {
     this.max = opts.capacityPerSecond;
@@ -18,6 +18,17 @@ export class CapacityBucket {
 
   available(): number {
     return this.credits;
+  }
+
+  capacity(): number {
+    return this.max;
+  }
+
+  /** Resize the bucket's max capacity. Does not refill credits; clamps if
+   * current credits exceed new max. Used by AutoScale tier bumps. */
+  setCapacity(capacityPerSecond: number): void {
+    this.max = capacityPerSecond;
+    if (this.credits > this.max) this.credits = this.max;
   }
 
   tryConsume(amount: number): boolean {
