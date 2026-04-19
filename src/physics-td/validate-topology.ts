@@ -151,8 +151,17 @@ function componentTypeLabel(comp: SimComponent): string {
 }
 
 /**
- * BFS for a single request type. Returns either no errors (type satisfied)
- * or a single error describing where/why the flow broke.
+ * BFS for a single request type. A type is satisfied if ANY reachable
+ * component terminates it. Individual dead-end paths (components that
+ * neither terminate nor forward this type, e.g. Blob for api_read) do
+ * NOT invalidate the topology as long as some OTHER reachable path
+ * terminates.
+ *
+ * Error priority when no terminal exists anywhere:
+ *   1. `no_egress` at a forwarder with zero outgoing forward edges — always
+ *      reported even if other paths also dead-end, because this is a clear
+ *      structural bug the author can fix.
+ *   2. `no_handler` at the deepest component reached otherwise.
  */
 function bfsForType(
   sim: Sim,
@@ -163,8 +172,16 @@ function bfsForType(
   const queue: ComponentId[] = [entryClientId];
   visited.add(entryClientId);
 
-  // Track the deepest component reached for "no_handler" error placement.
+  // Track the deepest component reached (for "no_handler" error placement
+  // when no path satisfies).
   let deepestReached: ComponentId = entryClientId;
+  // Collect any forwarder-with-zero-egress components encountered; we only
+  // surface them as errors if no terminal was found anywhere.
+  let noEgressErr: TopologyError | null = null;
+  // Collect any "dead-end" component (no terminal, no forwarder — e.g. blob
+  // for api_read). Only reported if BFS finishes without a terminal AND no
+  // no_egress was collected.
+  let deadEndErr: TopologyError | null = null;
 
   while (queue.length > 0) {
     const current = queue.shift()!;
@@ -172,8 +189,8 @@ function bfsForType(
     const comp = sim.components.get(current);
     if (!comp) continue;
 
-    // Check capabilities at this component (skip the client's — empty list).
     const isEntry = current === entryClientId;
+    let isDeadEnd = false;
     if (!isEntry) {
       let anyTerminal = false;
       let anyForwarder = false;
@@ -183,20 +200,27 @@ function bfsForType(
         else if (role === "forwarder") anyForwarder = true;
       }
       if (anyTerminal) {
-        // This type is satisfied — done.
+        // Some reachable component terminates this type — topology satisfied.
         return null;
       }
       if (!anyForwarder && comp.capabilities.length > 0) {
-        // Reached a component that neither terminates nor forwards this type.
-        return {
-          requestType: type,
-          componentId: current,
-          componentType: componentTypeLabel(comp),
-          reason: "no_handler",
-        };
+        // Neither terminal nor forwarder — this branch dead-ends. Record
+        // but keep walking other branches via earlier-enqueued siblings.
+        isDeadEnd = true;
+        if (!deadEndErr) {
+          deadEndErr = {
+            requestType: type,
+            componentId: current,
+            componentType: componentTypeLabel(comp),
+            reason: "no_handler",
+          };
+        }
       }
-      // Otherwise: forwarder — fall through to enqueue egresses.
     }
+
+    // Dead-end components do NOT contribute egresses to the walk — nothing
+    // flows past them. Skip the egress enumeration for them.
+    if (isDeadEnd) continue;
 
     // Enumerate forward egresses.
     const egresses: ComponentId[] = [];
@@ -206,16 +230,18 @@ function bfsForType(
       egresses.push(conn.to.componentId);
     }
 
-    // Entry client with no outgoing edges is handled upstream (bootstrap
-    // already blocks READY in that case). Here we still need to flag a
-    // forwarder component with zero egress as `no_egress`.
+    // Forwarder with zero egress is a structural bug — record it, but keep
+    // scanning other branches in case one of them terminates.
     if (!isEntry && egresses.length === 0) {
-      return {
-        requestType: type,
-        componentId: current,
-        componentType: componentTypeLabel(comp),
-        reason: "no_egress",
-      };
+      if (!noEgressErr) {
+        noEgressErr = {
+          requestType: type,
+          componentId: current,
+          componentType: componentTypeLabel(comp),
+          reason: "no_egress",
+        };
+      }
+      continue;
     }
 
     for (const target of egresses) {
@@ -225,7 +251,10 @@ function bfsForType(
     }
   }
 
-  // BFS exhausted without finding a terminal handler.
+  // BFS exhausted without finding any terminal. Prefer the most actionable
+  // error: no_egress > specific dead-end > generic deepest-reached.
+  if (noEgressErr) return noEgressErr;
+  if (deadEndErr) return deadEndErr;
   const deepestComp = sim.components.get(deepestReached);
   return {
     requestType: type,
