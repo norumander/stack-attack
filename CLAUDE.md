@@ -36,5 +36,7 @@ pnpm dev                               # Vite dashboard
 pnpm exec vite build                   # production build (no "build" script in package.json)
 ```
 
-Dashboard URL:
-- `/` — Physics TD game (the only mode)
+Dashboard URLs:
+- `/` — Landing page (PLAY button → `/levels.html`)
+- `/levels.html` — Level selector (one level card → `/game.html`)
+- `/game.html` — Physics TD game (append `?wave=N` to jump, 1-indexed)

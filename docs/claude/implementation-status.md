@@ -4,7 +4,7 @@
 
 ## What ships
 
-**Physics TD game** — entry point `localhost:5173/`. Source in `src/physics-td/`. Uses the physics-based `Sim` engine (`src/sim/`) and the cyberpunk isometric renderer (`src/render/cyberpunk-topology-renderer.ts`).
+**Physics TD game** — entry point `localhost:5173/game.html` (landing page at `/` → level selector at `/levels.html` → game). Source in `src/physics-td/`. Uses the physics-based `Sim` engine (`src/sim/`) and the cyberpunk isometric renderer (`src/render/cyberpunk-topology-renderer.ts`).
 
 **Physics sim engine** — `src/sim/` — packet-physics request simulation. `Sim` drives per-frame packet advancement, SLA evaluation, and wave lifecycle. `TrafficSource` generates typed request packets per wave composition. `SimClient` owns the traffic snake.
 
@@ -21,7 +21,9 @@ src/
 ├── core/           # Shared type definitions (ids, etc.)
 ├── sim/            # Physics sim engine — Sim, packets, capabilities
 ├── capabilities/   # Core capability implementations
-├── index.html              # Entry point → localhost:5173/
+├── index.html              # Landing page → /
+├── levels.html             # Level selector → /levels.html
+├── game.html               # Physics TD game → /game.html
 ├── physics-td/             # Game logic (campaign, UX, waves, HUD bridge)
 ├── render/                 # Cyberpunk renderer + cyberpunk/ subfolder
 ├── sim-demo/               # BrowserDriver, SimToRendererAdapter
@@ -29,9 +31,11 @@ src/
 └── cyberpunk-hud.css
 ```
 
-## Dashboard URL
+## Dashboard URLs
 
-- `/` — Physics TD game (the only mode)
+- `/` — Landing page (PLAY → `/levels.html`)
+- `/levels.html` — Level selector (card → `/game.html`)
+- `/game.html` — Physics TD game (append `?wave=N` to jump, 1-indexed)
 
 ## Commands
 

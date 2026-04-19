@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BrainLift — Level Select</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #0a1420;
+      color: #ccddee;
+      font-family: system-ui, -apple-system, "Segoe UI", monospace, sans-serif;
+      overflow: hidden;
+    }
+    .page {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 80px 24px 24px;
+      gap: 48px;
+    }
+    .back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: #8b8fa3;
+      text-decoration: none;
+      font-size: 13px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+    .back:hover {
+      color: #aef7ff;
+    }
+    .title {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      color: #aef7ff;
+      text-transform: uppercase;
+    }
+    .level-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 320px));
+      gap: 24px;
+      justify-content: center;
+      max-width: 1040px;
+    }
+    .level-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 24px;
+      background: rgba(30, 50, 80, 0.4);
+      border: 1px solid rgba(94, 240, 255, 0.3);
+      border-radius: 6px;
+      text-decoration: none;
+      color: #ccddee;
+      transition: all 0.15s ease;
+      cursor: pointer;
+    }
+    .level-card:hover {
+      background: rgba(40, 70, 110, 0.5);
+      border-color: #aef7ff;
+      box-shadow: 0 0 24px rgba(94, 240, 255, 0.3);
+    }
+    .level-card.locked {
+      opacity: 0.35;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+    .level-num {
+      font-size: 11px;
+      color: #8b8fa3;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+    }
+    .level-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: #aef7ff;
+    }
+    .level-desc {
+      font-size: 13px;
+      color: #8b8fa3;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <a href="./index.html" class="back">← Back</a>
+  <div class="page">
+    <div class="title">Select Level</div>
+    <div class="level-grid">
+      <a href="./game.html" class="level-card">
+        <div class="level-num">Level 01</div>
+        <div class="level-name">System Architecture</div>
+        <div class="level-desc">
+          Traffic floods in. Place the right infrastructure — server, cache, database — to hold the SLA across five waves.
+        </div>
+      </a>
+      <div class="level-card locked">
+        <div class="level-num">Level 02</div>
+        <div class="level-name">Coming Soon</div>
+        <div class="level-desc">More to come.</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -3,73 +3,66 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BrainLift — Physics TD</title>
-  <link rel="stylesheet" href="./styles.css" />
-  <link rel="stylesheet" href="./cyberpunk-hud.css" />
+  <title>BrainLift</title>
   <style>
-    html, body { margin: 0; padding: 0; background: #0a1420; color: #ccddee; font-family: monospace; overflow: hidden; }
-    #canvas-host { position: absolute; inset: 0; }
-    /* Hidden mirror divs that cyberpunk-hud.ts observes — physics-td.ts writes
-       to these, the HUD reflects them to its visible cyberpunk-styled DOM. */
-    .td-hud-mirror { display: none; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #0a1420;
+      color: #ccddee;
+      font-family: system-ui, -apple-system, "Segoe UI", monospace, sans-serif;
+      overflow: hidden;
+    }
+    .landing {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 40px;
+    }
+    .title {
+      font-size: 56px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: #aef7ff;
+      text-shadow: 0 0 20px rgba(94, 240, 255, 0.4);
+    }
+    .subtitle {
+      font-size: 16px;
+      color: #8b8fa3;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-top: -24px;
+    }
+    .play-btn {
+      padding: 16px 56px;
+      background: transparent;
+      color: #aef7ff;
+      border: 2px solid #aef7ff;
+      border-radius: 4px;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      font-family: inherit;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+    .play-btn:hover {
+      background: #aef7ff;
+      color: #0a1420;
+      box-shadow: 0 0 24px rgba(94, 240, 255, 0.5);
+    }
   </style>
 </head>
 <body>
-  <div id="canvas-host"></div>
-
-  <!-- DEV: +$100 budget grant button (remove before ship). -->
-  <button id="td-dev-grant-btn"
-          style="position: fixed; bottom: 12px; left: 12px; z-index: 9999;
-                 padding: 6px 10px; background: #ffd700; color: #111;
-                 border: 2px solid #000; border-radius: 4px; font-weight: bold;
-                 font-size: 11px; font-family: monospace; cursor: pointer;
-                 opacity: 0.8;">
-    DEV +$100
-  </button>
-
-  <!-- Mirror divs observed by cyberpunk-hud.ts. Writing to these updates the
-       visible HUD without us needing to touch the HUD's internal DOM. -->
-  <div class="td-hud-mirror">
-    <div id="td-hud-wave">1 of 4</div>
-    <div id="td-hud-phase">build</div>
-    <div id="td-hud-budget">$200</div>
-    <div id="td-status">Build phase — place components and click READY</div>
-
-    <!-- Briefing card -->
-    <div id="td-briefing-title">Wave 1 — First Light</div>
-    <div id="td-briefing-traffic"></div>
-    <div id="td-briefing-budget"></div>
-    <div id="td-briefing-threshold"></div>
-    <div id="td-briefing-components"></div>
-
-    <!-- Info panel -->
-    <div id="td-info-panel" hidden>
-      <button id="td-info-panel-close">×</button>
-      <div id="td-info-panel-header"></div>
-      <div id="td-info-panel-description"></div>
-      <ul id="td-info-panel-caps"></ul>
-      <div id="td-info-panel-stats"></div>
-      <button id="td-info-panel-details">DETAILS</button>
-    </div>
-
-    <!-- Dev wave selector + READY button (HUD's READY forwards to this one) -->
-    <select id="td-dev-wave-select"></select>
-    <button id="td-ready-btn">READY</button>
-
-    <!-- Palette buttons (HUD reads classic buttons to extract cost text +
-         forwards palette-cell clicks to these). -->
-    <button class="td-palette-btn" data-type="server">+ Server $100</button>
-    <button class="td-palette-btn" data-type="database">+ Database $200</button>
-    <button class="td-palette-btn" data-type="data_cache">+ Data Cache $150</button>
-    <button class="td-palette-btn" data-type="load_balancer">+ Load Balancer $175</button>
-    <button class="td-palette-btn" data-type="cdn">+ CDN $200</button>
-    <button class="td-palette-btn" data-type="api_gateway">+ API Gateway $250</button>
-    <button class="td-palette-btn" data-type="queue">+ Queue $125</button>
-    <button class="td-palette-btn" data-type="worker">+ Worker $150</button>
-    <button class="td-palette-btn" data-type="streaming_server">+ Streaming $250</button>
-    <button class="td-palette-btn" data-type="dns_gtm">+ DNS / GTM $200</button>
+  <div class="landing">
+    <div class="title">BRAINLIFT</div>
+    <div class="subtitle">System Architecture Tower Defense</div>
+    <a href="./levels.html" class="play-btn">PLAY</a>
   </div>
-
-  <script type="module" src="./physics-td/physics-td.ts"></script>
 </body>
 </html>
