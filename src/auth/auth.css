@@ -49,11 +49,12 @@ body::after {
   z-index: 9500;
   background: repeating-linear-gradient(
     0deg,
-    rgba(0, 0, 0, 0.16) 0,
-    rgba(0, 0, 0, 0.16) 1px,
-    transparent 1px,
-    transparent 4px
+    rgba(0, 0, 0, 0.32) 0,
+    rgba(0, 0, 0, 0.32) 2px,
+    transparent 2px,
+    transparent 5px
   );
+  mix-blend-mode: multiply;
 }
 
 /* ─── Login overlay ──────────────────────────────────────────────── */
