@@ -13,6 +13,8 @@ import { COMPONENT_COSTS } from "./physics-td/component-factory";
 import { resolveDiagnoseLevel } from "./diagnose/url";
 import { resolveInitialSession } from "./auth-gate";
 import { injectNavBar } from "./auth/index";
+import { mountChatbotDrawer } from "./chatbot/chatbot-drawer";
+import type { ChatRequest } from "./chatbot/chat-client";
 
 // Re-exported for callers/tests.
 export { readDiagnoseLevelFromUrl, resolveDiagnoseLevel } from "./diagnose/url";
@@ -48,6 +50,47 @@ async function main(): Promise<void> {
   });
 
   controller.preplace();
+
+  // ─── Chatbot tutor drawer ───────────────────────────────────────────
+  // Diagnose mode: we don't own a live Sim here (the framework preplaces
+  // topology through the controller callbacks). Supply a slim context with
+  // the wave + SLA + empty topology; the drawer handles null/thin contexts.
+  mountChatbotDrawer({
+    host: document.body,
+    getContext: (): ChatRequest | null => ({
+      mode: "diagnose",
+      hintLevel: "coach",
+      levelId: level.id,
+      wave: {
+        id: level.id,
+        title: level.title,
+        intensity: level.wave.intensity,
+        composition: {
+          writeRatio: level.wave.composition.writeRatio,
+          authRatio: level.wave.composition.authRatio,
+          streamRatio: level.wave.composition.streamRatio,
+          largeRatio: level.wave.composition.largeRatio,
+          asyncRatio: level.wave.composition.asyncRatio,
+        },
+        duration: level.wave.duration,
+        sla: {
+          availability: level.sla.availability,
+          maxAvgLatencySeconds: level.sla.maxAvgLatencySeconds,
+          maxDropRate: level.sla.maxDropRate,
+        },
+      },
+      topology: { components: [], connections: [] },
+      liveMetrics: {
+        availability: 1,
+        avgLatencySeconds: 0,
+        dropRate: 0,
+        currentTickSeconds: 0,
+      },
+      recentEvents: [],
+      conversationHistory: [],
+      userMessage: "",
+    }),
+  });
 
   // Expose for console debugging.
   (window as unknown as { __diagnoseController: PhysicsDiagnoseController }).__diagnoseController = controller;
