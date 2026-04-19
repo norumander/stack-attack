@@ -11,15 +11,6 @@ export function showLoginOverlay(): void {
 
   overlay.innerHTML = `
     <div class="sa-login-card">
-      <div class="sa-login-logo">
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-          <rect x="4" y="20" width="16" height="24" rx="2" fill="#4A90D9" opacity="0.9"/>
-          <rect x="24" y="12" width="16" height="32" rx="2" fill="#7B68EE" opacity="0.9"/>
-          <rect x="14" y="4" width="16" height="12" rx="2" fill="#F5A623" opacity="0.9"/>
-          <circle cx="12" cy="32" r="3" fill="#22c55e"/>
-          <circle cx="32" cy="28" r="3" fill="#22c55e"/>
-        </svg>
-      </div>
       <h1 class="sa-login-title">Stack Attack</h1>
       <p class="sa-login-tagline">Learn System Architecture by Defending It</p>
       <button class="sa-login-btn" id="sa-google-signin">

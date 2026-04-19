@@ -103,19 +103,26 @@
     }
     .portrait img { width: 96px; height: 96px; margin-top: 6px; }
 
-    .meta .num {
-      font-family: var(--pi-font-display);
-      font-size: 10px;
-      color: var(--pi-bg-2);
-      letter-spacing: 0.08em;
-    }
     .meta .name {
       font-family: var(--pi-font-display);
       font-size: 16px;
       color: var(--pi-bg-2);
-      margin-top: 8px;
       letter-spacing: 0.04em;
     }
+
+    .badge {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 5px 9px;
+      font-family: var(--pi-font-display);
+      font-size: 9px;
+      color: var(--pi-ink);
+      border: 3px solid var(--pi-ink);
+      box-shadow: 3px 3px 0 var(--pi-bg-2);
+      letter-spacing: 0.16em;
+    }
+    .badge--easy { background: var(--pi-lime); }
+    .badge--hard { background: var(--pi-red); color: var(--pi-cream); }
     .meta .desc {
       font-family: var(--pi-font-body);
       font-size: 18px;
@@ -169,8 +176,8 @@
           <img src="./assets/stack-attack/client-south.png" alt="">
         </div>
         <div class="meta">
-          <div class="num">LV. 01</div>
           <div class="name">URL SHORTENER</div>
+          <span class="badge badge--easy">EASY</span>
           <div class="desc">A tiny service. Reads dwarf writes. Server + database + cache is enough — if you route it right.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
@@ -182,8 +189,8 @@
           <img src="./assets/stack-attack/client-south.png" alt="">
         </div>
         <div class="meta">
-          <div class="num">LV. 02</div>
           <div class="name">BUILD NETFLIX</div>
+          <span class="badge badge--hard">HARD</span>
           <div class="desc">Peak-hour streaming. Writes, reads, and viewers all want the same hot titles. Scale before the SLA drops.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
