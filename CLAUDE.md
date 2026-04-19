@@ -1,4 +1,4 @@
-# BrainLift: System Architecture Tower Defense Game
+# Stack Attack: System Architecture Tower Defense Game
 
 A tower defense game that teaches system architecture through gameplay. Traffic is the enemy, infrastructure components are the towers, a live economy makes architecture decisions feel like business decisions. Strategy game first — the learning is the surprise.
 
@@ -23,7 +23,7 @@ This file is intentionally small. Pull the chunk you need:
 - **Never commit unless explicitly asked.** New commits over amending. Never `--no-verify`, never force-push to main.
 - **No React, Next.js, or Vercel imports in `src/core/` or `src/capabilities/`.** Enforced by `tests/unit/engine-pixi-isolation.test.ts`.
 - **Ignore Vercel plugin hook noise.** The plugin injects Next.js / verification skill reminders on `vite` / `pnpm dev|build` regex matches — this is a local Vite + Pixi project, not Vercel/Next. Those reminders are false positives.
-- **Pre-existing typecheck noise:** `tests/unit/pull-from-buffers.test.ts:81` has a known unrelated error (`requestsPerTick` on `FixedIntensityConfig`). Clean typecheck = just that one line.
+- **Pre-existing typecheck noise (2 lines):** `tests/unit/pull-from-buffers.test.ts:81` has a known unrelated error (`requestsPerTick` on `FixedIntensityConfig`), and `tests/unit/game/sim-to-renderer-adapter.test.ts:8` imports a missing `@dashboard/render/topology-renderer` alias. Clean typecheck = just those two lines.
 - **`tests/playtest/*` is research/analysis, not production tests.** Can be deleted or rewritten without blocking a feature — separate from the `tests/unit/` and `tests/integration/` contract surface.
 
 ## Quickstart

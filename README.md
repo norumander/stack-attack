@@ -1,8 +1,8 @@
-# BrainLift: System Architecture Tower Defense Game
+# Stack Attack: System Architecture Tower Defense Game
 
 > A tower defense game that teaches system architecture through gameplay. Traffic is the enemy, infrastructure is the towers, and a live economy makes architecture decisions feel like business decisions.
 
-**Public URL:** *https://brainlift.app* (tentative -- not yet deployed)
+**Public URL:** *https://stackattack.app* (tentative -- not yet deployed)
 
 **Repository:** https://github.com/norumander/g4-capstone
 
@@ -10,9 +10,9 @@
 
 ## Overview
 
-BrainLift is a strategy game where players build and connect infrastructure components (servers, caches, load balancers, databases, queues, CDNs, etc.) to handle waves of increasing user traffic. A live economy -- revenue per request, operational upkeep per component, placement and upgrade costs -- turns every architecture decision into a business decision.
+Stack Attack is a strategy game where players build and connect infrastructure components (servers, caches, load balancers, databases, queues, CDNs, etc.) to handle waves of increasing user traffic. A live economy -- revenue per request, operational upkeep per component, placement and upgrade costs -- turns every architecture decision into a business decision.
 
-**The KSP analogy:** Kerbal Space Program doesn't teach aerospace engineering, but after playing it every orbital mechanics concept has an experiential anchor. BrainLift does the same for system architecture. A player who finishes this game and later encounters caching, load balancing, or sharding in a tutorial already has the intuition.
+**The KSP analogy:** Kerbal Space Program doesn't teach aerospace engineering, but after playing it every orbital mechanics concept has an experiential anchor. Stack Attack does the same for system architecture. A player who finishes this game and later encounters caching, load balancing, or sharding in a tutorial already has the intuition.
 
 ## Game Modes
 

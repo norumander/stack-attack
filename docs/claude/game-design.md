@@ -27,4 +27,4 @@ Both modes share the same component system. A Database in TD has `StorageCapabil
 
 - **`component-architecture.md`** — object model, 7 core abstractions, 4-phase execution pipeline (INTERCEPT/PROCESS/REPLICATE/OBSERVE), engine sub-interfaces (EngineConsultable/EngineBufferable), 10-step simulation tick, 13-component registry with key capabilities, extensibility contract, zones/multi-region, auto-scaling. Authoritative for engine design target.
 - **`wave-progression-strategy.md`** — two scaling axes (intensity + diversity), 7 request types, 10-wave progression with architectural lessons, boss waves, economic pressure curve.
-- **`brainlift-system-architecture-game.md`** — purpose, SPOVs, research insights, market analysis, design theory.
+- **`docs/research/stack-attack-concept.md`** — purpose, SPOVs, research insights, market analysis, design theory.

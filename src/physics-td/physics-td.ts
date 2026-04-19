@@ -23,14 +23,8 @@ import { ComponentDossierStore } from "./dossier-store";
 import { showDossier } from "./show-dossier";
 import { bindInfoPanel, type InfoPanelHandle } from "./component-info-panel";
 import type { ComponentId } from "@core/types/ids";
-import {
-  waitForAuth,
-  getProfile,
-  showLoginOverlay,
-  hideLoginOverlay,
-  showProfileSetup,
-  injectNavBar,
-} from "../auth/index";
+import { injectNavBar } from "../auth/index";
+import { resolveInitialSession } from "../auth-gate";
 
 const CLIENT_ID = "client" as ComponentId;
 // Drain budget after wave duration: extra real-seconds for in-flight packets to retire.
@@ -711,14 +705,12 @@ async function main(): Promise<void> {
 }
 
 async function boot(): Promise<void> {
-  showLoginOverlay();
-  await waitForAuth();
-
-  if (!getProfile()) {
-    hideLoginOverlay();
-    await showProfileSetup();
-  } else {
-    hideLoginOverlay();
+  // Auth happens on the landing page. If someone reaches /game.html without a
+  // session (deep-link, expired token), bounce them home so they can sign in.
+  const user = await resolveInitialSession();
+  if (!user) {
+    window.location.href = "./index.html";
+    return;
   }
 
   injectNavBar();
