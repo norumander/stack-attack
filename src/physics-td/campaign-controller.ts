@@ -1,5 +1,7 @@
 import type { ComponentId, ConnectionId } from "@core/types/ids";
 import type { WaveRevenue } from "@sim/wave";
+import type { Sim } from "@sim/sim";
+import { applyChaosEvent, type ChaosEvent } from "./chaos";
 
 export type Phase = "build" | "simulate" | "won" | "campaign-complete";
 
@@ -7,6 +9,8 @@ export type WaveSlot = {
   readonly id: string;
   readonly startBudget: number;
   readonly revenue: WaveRevenue;
+  /** Optional chaos schedule for this wave, fired during simulate phase. */
+  readonly chaosSchedule?: ReadonlyArray<ChaosEvent>;
 };
 
 export type PlaceResult =
@@ -49,6 +53,10 @@ export class PhysicsCampaignController {
   phase: Phase = "build";
   currentWaveIndex = 0;
   budget: number;
+  /** Seconds elapsed in the current simulate phase — reset on each wave start. */
+  private waveElapsedSeconds = 0;
+  /** Indices (into currentWave.chaosSchedule) that have already fired. */
+  private readonly firedChaosIndices: Set<number> = new Set();
   readonly placedComponents: Set<ComponentId> = new Set();
   readonly placedTypes: Map<ComponentId, string> = new Map();
   /** key = sourceId + ":" + targetId → forward connection id (so deletion can find it) */
@@ -123,7 +131,32 @@ export class PhysicsCampaignController {
   ready(): void {
     if (this.phase !== "build") return;
     this.phase = "simulate";
+    this.waveElapsedSeconds = 0;
+    this.firedChaosIndices.clear();
     this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
+  }
+
+  /**
+   * Advance the wave's elapsed-seconds clock by `dt` and fire every chaos
+   * event whose `atSeconds <= elapsed` that has not already fired. Each
+   * event fires at most once per wave (even if its role resolves to null —
+   * we mark it fired to avoid hot-loop retries). Sim primitives are invoked
+   * via `applyChaosEvent`, which pulls a deterministic target from the
+   * sim's RNG.
+   */
+  tickChaos(dtSeconds: number, sim: Sim): void {
+    if (this.phase !== "simulate") return;
+    this.waveElapsedSeconds += dtSeconds;
+    const schedule = this.opts.waves[this.currentWaveIndex]?.chaosSchedule;
+    if (!schedule || schedule.length === 0) return;
+    for (let i = 0; i < schedule.length; i += 1) {
+      if (this.firedChaosIndices.has(i)) continue;
+      const event = schedule[i]!;
+      if (event.atSeconds <= this.waveElapsedSeconds) {
+        applyChaosEvent(event, sim);
+        this.firedChaosIndices.add(i);
+      }
+    }
   }
 
   currentWaveRevenue(): WaveRevenue {
@@ -177,6 +210,8 @@ export class PhysicsCampaignController {
     this.placedTypes.clear();
     this.placedConnections.clear();
     this.phase = "build";
+    this.waveElapsedSeconds = 0;
+    this.firedChaosIndices.clear();
     this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
     this.opts.callbacks.onBudgetChange(this.budget);
   }

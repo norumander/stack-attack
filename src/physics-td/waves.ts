@@ -2,6 +2,7 @@ import type { WaveDef } from "@sim/wave";
 import type { SLAThresholds } from "@sim/sla";
 import type { ComponentId } from "@core/types/ids";
 import { computeLoad, type BriefingDisplay } from "./briefing-text";
+import type { ChaosEvent } from "./chaos";
 
 export type CampaignWave = {
   readonly id: string;
@@ -11,6 +12,11 @@ export type CampaignWave = {
   readonly wave: WaveDef;
   readonly sla: SLAThresholds;
   readonly startBudget: number;
+  /**
+   * Optional campaign-level chaos schedule. Fired by the campaign controller
+   * at elapsed wave time — the sim itself knows nothing about "chaos".
+   */
+  readonly chaosSchedule?: ReadonlyArray<ChaosEvent>;
 };
 
 /**

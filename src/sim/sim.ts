@@ -19,6 +19,7 @@ export class Sim {
   readonly connections: Map<ConnectionId, SimConnection> = new Map();
   readonly activePackets: Packet[] = [];
   readonly lastStepEvents: SimEvent[] = [];
+  readonly crashedComponents: Set<ComponentId> = new Set();
   simTime = 0;
   readonly rng: () => number;
   private readonly revenueByPacketId: Map<PacketId, { revenue: number; count: number }> = new Map();
@@ -84,12 +85,79 @@ export class Sim {
     this.simTime += dt;
   }
 
+  /**
+   * Chaos primitive: mark a component as crashed. Subsequent incoming packets
+   * destined for it are dropped; any in-flight packets currently targeting it
+   * are flushed immediately. Idempotent.
+   */
+  crashComponent(id: ComponentId): void {
+    if (this.crashedComponents.has(id)) return;
+    if (!this.components.has(id)) return;
+    this.crashedComponents.add(id);
+    let flushed = 0;
+    const kept: Packet[] = [];
+    for (const p of this.activePackets) {
+      const edge = this.connections.get(p.edgeId);
+      if (edge && edge.to.componentId === id) {
+        flushed += 1;
+        this.revenueByPacketId.delete(p.id);
+        continue;
+      }
+      kept.push(p);
+    }
+    this.activePackets.length = 0;
+    this.activePackets.push(...kept);
+    this.lastStepEvents.push({ kind: "component-crashed", componentId: id, flushedPackets: flushed });
+  }
+
+  /**
+   * Chaos primitive: sever a connection (and its twin). Both forward and back
+   * edges are removed from the topology; any in-flight packets riding either
+   * edge are flushed. Idempotent.
+   */
+  severConnection(id: ConnectionId): void {
+    const conn = this.connections.get(id);
+    if (!conn) return;
+    const twinId = conn.twinId;
+    const twin = twinId ? this.connections.get(twinId) : undefined;
+    this.connections.delete(id);
+    if (twin) this.connections.delete(twin.id);
+    let flushed = 0;
+    const kept: Packet[] = [];
+    for (const p of this.activePackets) {
+      if (p.edgeId === id || (twin && p.edgeId === twin.id)) {
+        flushed += 1;
+        this.revenueByPacketId.delete(p.id);
+        continue;
+      }
+      kept.push(p);
+    }
+    this.activePackets.length = 0;
+    this.activePackets.push(...kept);
+    this.lastStepEvents.push({
+      kind: "connection-severed",
+      connectionId: id,
+      twinId: twin ? twin.id : null,
+      flushedPackets: flushed,
+    });
+  }
+
   private dispatchArrival(packet: Packet): void {
     this.currentArrivalSpawnedAt = packet.spawnedAt;
     const edge = this.connections.get(packet.edgeId);
     if (!edge) return;
     const component = this.components.get(edge.to.componentId);
     if (!component) return;
+    if (this.crashedComponents.has(component.id)) {
+      this.lastStepEvents.push({
+        kind: "drop",
+        componentId: component.id,
+        reason: "component_crashed",
+        count: packet.requests.length,
+      });
+      this.revenueByPacketId.delete(packet.id);
+      return;
+    }
     const egressEdges: { id: ConnectionId; speed: number; targetZone: Zone | null }[] = [];
     for (const conn of this.connections.values()) {
       if (conn.from.componentId === component.id && conn.direction === "forward") {

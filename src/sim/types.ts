@@ -70,4 +70,6 @@ export type SimCapability = {
 export type SimEvent =
   | { readonly kind: "drop"; readonly componentId: ComponentId; readonly reason: string; readonly count: number }
   | { readonly kind: "terminate"; readonly componentId: ComponentId; readonly revenue: number; readonly latencySeconds: number; readonly count: number }
-  | { readonly kind: "respond-delivered"; readonly componentId: ComponentId; readonly revenue: number; readonly latencySeconds: number; readonly count: number };
+  | { readonly kind: "respond-delivered"; readonly componentId: ComponentId; readonly revenue: number; readonly latencySeconds: number; readonly count: number }
+  | { readonly kind: "component-crashed"; readonly componentId: ComponentId; readonly flushedPackets: number }
+  | { readonly kind: "connection-severed"; readonly connectionId: ConnectionId; readonly twinId: ConnectionId | null; readonly flushedPackets: number };
