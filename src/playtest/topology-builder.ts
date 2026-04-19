@@ -18,7 +18,7 @@ import type { Zone } from "@sim/types";
 
 export interface TopologyDef {
   readonly label: string;
-  readonly components: ReadonlyArray<{ type: string; id: string; zone?: Zone }>;
+  readonly components: ReadonlyArray<{ type: string; id: string; zone?: Zone; label?: string }>;
   readonly entryTargetId: string;
   readonly connections: ReadonlyArray<{ from: string; to: string }>;
   readonly autoScaleIds: ReadonlyArray<string>;
@@ -26,7 +26,7 @@ export interface TopologyDef {
 
 export class TopologyBuilder {
   private readonly _label: string;
-  private readonly _components: Array<{ type: string; id: string; zone?: Zone }> = [];
+  private readonly _components: Array<{ type: string; id: string; zone?: Zone; label?: string }> = [];
   private readonly _connections: Array<{ from: string; to: string }> = [];
   private readonly _autoScaleIds: Set<string> = new Set();
   private _entry: string | null = null;
@@ -35,8 +35,10 @@ export class TopologyBuilder {
     this._label = label;
   }
 
-  add(type: string, id: string): this {
-    this._components.push({ type, id });
+  add(type: string, id: string, label?: string): this {
+    const entry: { type: string; id: string; label?: string } = { type, id };
+    if (label !== undefined) entry.label = label;
+    this._components.push(entry);
     return this;
   }
 

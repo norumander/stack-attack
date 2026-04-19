@@ -30,6 +30,21 @@ describe("topology builder", () => {
     expect(() => topology("noentry").add("server", "s1").build()).toThrow(/entry/);
   });
 
+  it("accepts an optional label on add() and threads it into the TopologyDef", () => {
+    const def = topology("labeled")
+      .add("server", "s1", "Edge Server")
+      .add("database", "db1", "Profile DB")
+      .add("data_cache", "c1") // no label — stays undefined
+      .entry("s1")
+      .build();
+
+    expect(def.components).toEqual([
+      { type: "server", id: "s1", label: "Edge Server" },
+      { type: "database", id: "db1", label: "Profile DB" },
+      { type: "data_cache", id: "c1" },
+    ]);
+  });
+
   it("returns snapshots — mutating the builder after build() does not affect prior output", () => {
     const b = topology("frozen").add("server", "s1").entry("s1");
     const first = b.build();

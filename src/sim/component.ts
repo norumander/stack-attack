@@ -10,6 +10,12 @@ export type SimComponentOptions = {
   readonly capacityPerSecond?: number;
   readonly zone?: Zone;
   readonly tier?: number;
+  /**
+   * Optional short human-readable identifier shown above the sprite
+   * (e.g. "Server 1", "Profile DB"). When omitted, the renderer
+   * auto-generates one based on type + per-type index.
+   */
+  readonly label?: string;
 };
 
 export class SimComponent {
@@ -20,6 +26,7 @@ export class SimComponent {
   readonly capacityPerSecond: number | null;
   readonly state: Map<string, unknown> = new Map();
   readonly zone: Zone | null;
+  readonly label: string | undefined;
   tier: number;
 
   constructor(opts: SimComponentOptions) {
@@ -32,6 +39,7 @@ export class SimComponent {
         ? new CapacityBucket({ capacityPerSecond: opts.capacityPerSecond * this.tier })
         : null;
     this.zone = opts.zone ?? null;
+    this.label = opts.label;
   }
 
   /** Tier-scaled capacity. Returns 0 when the component has no bucket. */

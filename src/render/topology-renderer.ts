@@ -106,6 +106,12 @@ export interface ComponentVisual {
   type: string;                        // 'server' | 'database' | 'cache' | ...
   displayName: string;
   gridPosition: { x: number; y: number };
+  /**
+   * Optional short identifier rendered as a small badge above the sprite
+   * (e.g. "Server 1", "Profile DB"). Distinct from `displayName`, which
+   * shows under the sprite as the type + id tag.
+   */
+  label?: string;
 }
 
 export interface ComponentUpdate {
