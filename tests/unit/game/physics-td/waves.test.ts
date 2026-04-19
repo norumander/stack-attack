@@ -30,12 +30,13 @@ describe("CAMPAIGN_WAVES catalog", () => {
     expect(w1!.startBudget).toBeGreaterThanOrEqual(300);
   });
 
-  it("SLA availability tightens/loosens progressively and duration stays in 8–15s", () => {
+  it("SLA availability tightens/loosens progressively and duration stays in a sane band", () => {
     for (const w of CAMPAIGN_WAVES) {
       expect(w.wave.duration).toBeGreaterThanOrEqual(8);
       // Later waves (W5+ chaos, W7 global, W8 viral) run longer to give
-      // chaos schedules and multi-region backbones time to play out.
-      expect(w.wave.duration).toBeLessThanOrEqual(15);
+      // chaos schedules, multi-region backbones, and autoscale ramps time
+      // to play out. W8's sustained viral event is 30s.
+      expect(w.wave.duration).toBeLessThanOrEqual(30);
     }
   });
 });

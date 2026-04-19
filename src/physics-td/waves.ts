@@ -198,12 +198,12 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
   {
     id: "w8",
     title: "Wave 8 — Viral Moment",
-    briefing: "~270 req/sec slam the platform mid-crash. Static capacity collapses. Enable AutoScale on Servers and Databases — tiers bump under sustained load — and ride out the spike.",
-    narrative: "Going viral at internet scale. Infrastructure must be elastic: AutoScale on Servers and DBs auto-bumps capacity tiers as utilization pins 80%+.",
+    briefing: "A sustained 30-second viral event — ~270 req/sec slams the platform mid-crash. Static overprovisioning blows the budget; elastic capacity pays for itself. Enable AutoScale on Servers and Databases — tiers bump under sustained load — and ride out the spike.",
+    narrative: "A sustained viral moment at internet scale. Infrastructure must be elastic: AutoScale on Servers and DBs auto-bumps capacity tiers as utilization pins 80%+, so you pay for capacity only while the spike lasts.",
     wave: {
       intensity: 160,
       packetRate: 12,
-      duration: 15,
+      duration: 30,
       composition: { writeRatio: 0.15, authRatio: 0.1, streamRatio: 0.2, largeRatio: 0.3, asyncRatio: 0.1 },
       keyDistribution: { kind: "zipf", alpha: 1.1, spaceSize: 240 },
       revenue: { perRead: 1, perWrite: 2, perAuth: 2, perStream: 3, perAsync: 3 },

@@ -11,7 +11,7 @@ import { printRankedTable, slaLine } from "./_candidates-helpers";
  */
 
 const W8 = CAMPAIGN_WAVES[7]!;
-const CUMULATIVE_BUDGET_W8 = 5250;
+const CUMULATIVE_BUDGET_W8 = 1950;
 
 describe("wave 8 — candidate architectures", () => {
   it("autoscale intended survives the viral spike", () => {
