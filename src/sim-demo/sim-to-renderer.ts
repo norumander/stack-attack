@@ -88,7 +88,7 @@ export class SimToRendererAdapter {
       if (comp.capacityPerSecond === null) continue;
       const arr = this.recentProcessed.get(id) ?? [];
       while (arr.length > 0 && arr[0]! < cutoff) arr.shift();
-      const utilization = arr.length / comp.capacityPerSecond;
+      const utilization = arr.length / comp.getEffectiveCapacity();
       this.renderer.updateComponent(id, { utilization: Math.min(1, utilization) });
     }
 

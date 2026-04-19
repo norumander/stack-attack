@@ -81,6 +81,15 @@ export class Sim {
     for (const packet of arriving) {
       this.dispatchArrival(packet);
     }
+    // Per-capability onStep hook — runs after arrivals so utilization samples
+    // reflect this step's consumption. AutoScale uses this; most capabilities
+    // do not implement it.
+    const stepCtx = { dt, simTime: this.simTime };
+    for (const comp of this.components.values()) {
+      for (const cap of comp.capabilities) {
+        cap.onStep?.(stepCtx, comp);
+      }
+    }
     this.simTime += dt;
   }
 

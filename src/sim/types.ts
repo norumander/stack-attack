@@ -61,10 +61,20 @@ export type ArrivalContext = {
   readonly reserveBandwidth?: (edgeId: ConnectionId, amount: number, durationSeconds: number) => boolean;
 };
 
+export type StepContext = {
+  readonly dt: number;
+  readonly simTime: number;
+};
+
 export type SimCapability = {
   readonly id: string;
   onArriveRequest(packet: Packet, ctx: ArrivalContext): Outcome;
   onArriveResponse?(packet: Packet, ctx: ArrivalContext): void;
+  /** Optional per-tick hook. Called once per sim step for every capability
+   * attached to every component, before arrival dispatch. Used by AutoScale
+   * to sample utilization. `parent` is the component the capability is
+   * attached to — capabilities do not otherwise hold that reference. */
+  onStep?(ctx: StepContext, parent: import("./component").SimComponent): void;
 };
 
 export type SimEvent =
