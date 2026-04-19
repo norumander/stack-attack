@@ -4,69 +4,224 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Stack Attack — System Architecture TD</title>
-  <link rel="stylesheet" href="./styles.css" />
-  <link rel="stylesheet" href="./cyberpunk-hud.css" />
   <link rel="stylesheet" href="./auth/auth.css" />
   <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
     html, body {
       margin: 0;
       padding: 0;
       height: 100%;
-      background: #0a1420;
-      color: #ccddee;
-      font-family: system-ui, -apple-system, "Segoe UI", monospace, sans-serif;
+      background: var(--pi-bg-2);
+      color: var(--pi-cream);
+      font-family: var(--pi-font-display);
       overflow: hidden;
     }
-    .landing {
-      position: absolute;
+
+    .stage {
+      position: fixed;
       inset: 0;
+      background:
+        radial-gradient(circle at 50% 22%, #4a4aa5 0%, transparent 55%),
+        var(--pi-bg-2);
       display: flex;
       flex-direction: column;
+      justify-content: space-between;
+      padding: 28px 36px;
+      overflow: hidden;
+    }
+    .stars {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image:
+        radial-gradient(1px 1px at 8% 18%,  var(--pi-cream), transparent 100%),
+        radial-gradient(1px 1px at 24% 8%,  var(--pi-yellow), transparent 100%),
+        radial-gradient(2px 2px at 38% 30%, var(--pi-cream), transparent 100%),
+        radial-gradient(1px 1px at 65% 14%, var(--pi-cyan),  transparent 100%),
+        radial-gradient(1px 1px at 82% 24%, var(--pi-cream), transparent 100%),
+        radial-gradient(1px 1px at 92% 44%, var(--pi-pink),  transparent 100%),
+        radial-gradient(1px 1px at 14% 72%, var(--pi-cream), transparent 100%),
+        radial-gradient(2px 2px at 72% 62%, var(--pi-yellow), transparent 100%);
+    }
+    .scanlines {
+      position: absolute; inset: 0; pointer-events: none;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0,0,0,0.18) 0, rgba(0,0,0,0.18) 1px,
+        transparent 1px, transparent 4px);
+    }
+
+    .title-block { position: relative; z-index: 5; margin-top: 6vh; }
+    .wordmark {
+      font-family: var(--pi-font-display);
+      font-size: clamp(40px, 9vw, 96px);
+      line-height: 1;
+      color: var(--pi-yellow);
+      letter-spacing: 0.02em;
+      text-shadow:
+        4px 4px 0 var(--pi-pink),
+        8px 8px 0 var(--pi-magenta),
+        11px 11px 0 var(--pi-ink);
+      margin: 0;
+    }
+    .wordmark em { color: var(--pi-cyan); font-style: normal; }
+    .tagline {
+      font-family: var(--pi-font-display);
+      font-size: 11px;
+      color: var(--pi-cyan);
+      margin-top: 22px;
+      letter-spacing: 0.28em;
+    }
+    .tagline::before { content: "▸ "; color: var(--pi-orange); }
+
+    .cta-row {
+      position: relative; z-index: 5;
+      display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 40px;
+      gap: 22px;
+      margin-top: 28px;
     }
-    .title {
-      font-size: 56px;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      color: #aef7ff;
-      text-shadow: 0 0 20px rgba(94, 240, 255, 0.4);
-    }
-    .subtitle {
-      font-size: 16px;
-      color: #8b8fa3;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      margin-top: -24px;
-    }
-    .play-btn {
-      padding: 16px 56px;
-      background: transparent;
-      color: #aef7ff;
-      border: 2px solid #aef7ff;
-      border-radius: 4px;
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: 0.3em;
-      font-family: inherit;
-      cursor: pointer;
+    .cta {
+      font-family: var(--pi-font-display);
+      font-size: 14px;
+      padding: 16px 28px;
+      color: var(--pi-bg-2);
+      background: var(--pi-orange);
+      border: 3px solid var(--pi-ink);
+      box-shadow: 5px 5px 0 var(--pi-magenta);
+      letter-spacing: 0.1em;
       text-decoration: none;
-      transition: all 0.15s ease;
+      transition: transform 80ms steps(2), filter 80ms steps(2);
     }
-    .play-btn:hover {
-      background: #aef7ff;
-      color: #0a1420;
-      box-shadow: 0 0 24px rgba(94, 240, 255, 0.5);
+    .cta:hover { transform: translate(-2px, -2px); filter: brightness(1.1); }
+    .cta:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--pi-magenta); }
+    .cta:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 4px; }
+    .cta-hint {
+      font-family: var(--pi-font-body);
+      font-size: 20px;
+      color: var(--pi-cream);
+      opacity: 0.75;
+      letter-spacing: 0.04em;
+    }
+
+    .ground {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 28%;
+      z-index: 2;
+      background:
+        linear-gradient(180deg, transparent 0, rgba(0,0,0,0.55) 100%),
+        repeating-linear-gradient(90deg, #212a5a 0 24px, #1a2150 24px 48px);
+      border-top: 3px solid var(--pi-magenta);
+      box-shadow: 0 -3px 0 var(--pi-pink), 0 -10px 0 rgba(126, 37, 83, 0.25);
+    }
+
+    .queue {
+      position: absolute;
+      left: 36px; right: 36px; bottom: 36px;
+      display: flex;
+      align-items: flex-end;
+      gap: 16px;
+      z-index: 3;
+    }
+    .queue img {
+      display: block;
+      width: 108px;
+      height: 108px;
+    }
+    .queue .s1 { animation: bob 1.1s steps(2) infinite; }
+    .queue .s2 { animation: bob 1.1s steps(2) infinite 0.2s; }
+    .queue .s3 { animation: bob 1.1s steps(2) infinite 0.4s; }
+    .queue .s4 {
+      margin-left: auto;
+      transform: scaleX(-1);
+      animation: bob-flip 1.1s steps(2) infinite 0.6s;
+    }
+    @keyframes bob      { 50% { transform: translateY(-4px); } }
+    @keyframes bob-flip {
+      0%, 100% { transform: scaleX(-1) translateY(0); }
+      50%      { transform: scaleX(-1) translateY(-4px); }
+    }
+
+    .bubble {
+      position: absolute;
+      left: 78px; bottom: 160px;
+      z-index: 4;
+      font-family: var(--pi-font-body);
+      font-size: 20px;
+      color: var(--pi-bg-2);
+      background: var(--pi-cream);
+      padding: 6px 12px;
+      border: 3px solid var(--pi-ink);
+      box-shadow: 4px 4px 0 var(--pi-ink);
+      letter-spacing: 0.02em;
+    }
+    .bubble::after {
+      content: "";
+      position: absolute;
+      left: 18px; bottom: -13px;
+      width: 0; height: 0;
+      border-left: 10px solid transparent;
+      border-right: 10px solid transparent;
+      border-top: 10px solid var(--pi-ink);
+    }
+    .bubble::before {
+      content: "";
+      position: absolute;
+      left: 20px; bottom: -10px;
+      width: 0; height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 8px solid var(--pi-cream);
+      z-index: 1;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .queue .s1, .queue .s2, .queue .s3, .queue .s4 { animation: none !important; }
+    }
+
+    @media (max-width: 640px) {
+      .stage { padding: 20px 22px; }
+      .queue { gap: 8px; }
+      .queue img { width: 72px; height: 72px; }
+      .bubble { left: 46px; bottom: 118px; font-size: 16px; }
+      .wordmark {
+        text-shadow:
+          3px 3px 0 var(--pi-pink),
+          6px 6px 0 var(--pi-magenta),
+          8px 8px 0 var(--pi-ink);
+      }
     }
   </style>
 </head>
 <body>
-  <div class="landing">
-    <div class="title">STACK ATTACK</div>
-    <div class="subtitle">System Architecture Tower Defense</div>
-    <a href="./levels.html" class="play-btn">PLAY</a>
-  </div>
+  <main class="stage">
+    <div class="stars" aria-hidden="true"></div>
+    <div class="scanlines" aria-hidden="true"></div>
+
+    <div class="title-block">
+      <h1 class="wordmark">STACK<em>//</em><br>ATTACK</h1>
+      <p class="tagline">SYSTEM ARCHITECTURE · TOWER DEFENCE</p>
+    </div>
+
+    <div class="cta-row">
+      <a class="cta" href="./levels.html">▶ INSERT COIN</a>
+      <span class="cta-hint">— press play to begin —</span>
+    </div>
+
+    <div class="ground" aria-hidden="true"></div>
+
+    <div class="bubble" aria-hidden="true">GET /api/me</div>
+
+    <div class="queue" aria-hidden="true">
+      <img class="s1" src="./assets/stack-attack/client-south.png" alt="">
+      <img class="s2" src="./assets/stack-attack/client-east.png"  alt="">
+      <img class="s3" src="./assets/stack-attack/client-south.png" alt="">
+      <img class="s4" src="./assets/stack-attack/client-east.png"  alt="">
+    </div>
+  </main>
   <script type="module" src="./landing-boot.ts"></script>
 </body>
 </html>
