@@ -35,59 +35,112 @@
 @keyframes sa-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes sa-blink   { 50% { opacity: 0.35; } }
 
-/* ─── Global CRT scanline overlay ────────────────────────────────────
-   Sits above page content (including the game canvas) but below the
-   full-screen auth overlays, which render their own scanlined backdrop
-   at a higher z-index. Pointer-events off so it never intercepts
-   clicks. Declared on both html and body so it survives pages that
-   use body as the flex stage (e.g., the landing). */
-body::after {
-  content: "";
+/* ─── CRT overlay ────────────────────────────────────────────────────
+   Scanlines + vignette + roll-bar beam + subtle flicker. Structure
+   and animation curves adapted from HauntedCrusader/afterglow-crt
+   (https://github.com/HauntedCrusader/afterglow-crt) — values tuned
+   to this project's indigo Pico-8 palette.
+
+   Requires a <div class="crt-frame"><div class="crt-beam"></div></div>
+   mounted on each page. The frame sits above full-screen auth
+   overlays (z-index 10500 > 10000) so the effect is continuous
+   across login, landing, level select, and the game canvas. */
+:root {
+  --sa-crt-scanline-dark: 0.32;
+  --sa-crt-scanline-size: 2px;
+  --sa-crt-beam-height: 180px;
+  --sa-crt-beam-blur: 8px;
+  --sa-crt-beam-opacity: 0.55;
+  --sa-crt-beam-speed: 9.5s;
+  --sa-crt-flicker-speed: 3.5s;
+}
+
+.crt-frame {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 9500;
+  z-index: 10500;
+  animation: sa-crt-flicker var(--sa-crt-flicker-speed) linear infinite;
+}
+
+/* Scanlines — multiplied over the page, brighter than the beam. */
+.crt-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
   background: repeating-linear-gradient(
-    0deg,
-    rgba(0, 0, 0, 0.32) 0,
-    rgba(0, 0, 0, 0.32) 2px,
-    transparent 2px,
-    transparent 5px
+    to bottom,
+    rgba(0, 0, 0, var(--sa-crt-scanline-dark)) 0,
+    rgba(0, 0, 0, var(--sa-crt-scanline-dark)) var(--sa-crt-scanline-size),
+    transparent var(--sa-crt-scanline-size),
+    transparent calc(var(--sa-crt-scanline-size) * 2)
   );
   mix-blend-mode: multiply;
 }
 
-/* Roll-bar: a soft highlight band that sweeps top-to-bottom every few
-   seconds, then pauses — the classic CRT refresh artifact. Sits above
-   the static scanlines. Honors prefers-reduced-motion. */
-body::before {
+/* Vignette — emulates curved-glass edge falloff. */
+.crt-frame::after {
   content: "";
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 22vh;
+  position: absolute;
+  inset: 0;
   pointer-events: none;
-  z-index: 10500;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 0%,
+    transparent 55%,
+    rgba(0, 0, 0, 0.35) 88%,
+    rgba(0, 0, 0, 0.7) 100%
+  );
+}
+
+/* Roll-bar sync beam — drops from above the viewport, pauses mid-
+   screen, brightens to its peak, then fades and exits. The cubic-
+   bezier + keyframe shape comes from afterglow-crt; without those
+   two separate top/opacity phases the bar looks mechanical. */
+.crt-beam {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+  height: var(--sa-crt-beam-height);
+  filter: blur(var(--sa-crt-beam-blur));
+  opacity: 0;
+  mix-blend-mode: screen;
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    rgba(0, 0, 0, 0.18) 30%,
-    rgba(0, 0, 0, 0.42) 50%,
-    rgba(0, 0, 0, 0.18) 70%,
+    rgba(255, 255, 255, 0.05) 40%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.05) 60%,
     transparent 100%
   );
-  mix-blend-mode: multiply;
-  transform: translateY(-120%);
-  animation: sa-rollbar 7s linear infinite;
+  animation: sa-crt-beam var(--sa-crt-beam-speed) cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
 }
-@keyframes sa-rollbar {
-  0%   { transform: translateY(-120%); }
-  35%  { transform: translateY(560%);  }
-  100% { transform: translateY(560%);  }
+
+@keyframes sa-crt-flicker {
+  0%, 96% { opacity: 1; }
+  97%     { opacity: 0.94; }
+  98%     { opacity: 1; }
+  99%     { opacity: 0.98; }
+  100%    { opacity: 1; }
 }
+
+@keyframes sa-crt-beam {
+  0%   { top: -200px; opacity: 0; }
+  15%  { opacity: var(--sa-crt-beam-opacity); }
+  48%  { top: 50%; transform: translateY(-50%); opacity: calc(var(--sa-crt-beam-opacity) * 0.6); }
+  58%  { top: 50%; transform: translateY(-50%); opacity: 1; }
+  70%  { opacity: 0; }
+  100% { top: 55%; opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  body::before { animation: none; }
+  .crt-frame,
+  .crt-beam {
+    animation: none;
+  }
+  .crt-beam { opacity: 0; }
 }
 
 /* ─── Login overlay ──────────────────────────────────────────────── */
