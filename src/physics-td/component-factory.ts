@@ -10,6 +10,7 @@ import { WorkerCapability } from "@sim/capabilities/worker";
 import { StreamingCapability } from "@sim/capabilities/streaming";
 import { GeoRoutingCapability } from "@sim/capabilities/geo-routing";
 import { BlobStorageCapability } from "@sim/capabilities/blob-storage";
+import { CircuitBreakerCapability } from "@sim/capabilities/circuit-breaker";
 import type { WaveRevenue } from "@sim/wave";
 
 export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
@@ -24,6 +25,7 @@ export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
   ["streaming_server", 250],
   ["dns_gtm", 200],
   ["blob_storage", 200],
+  ["circuit_breaker", 150],
 ]);
 
 /** Sprite type used by the renderer to pick the iso tile graphic. */
@@ -39,11 +41,12 @@ export const COMPONENT_SPRITE_TYPE: ReadonlyMap<string, string> = new Map([
   ["streaming_server", "streaming_server"],
   ["dns_gtm", "dns_gtm"],
   ["blob_storage", "blob_storage"],
+  ["circuit_breaker", "circuit_breaker"],
 ]);
 
 export const COMPONENT_FACTORY: ReadonlyArray<string> = [
   "server", "database", "data_cache", "load_balancer", "cdn", "api_gateway",
-  "queue", "worker", "streaming_server", "dns_gtm", "blob_storage",
+  "queue", "worker", "streaming_server", "dns_gtm", "blob_storage", "circuit_breaker",
 ];
 
 export function buildSimComponent(
@@ -111,6 +114,11 @@ export function buildSimComponent(
           }),
         ],
         capacityPerSecond: 60,
+      });
+    case "circuit_breaker":
+      return new SimComponent({
+        id,
+        capabilities: [new CircuitBreakerCapability({ failureThreshold: 5, cooldownSeconds: 2 })],
       });
     default:
       return null;
