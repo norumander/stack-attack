@@ -28,6 +28,9 @@ import { ComponentMetricsAggregator } from "./component-metrics";
 import type { ComponentId } from "@core/types/ids";
 import { injectNavBar } from "../auth/index";
 import { resolveInitialSession } from "../auth-gate";
+import { mountChatbotDrawer } from "../chatbot/chatbot-drawer";
+import { serializeContextForChat } from "../chatbot/serialize-context";
+import type { ChatRequest } from "../chatbot/chat-client";
 
 const CLIENT_ID = "client" as ComponentId;
 // Drain budget after wave duration: extra real-seconds for in-flight packets to retire.
@@ -79,6 +82,7 @@ async function main(): Promise<void> {
   // Per-wave positions for the sim-to-renderer adapter (tracks placed positions).
   let positions = new Map<ComponentId, { x: number; y: number }>();
   const componentTypes = new Map<ComponentId, string>();
+  const componentLabels = new Map<ComponentId, string | undefined>();
 
   // Mutable refs for late-bound UX wiring.
   const refs: {
@@ -167,6 +171,7 @@ async function main(): Promise<void> {
         }
         const typeDisplay = COMPONENT_TYPE_LABEL.get(type) ?? type;
         const autoLabel = `${typeDisplay} ${index}`;
+        componentLabels.set(id, autoLabel);
         refs.placement?.applyPlacement(type, id, gridPos, autoLabel);
         revalidateTopology();
       },
@@ -186,6 +191,7 @@ async function main(): Promise<void> {
         sim.clients.delete(id);
         positions.delete(id);
         componentTypes.delete(id);
+        componentLabels.delete(id);
         renderer.removeComponent(id);
         revalidateTopology();
       },
@@ -759,6 +765,7 @@ async function main(): Promise<void> {
     sim.activePackets.length = 0;
     positions.clear();
     componentTypes.clear();
+    componentLabels.clear();
     perComponentDrops = new Map();
     perComponentProcessed = new Map();
     metricsAggregator.reset();
@@ -776,6 +783,54 @@ async function main(): Promise<void> {
     // Repaint the client visual for the next build phase.
     setupClientForBuild();
   }
+
+  // ─── Chatbot tutor drawer ───────────────────────────────────────────
+  const levelId =
+    (window as unknown as { __stackAttackLevelId?: StackAttackLevelId | null })
+      .__stackAttackLevelId ?? undefined;
+  mountChatbotDrawer({
+    host: document.body,
+    getContext: (): ChatRequest | null => {
+      const waveEntry = CAMPAIGN_WAVES[controller.currentWaveIndex];
+      if (!waveEntry) return null;
+      const avgLatency =
+        metrics.latencyCount > 0 ? metrics.latencySum / metrics.latencyCount : 0;
+      const dropRate =
+        metrics.totalRequests > 0 ? metrics.drops / metrics.totalRequests : 0;
+      const delivered = metrics.responded + metrics.terminated;
+      const availability =
+        metrics.totalRequests > 0 ? delivered / metrics.totalRequests : 1;
+      const currentTick =
+        controller.phase === "simulate"
+          ? Math.max(0, (performance.now() - waveStartMs) / 1000)
+          : 0;
+      return serializeContextForChat({
+        sim,
+        wave: waveEntry.wave,
+        waveId: waveEntry.id,
+        waveTitle: waveEntry.title,
+        sla: waveEntry.sla,
+        metricsAggregator: controller.phase === "simulate" ? metricsAggregator : null,
+        componentTypes,
+        componentLabels,
+        mode: "build",
+        hintLevel: "coach",
+        levelId: levelId ?? undefined,
+        liveMetrics: {
+          availability,
+          avgLatencySeconds: avgLatency,
+          dropRate,
+          currentTickSeconds: currentTick,
+        },
+        recentEvents: [],
+        conversationHistory: [],
+        userMessage: "",
+      });
+    },
+    onHighlight: () => {
+      // TODO: wire component flash when renderer exposes a highlight API.
+    },
+  });
 
   // ─── Initial paint ──────────────────────────────────────────────────
   hud.setWavePill(1, CAMPAIGN_WAVES.length);
