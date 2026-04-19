@@ -12,6 +12,7 @@ export const COMPONENT_TYPE_LABEL: ReadonlyMap<string, string> = new Map([
   ["data_cache", "Data Cache"],
   ["load_balancer", "Load Balancer"],
   ["cdn", "CDN"],
+  ["edge_cache", "Edge Cache"],
   ["api_gateway", "API Gateway"],
   ["queue", "Queue"],
   ["worker", "Worker"],

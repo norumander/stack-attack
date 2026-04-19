@@ -157,7 +157,39 @@ describe("wave 5 — candidate architectures", () => {
       .connect("w1", "db1")
       .build();
 
-    const topologies = [intended, noCB, noRedundancy, carryOver, overEngineered];
+    // with-edge-cache: intended + Edge Cache between CDN and Gateway.
+    // Tests whether an extra edge tier helps or hurts under chaos.
+    const withEdgeCache = topology("with-edge-cache")
+      .add("cdn", "cdn1")
+      .add("edge_cache", "ec1")
+      .add("api_gateway", "ag1")
+      .add("queue", "q1")
+      .add("worker", "w1")
+      .add("circuit_breaker", "cb1")
+      .add("load_balancer", "lb1")
+      .add("server", "s1")
+      .add("server", "s2")
+      .add("server", "s3")
+      .add("data_cache", "c1")
+      .add("database", "db1")
+      .entry("cdn1")
+      .connect("cdn1", "ec1")
+      .connect("ec1", "ag1")
+      .connect("ag1", "cb1")
+      .connect("cb1", "lb1")
+      .connect("lb1", "s1")
+      .connect("lb1", "s2")
+      .connect("lb1", "s3")
+      .connect("s1", "c1")
+      .connect("s2", "c1")
+      .connect("s3", "c1")
+      .connect("c1", "db1")
+      .connect("ag1", "q1")
+      .connect("q1", "w1")
+      .connect("w1", "db1")
+      .build();
+
+    const topologies = [intended, noCB, noRedundancy, carryOver, overEngineered, withEdgeCache];
     const results = topologies.map((t) =>
       simulatePlaytest(W5.wave, W5.sla, CUMULATIVE_BUDGET_W5, t, {
         seed: 42,

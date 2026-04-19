@@ -12,7 +12,8 @@ import { BrowserDriver } from "../sim-demo/browser-driver";
 import { SimToRendererAdapter } from "../sim-demo/sim-to-renderer";
 import { PhysicsCampaignController } from "./campaign-controller";
 import { COMPONENT_COSTS } from "./component-factory";
-import { CAMPAIGN_WAVES, computeBriefingForCampaignWave } from "./waves";
+import { CAMPAIGN_WAVES, computeBriefingForCampaignWave, type CampaignWave } from "./waves";
+import { BITLY_WAVES } from "./bitly-waves";
 import { PlacementUX } from "./placement-ux";
 import { ConnectUX } from "./connect-ux";
 import { wireWorkers } from "./wire-workers";
@@ -43,7 +44,7 @@ const KNOWN_LEVEL_IDS: ReadonlySet<string> = new Set(["url-shortener", "netflix"
 /**
  * Parse ?level=… out of a URL query string. Exported for testability.
  *
- * Both known values currently route to the same `CAMPAIGN_WAVES` — the
+ * Both known values route to their own campaign waves array — the
  * teammate owning game balance will branch on this id when the URL Shortener
  * and Netflix campaigns diverge. Unknown values fall through to `null`.
  */
@@ -63,7 +64,7 @@ async function waitForHudController(): Promise<CyberpunkHudController> {
   throw new Error("Cyberpunk HUD controller never initialized");
 }
 
-async function main(): Promise<void> {
+async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promise<void> {
   activateCyberpunkHud();
   const hudCtrl = await waitForHudController();
 
@@ -140,7 +141,7 @@ async function main(): Promise<void> {
       hud.setTopologyErrors([]);
       return;
     }
-    const wave = CAMPAIGN_WAVES[controller.currentWaveIndex];
+    const wave = waves[controller.currentWaveIndex];
     if (!wave) {
       hud.setTopologyErrors([]);
       return;
@@ -156,7 +157,7 @@ async function main(): Promise<void> {
   }
 
   const controller = new PhysicsCampaignController({
-    waves: CAMPAIGN_WAVES.map((w) => ({ id: w.id, startBudget: w.startBudget, revenue: w.wave.revenue })),
+    waves: waves.map((w) => ({ id: w.id, startBudget: w.startBudget, revenue: w.wave.revenue })),
     componentCosts: COMPONENT_COSTS,
     callbacks: {
       onPlaced: (type, id, gridPos) => {
@@ -207,9 +208,9 @@ async function main(): Promise<void> {
         revalidateTopology();
       },
       onPhaseChange: (phase, waveIndex) => {
-        const wave = CAMPAIGN_WAVES[waveIndex];
+        const wave = waves[waveIndex];
         hud.setPhase(phase);
-        hud.setWavePill(waveIndex + 1, CAMPAIGN_WAVES.length);
+        hud.setWavePill(waveIndex + 1, waves.length);
         if (phase === "build" && wave) {
           hudCtrl.updateBriefing(computeBriefingForCampaignWave(wave));
           hud.setStatus("Build phase — place components, READY when done");
@@ -264,18 +265,18 @@ async function main(): Promise<void> {
   if (devSelect) {
     // Clear any existing options without using innerHTML.
     while (devSelect.firstChild) devSelect.removeChild(devSelect.firstChild);
-    // Populate options from CAMPAIGN_WAVES.
-    for (let i = 0; i < CAMPAIGN_WAVES.length; i += 1) {
+    // Populate options from waves.
+    for (let i = 0; i < waves.length; i += 1) {
       const opt = document.createElement("option");
       opt.value = String(i);
-      opt.textContent = CAMPAIGN_WAVES[i]!.title;
+      opt.textContent = waves[i]!.title;
       devSelect.appendChild(opt);
     }
     // Honor ?wave=N on URL (1-indexed for human friendliness).
     const urlWaveParam = new URLSearchParams(window.location.search).get("wave");
     if (urlWaveParam !== null) {
       const idx = Number.parseInt(urlWaveParam, 10);
-      if (Number.isFinite(idx) && idx >= 1 && idx <= CAMPAIGN_WAVES.length) {
+      if (Number.isFinite(idx) && idx >= 1 && idx <= waves.length) {
         const zeroIdx = idx - 1;
         devSelect.value = String(zeroIdx);
         // Defer the jump until after initial paint so the controller's first
@@ -381,7 +382,7 @@ async function main(): Promise<void> {
       hudCtrl.showToast("Place at least one component before READY");
       return;
     }
-    const wave = CAMPAIGN_WAVES[controller.currentWaveIndex];
+    const wave = waves[controller.currentWaveIndex];
     if (!wave) return;
 
     // Verify the player has connected the client to something — otherwise
@@ -524,7 +525,7 @@ async function main(): Promise<void> {
 
       if (now >= drainDeadline) {
         // Wave done — evaluate SLA.
-        const wave = CAMPAIGN_WAVES[controller.currentWaveIndex]!;
+        const wave = waves[controller.currentWaveIndex]!;
         const avgLatency =
           metrics.latencyCount > 0 ? metrics.latencySum / metrics.latencyCount : 0;
         driver = null;
@@ -619,7 +620,7 @@ async function main(): Promise<void> {
 
     // Preview of next wave if there is one.
     const nextIndex = waveIndex + 1;
-    const nextWave = CAMPAIGN_WAVES[nextIndex] ?? null;
+    const nextWave = waves[nextIndex] ?? null;
     if (nextWave) {
       const divider = document.createElement("div");
       divider.className = "cp-win-divider";
@@ -690,7 +691,7 @@ async function main(): Promise<void> {
 
     const sub = document.createElement("div");
     sub.className = "cp-win-narrative";
-    sub.textContent = `${CAMPAIGN_WAVES.length} waves cleared. The grid is yours.`;
+    sub.textContent = `${waves.length} waves cleared. The grid is yours.`;
     modal.appendChild(sub);
 
     const cta = document.createElement("button");
@@ -791,7 +792,7 @@ async function main(): Promise<void> {
   mountChatbotDrawer({
     host: document.body,
     getContext: (): ChatRequest | null => {
-      const waveEntry = CAMPAIGN_WAVES[controller.currentWaveIndex];
+      const waveEntry = waves[controller.currentWaveIndex];
       if (!waveEntry) return null;
       const avgLatency =
         metrics.latencyCount > 0 ? metrics.latencySum / metrics.latencyCount : 0;
@@ -833,10 +834,10 @@ async function main(): Promise<void> {
   });
 
   // ─── Initial paint ──────────────────────────────────────────────────
-  hud.setWavePill(1, CAMPAIGN_WAVES.length);
+  hud.setWavePill(1, waves.length);
   hud.setPhase("build");
   hud.setBudget(controller.budget);
-  hudCtrl.updateBriefing(computeBriefingForCampaignWave(CAMPAIGN_WAVES[0]!));
+  hudCtrl.updateBriefing(computeBriefingForCampaignWave(waves[0]!));
   hudCtrl.updateViability({ value: viability.value, fraction: viability.fraction });
   hud.setStatus("Build phase — place components and click READY");
 }
@@ -852,12 +853,13 @@ async function boot(): Promise<void> {
 
   // Capture ?level= so the teammate can branch on it when the URL Shortener
   // and Netflix campaigns diverge. Currently a read-only observable marker;
-  // both known ids resolve to the same CAMPAIGN_WAVES today.
+  // netflix → CAMPAIGN_WAVES, url-shortener → BITLY_WAVES.
   const levelId = readLevelIdFromUrl(window.location.search);
   (window as unknown as { __stackAttackLevelId: StackAttackLevelId | null }).__stackAttackLevelId = levelId;
 
   injectNavBar();
-  await main();
+  const waves = levelId === "url-shortener" ? BITLY_WAVES : CAMPAIGN_WAVES;
+  await main(waves);
 }
 
 void boot();

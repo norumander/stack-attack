@@ -61,7 +61,23 @@ type Role = "terminal" | "forwarder" | "none";
  * circuit_breaker (CLOSED forwards all; OPEN is runtime chaos, not a static
  * flag), auto-scale (second-capability, never on arrival path).
  */
-function classify(capId: string, type: RequestType): Role {
+function classify(capId: string, type: RequestType, componentType?: string): Role {
+  // Caching is shared by data_cache, cdn, edge_cache — each has a different
+  // `cacheableTypes` / `largeOnly` slice. Refine when we know the component
+  // type, otherwise fall back to the permissive (original) behavior.
+  if (capId === "caching") {
+    if (componentType === "cdn") {
+      if (type === "large_payload") return "terminal";
+      return "forwarder";
+    }
+    if (componentType === "edge_cache") {
+      if (type === "api_read") return "terminal";
+      return "forwarder";
+    }
+    // data_cache or unknown: can terminate reads on hit (optimistic).
+    if (type === "api_read" || type === "large_payload") return "terminal";
+    return "forwarder";
+  }
   switch (capId) {
     case "processing":
       // ProcessingCapability doesn't inspect stream/async flags — at runtime
@@ -72,10 +88,6 @@ function classify(capId: string, type: RequestType): Role {
       // will still carry the packet toward a real handler if one exists.
       if (type === "stream_data" || type === "async_work") return "forwarder";
       return "terminal";
-    case "caching":
-      // Can terminate reads on hit; forwards misses + writes + specialties.
-      if (type === "api_read" || type === "large_payload") return "terminal";
-      return "forwarder";
     case "gateway":
       if (type === "auth_required") return "terminal";
       return "forwarder";
@@ -167,6 +179,7 @@ function bfsForType(
   sim: Sim,
   entryClientId: ComponentId,
   type: RequestType,
+  componentTypes?: ReadonlyMap<ComponentId, string>,
 ): TopologyError | null {
   const visited = new Set<ComponentId>();
   const queue: ComponentId[] = [entryClientId];
@@ -194,8 +207,9 @@ function bfsForType(
     if (!isEntry) {
       let anyTerminal = false;
       let anyForwarder = false;
+      const compType = componentTypes?.get(current);
       for (const cap of comp.capabilities) {
-        const role = classify(cap.id, type);
+        const role = classify(cap.id, type, compType);
         if (role === "terminal") anyTerminal = true;
         else if (role === "forwarder") anyForwarder = true;
       }
@@ -298,7 +312,7 @@ export function validateTopology(
   const errors: TopologyError[] = [];
   const types = enumerateRequestTypes(wave);
   for (const type of types) {
-    const err = bfsForType(sim, entryClientId, type);
+    const err = bfsForType(sim, entryClientId, type, componentTypes);
     if (err) errors.push(err);
   }
   return errors;

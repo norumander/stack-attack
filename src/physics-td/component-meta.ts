@@ -83,6 +83,21 @@ export const COMPONENT_META: Readonly<Record<string, ComponentMeta>> = {
       tip: "Use a CDN when a wave is heavy on images or blobs. It absorbs the large stuff before it reaches the rest of your stack.",
     },
   },
+  edge_cache: {
+    displayName: "Edge Cache",
+    description: "Client-facing LRU for api_read lookups — the reverse-proxy / edge cache tier.",
+    capabilitiesHuman: [
+      "Caches api_read responses in an LRU slot set (40 slots)",
+      "Responds directly on cache hit; forwards misses to the server tier",
+      "Passes writes, auth, streams, and large payloads through unchanged",
+    ],
+    dossier: {
+      body: "An Edge Cache sits at the edge of your stack, directly in front of clients, and absorbs repeated text lookups — short URL redirects, product pages, public JSON. It's the reverse-proxy cache tier (Varnish, Fastly, Cloudflare) that pairs with a CDN: the CDN handles binaries, the Edge Cache handles hot text reads.",
+      wire: "Client → Edge Cache → Server → Database",
+      handles: "api_read requests (hits respond at the edge; other types pass through)",
+      tip: "Use when a wave has a small hot-key space and most requests are plain reads. Spares Server and Database from duplicate work without burning budget on a CDN.",
+    },
+  },
   api_gateway: {
     displayName: "API Gateway",
     description: "Terminates authentication at the edge. Auth-tagged requests stop here; non-auth passes through.",
