@@ -3,8 +3,15 @@ import { DIAGNOSE_LEVELS, type DiagnoseLevel } from "../../../src/diagnose/diagn
 import { PLACEHOLDER_DIAGNOSE_LEVEL } from "../../../src/diagnose/placeholder-level";
 
 describe("DiagnoseLevel catalogue", () => {
-  it("DIAGNOSE_LEVELS is empty (content lane owns population)", () => {
-    expect(DIAGNOSE_LEVELS).toEqual([]);
+  it("DIAGNOSE_LEVELS is populated with the Instagram arc (5 levels)", () => {
+    expect(DIAGNOSE_LEVELS.length).toBe(5);
+    expect(DIAGNOSE_LEVELS.map((l) => l.id)).toEqual([
+      "instagram-1",
+      "instagram-2",
+      "instagram-3",
+      "instagram-4",
+      "instagram-5",
+    ]);
   });
 
   it("placeholder level conforms to DiagnoseLevel and is NOT in the catalogue", () => {
