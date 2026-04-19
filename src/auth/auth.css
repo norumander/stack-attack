@@ -206,23 +206,20 @@
 
 .sa-avatar-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
   margin-bottom: 26px;
 }
 
 .sa-avatar-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 6px;
+  display: grid;
+  place-items: center;
+  padding: 18px;
   background: var(--pi-bg-2);
   border: 3px solid var(--pi-ink);
   box-shadow: 3px 3px 0 var(--pi-magenta);
   cursor: pointer;
   transition: transform 80ms steps(2), filter 80ms steps(2);
-  color: var(--pi-cream);
 }
 
 .sa-avatar-btn:hover {
@@ -232,7 +229,6 @@
 
 .sa-avatar-btn.selected {
   background: var(--pi-cyan);
-  color: var(--pi-bg-2);
   box-shadow: 3px 3px 0 var(--pi-yellow);
 }
 
@@ -241,12 +237,12 @@
   outline-offset: 3px;
 }
 
-.sa-avatar-label {
-  font-family: var(--pi-font-display);
-  font-size: 8px;
-  color: inherit;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.sa-avatar-sprite {
+  display: block;
+  width: 96px;
+  height: 96px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 .sa-profile-save-btn {
@@ -347,15 +343,21 @@
 }
 
 .sa-user-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  font-family: var(--pi-font-display);
-  font-size: 8px;
-  color: var(--pi-bg-2);
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  background: var(--pi-cream);
   border: 2px solid var(--pi-ink);
+  overflow: hidden;
+}
+
+.sa-user-avatar img {
+  width: 40px;
+  height: 40px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  margin-top: 4px;
 }
 
 .sa-user-name {

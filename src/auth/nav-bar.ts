@@ -1,22 +1,5 @@
 import { getProfile, signOut, onAuthChange } from "./auth-state";
-
-const AVATAR_COLORS: Record<string, string> = {
-  server: "#4A90D9",
-  database: "#7B68EE",
-  cache: "#F5A623",
-  load_balancer: "#50C878",
-  cdn: "#E74C8B",
-  api_gateway: "#6366f1",
-};
-
-const AVATAR_INITIALS: Record<string, string> = {
-  server: "S",
-  database: "D",
-  cache: "C",
-  load_balancer: "LB",
-  cdn: "CD",
-  api_gateway: "AG",
-};
+import { avatarSpritePath } from "./avatar";
 
 export function injectNavBar(): void {
   const profile = getProfile();
@@ -37,8 +20,8 @@ export function injectNavBar(): void {
     </button>
     <div class="sa-user-menu" id="sa-user-menu">
       <button class="sa-user-menu-trigger" id="sa-user-menu-trigger">
-        <span class="sa-user-avatar" style="background:${AVATAR_COLORS[profile.avatar_key] ?? "#6366f1"}">
-          ${AVATAR_INITIALS[profile.avatar_key] ?? "?"}
+        <span class="sa-user-avatar">
+          <img src="${avatarSpritePath(profile.avatar_key, "south")}" alt="" />
         </span>
         <span class="sa-user-name">${escapeHtml(profile.display_name)}</span>
       </button>
@@ -88,11 +71,10 @@ function updateNavProfile(): void {
   const profile = getProfile();
   if (!profile) return;
 
-  const avatar = document.querySelector(".sa-user-avatar") as HTMLElement | null;
+  const avatarImg = document.querySelector(".sa-user-avatar img") as HTMLImageElement | null;
   const name = document.querySelector(".sa-user-name") as HTMLElement | null;
-  if (avatar) {
-    avatar.style.background = AVATAR_COLORS[profile.avatar_key] ?? "#6366f1";
-    avatar.textContent = AVATAR_INITIALS[profile.avatar_key] ?? "?";
+  if (avatarImg) {
+    avatarImg.src = avatarSpritePath(profile.avatar_key, "south");
   }
   if (name) {
     name.textContent = profile.display_name;
