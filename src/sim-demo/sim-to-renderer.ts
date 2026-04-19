@@ -1,6 +1,6 @@
 import type { Sim } from "@sim/sim";
 import type { TopologyRenderer } from "../render/topology-renderer";
-import type { Packet } from "@sim/types";
+import type { Packet, SimEvent } from "@sim/types";
 import type { ComponentId, ConnectionId, RequestId } from "@core/types/ids";
 
 export type SimToRendererAdapterOptions = {
@@ -43,7 +43,7 @@ export class SimToRendererAdapter {
     else this.renderer.flashResponded(componentId);
   }
 
-  syncFrame(): void {
+  syncFrame(tickEvents: readonly SimEvent[] = this.sim.lastStepEvents): void {
     for (const packet of this.sim.activePackets) {
       const key = spawnKey(packet.id as unknown as string, packet.edgeId);
       if (this.trackedSpawns.has(key)) continue;
@@ -67,7 +67,7 @@ export class SimToRendererAdapter {
       if (!activeKeys.has(key)) this.trackedSpawns.delete(key);
     }
 
-    for (const ev of this.sim.lastStepEvents) {
+    for (const ev of tickEvents) {
       if (ev.kind === "drop") this.maybeFlash(ev.componentId, "drop");
       else if (ev.kind === "terminate" || ev.kind === "respond-delivered") {
         this.maybeFlash(ev.componentId, "responded");
@@ -75,7 +75,7 @@ export class SimToRendererAdapter {
     }
 
     // Track processed events for utilization (rolling 1s window).
-    for (const ev of this.sim.lastStepEvents) {
+    for (const ev of tickEvents) {
       if (ev.kind !== "terminate" && ev.kind !== "respond-delivered") continue;
       const arr = this.recentProcessed.get(ev.componentId) ?? [];
       arr.push(this.sim.simTime);

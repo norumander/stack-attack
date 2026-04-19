@@ -29,18 +29,6 @@ export function setBriefing(title: string, body: string): void {
   setText("td-briefing-components", "");
 }
 
-export function showLossModal(title: string, detail: string): void {
-  const modal = document.getElementById("td-loss-modal");
-  if (modal) modal.removeAttribute("hidden");
-  setText("td-loss-modal-title", title);
-  setText("td-loss-modal-detail", detail);
-}
-
-export function hideLossModal(): void {
-  const modal = document.getElementById("td-loss-modal");
-  if (modal) modal.setAttribute("hidden", "");
-}
-
 export function setReadyDisabled(disabled: boolean): void {
   const btn = document.getElementById("td-ready-btn") as HTMLButtonElement | null;
   if (!btn) return;

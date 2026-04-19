@@ -1,6 +1,6 @@
 import type { ComponentId, ConnectionId } from "@core/types/ids";
 
-export type Phase = "build" | "simulate" | "won" | "lost" | "campaign-complete";
+export type Phase = "build" | "simulate" | "won" | "campaign-complete";
 
 export type WaveSlot = {
   readonly id: string;
@@ -124,10 +124,17 @@ export class PhysicsCampaignController {
     this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
   }
 
-  onWaveEnd(passed: boolean): void {
+  onWaveEnd(): void {
     if (this.phase !== "simulate") return;
-    this.phase = passed ? "won" : "lost";
+    this.phase = "won";
     this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
+  }
+
+  /** Deduct the SLA financial penalty at wave end (can push budget negative). */
+  applyPenalty(dollars: number): void {
+    if (dollars <= 0) return;
+    this.budget -= dollars;
+    this.opts.callbacks.onBudgetChange(this.budget);
   }
 
   nextWave(): void {
@@ -142,19 +149,6 @@ export class PhysicsCampaignController {
     this.phase = "build";
     this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
     // No onBudgetChange call — budget did not change.
-  }
-
-  retry(): void {
-    if (this.phase !== "lost") return;
-    // Note: bootstrap is responsible for clearing placedComponents/Connections
-    // from sim + renderer. Controller just resets economy and phase.
-    this.budget = this.opts.waves[this.currentWaveIndex]!.startBudget;
-    this.placedComponents.clear();
-    this.placedTypes.clear();
-    this.placedConnections.clear();
-    this.phase = "build";
-    this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
-    this.opts.callbacks.onBudgetChange(this.budget);
   }
 
   /**

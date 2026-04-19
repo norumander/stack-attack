@@ -65,7 +65,6 @@ function buildHud(): void {
   buildInfoPanel(root);
   buildPaletteStrip(root);
   buildReadyButton(root);
-  buildLossModal(root);
   buildToast(root);
 
   hudController = {
@@ -388,45 +387,6 @@ function buildToast(root: HTMLElement): void {
   toastEl.setAttribute("role", "status");
   toastEl.setAttribute("aria-live", "polite");
   root.append(toastEl);
-}
-
-// ─── Loss modal (centered overlay) ────────────────────────────────────
-
-function buildLossModal(root: HTMLElement): void {
-  const modal = div("cp-loss-modal cp-hidden");
-  const content = panel("cp-loss-content");
-
-  const title = document.createElement("h3");
-  title.className = "cp-loss-title";
-  title.textContent = "Wave LOST";
-  content.append(title);
-
-  const detail = document.createElement("p");
-  detail.className = "cp-loss-detail";
-  content.append(detail);
-
-  const buttons = div("cp-loss-buttons");
-  const retry = document.createElement("button");
-  retry.type = "button";
-  retry.className = "cp-btn cp-btn-primary";
-  retry.textContent = "Retry Wave";
-  const reset = document.createElement("button");
-  reset.type = "button";
-  reset.className = "cp-btn";
-  reset.textContent = "Reset Campaign";
-  buttons.append(retry, reset);
-  content.append(buttons);
-
-  modal.append(content);
-  root.append(modal);
-
-  mirrorText("td-loss-modal-title", title, (t) => t.toUpperCase());
-  mirrorText("td-loss-modal-detail", detail);
-  mirrorAttribute("td-loss-modal", "hidden", (hidden) => {
-    modal.classList.toggle("cp-hidden", hidden);
-  });
-  forwardClick(retry, "td-retry-btn");
-  forwardClick(reset, "td-reset-btn");
 }
 
 // ─── Slice B — controller state + setters ─────────────────────────────

@@ -8,7 +8,6 @@ import { Sim } from "@sim/sim";
 import { SimClient } from "@sim/client";
 import { TrafficSource } from "@sim/traffic-source";
 import { makeSimRng } from "@sim/rng";
-import { evaluateSLA } from "@sim/sla";
 import { BrowserDriver } from "../sim-demo/browser-driver";
 import { SimToRendererAdapter } from "../sim-demo/sim-to-renderer";
 import { PhysicsCampaignController } from "./campaign-controller";
@@ -18,7 +17,8 @@ import { PlacementUX } from "./placement-ux";
 import { ConnectUX } from "./connect-ux";
 import { wireWorkers } from "./wire-workers";
 import * as hud from "./hud-bridge";
-import { diagnoseWave } from "./diagnose-wave";
+import { Viability, DAMAGE_PER_FAILURE } from "./viability";
+import { computeSlaPenalty } from "./wave-penalty";
 import { ComponentDossierStore } from "./dossier-store";
 import { showDossier } from "./show-dossier";
 import { bindInfoPanel, type InfoPanelHandle } from "./component-info-panel";
@@ -82,6 +82,13 @@ async function main(): Promise<void> {
   let perComponentDrops: Map<ComponentId, { total: number; byReason: Map<string, number> }> = new Map();
   let perComponentProcessed: Map<ComponentId, number> = new Map();
   const seenPacketIds = new Set<string>();
+
+  // Campaign-wide viability pool. Drains per failed request; at 0 the
+  // player restarts from wave 1 (page reload).
+  const viability = new Viability();
+  let dead = false;
+  let lastWavePenalty = 0;
+  let lastWaveAvailability = 1;
 
   // Delete mode toggle (fallback to right-click). When ON, normal click on a
   // component or connection deletes it instead of placing/connecting.
@@ -147,7 +154,6 @@ async function main(): Promise<void> {
         if (phase === "build" && wave) {
           hudCtrl.updateBriefing(computeBriefingForCampaignWave(wave));
           hud.setStatus("Build phase — place components, READY when done");
-          hud.hideLossModal();
           hud.setReadyDisabled(false);
           setDeleteMode(false);
           setupClientForBuild();
@@ -160,10 +166,6 @@ async function main(): Promise<void> {
           hud.setStatus("Wave WON");
           hud.setReadyDisabled(true);
           showWinModal(waveIndex);
-        } else if (phase === "lost") {
-          infoPanel.hide();
-          hud.setReadyDisabled(true);
-          // Loss modal is shown by the wave-end handler with the SLA reasons.
         } else if (phase === "campaign-complete") {
           infoPanel.hide();
           hud.setStatus("Campaign complete — well played!");
@@ -393,8 +395,8 @@ async function main(): Promise<void> {
       capabilities: [],
       packetRate: wave.wave.packetRate,
       trafficSource: ts,
-      waveStartTime: 0,
-      waveEndTime: wave.wave.duration,
+      waveStartTime: sim.simTime,
+      waveEndTime: sim.simTime + wave.wave.duration,
     });
     sim.addClient(client);
     wireWorkers(sim);
@@ -437,16 +439,22 @@ async function main(): Promise<void> {
         if (p.parentId === null && !seenPacketIds.has(id)) {
           seenPacketIds.add(id);
           metrics.totalPackets += 1;
+          console.warn("[td-pkt] new packet seen, totalPackets now:", metrics.totalPackets, "simTime:", sim.simTime);
         }
       }
-      for (const ev of sim.lastStepEvents) {
+      if (driver.tickEvents.length > 0) {
+        console.warn("[td-events] tick events:", driver.tickEvents.map(e => e.kind).join(","));
+      }
+      let failuresThisFrame = 0;
+      for (const ev of driver.tickEvents) {
         if (ev.kind === "drop") {
-          metrics.drops += ev.count;
+          metrics.drops += 1;
+          failuresThisFrame += 1;
           const compId = ev.componentId as ComponentId;
           let tally = perComponentDrops.get(compId);
           if (!tally) { tally = { total: 0, byReason: new Map() }; perComponentDrops.set(compId, tally); }
-          tally.total += ev.count;
-          tally.byReason.set(ev.reason, (tally.byReason.get(ev.reason) ?? 0) + ev.count);
+          tally.total += 1;
+          tally.byReason.set(ev.reason, (tally.byReason.get(ev.reason) ?? 0) + 1);
         } else if (ev.kind === "terminate") {
           metrics.terminated += 1;
           metrics.revenue += ev.revenue;
@@ -463,7 +471,19 @@ async function main(): Promise<void> {
           perComponentProcessed.set(compId, (perComponentProcessed.get(compId) ?? 0) + 1);
         }
       }
-      adapter.syncFrame();
+      adapter.syncFrame(driver.tickEvents);
+
+      if (failuresThisFrame > 0) {
+        viability.damage(failuresThisFrame * DAMAGE_PER_FAILURE);
+        hudCtrl.updateViability({ value: viability.value, fraction: viability.fraction });
+        if (viability.isDead && !dead) {
+          dead = true;
+          driver = null;
+          adapter = null;
+          showDeathModal();
+          return;
+        }
+      }
 
       // Wave progress bar: HUD observes #td-status for "tick X/Y".
       // Throttle to 4Hz to keep MutationObserver cheap.
@@ -484,10 +504,20 @@ async function main(): Promise<void> {
 
       if (now >= drainDeadline) {
         // Wave done — evaluate SLA.
+        console.warn("[td-sla] wave end metrics:", JSON.stringify({
+          totalPackets: metrics.totalPackets,
+          responded: metrics.responded,
+          terminated: metrics.terminated,
+          drops: metrics.drops,
+          activePackets: sim.activePackets.length,
+          simTime: sim.simTime,
+        }));
         const wave = CAMPAIGN_WAVES[controller.currentWaveIndex]!;
         const avgLatency =
           metrics.latencyCount > 0 ? metrics.latencySum / metrics.latencyCount : 0;
-        const sla = evaluateSLA(
+        driver = null;
+        adapter = null;
+        const penalty = computeSlaPenalty(
           {
             totalPackets: metrics.totalPackets,
             responded: metrics.responded,
@@ -498,27 +528,12 @@ async function main(): Promise<void> {
           },
           wave.sla,
         );
-        driver = null;
-        adapter = null;
-        if (!sla.passed) {
-          const wave = CAMPAIGN_WAVES[controller.currentWaveIndex]!;
-          const diagnosis = diagnoseWave({
-            sim,
-            wave: {
-              writeRatio: wave.wave.composition.writeRatio,
-              hasReads: 1 - wave.wave.composition.writeRatio - wave.wave.composition.authRatio - wave.wave.composition.streamRatio > 0,
-              hasStreams: wave.wave.composition.streamRatio > 0,
-            },
-            perComponentDrops,
-            totalDrops: metrics.drops,
-            totalProcessed: metrics.responded + metrics.terminated,
-          });
-          const detail = diagnosis.hint
-            ? `${diagnosis.symptom} ${diagnosis.hint}`
-            : diagnosis.symptom;
-          hud.showLossModal(diagnosis.headline, detail);
+        lastWavePenalty = penalty.dollars;
+        lastWaveAvailability = penalty.actualAvailability;
+        if (penalty.dollars > 0) {
+          controller.applyPenalty(penalty.dollars);
         }
-        controller.onWaveEnd(sla.passed);
+        controller.onWaveEnd();
       }
     }
     requestAnimationFrame(frame);
@@ -546,10 +561,20 @@ async function main(): Promise<void> {
     const earnedRow = document.createElement("div");
     earnedRow.className = "cp-win-stat";
     earnedRow.textContent = `Earned  $${Math.round(metrics.revenue)}`;
+    stats.appendChild(earnedRow);
+    const slaRow = document.createElement("div");
+    slaRow.className = "cp-win-stat";
+    slaRow.textContent = `SLA     ${(lastWaveAvailability * 100).toFixed(1)}%`;
+    stats.appendChild(slaRow);
+    if (lastWavePenalty > 0) {
+      const penaltyRow = document.createElement("div");
+      penaltyRow.className = "cp-win-stat";
+      penaltyRow.textContent = `Penalty −$${lastWavePenalty}`;
+      stats.appendChild(penaltyRow);
+    }
     const budgetRow = document.createElement("div");
     budgetRow.className = "cp-win-stat";
     budgetRow.textContent = `Budget  $${controller.budget}`;
-    stats.appendChild(earnedRow);
     stats.appendChild(budgetRow);
     modal.appendChild(stats);
 
@@ -655,16 +680,35 @@ async function main(): Promise<void> {
     return row;
   }
 
-  // ─── Retry / Reset (Task 8) ─────────────────────────────────────────
-  document.getElementById("td-retry-btn")!.addEventListener("click", () => {
-    if (controller.phase !== "lost") return;
-    // Wipe everything from sim + renderer.
-    clearWaveWorld();
-    controller.retry();
-  });
-  document.getElementById("td-reset-btn")!.addEventListener("click", () => {
-    window.location.reload();
-  });
+  function showDeathModal(): void {
+    document.querySelector(".cp-win-overlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.className = "cp-win-overlay";
+    const modal = document.createElement("div");
+    modal.className = "cp-win-modal cp-panel";
+
+    const title = document.createElement("h2");
+    title.className = "cp-win-title";
+    title.textContent = "SYSTEM COLLAPSE";
+    modal.appendChild(title);
+
+    const sub = document.createElement("div");
+    sub.className = "cp-win-narrative";
+    sub.textContent =
+      "Too many failed requests. The grid is offline. Restart from the first deployment.";
+    modal.appendChild(sub);
+
+    const cta = document.createElement("button");
+    cta.type = "button";
+    cta.className = "cp-win-cta";
+    cta.textContent = "RESTART CAMPAIGN";
+    modal.appendChild(cta);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    cta.addEventListener("click", () => window.location.reload());
+    cta.focus();
+  }
 
   function clearWaveWorld(): void {
     // Snapshot ids first so we can iterate while mutating.
@@ -705,6 +749,7 @@ async function main(): Promise<void> {
   hud.setPhase("build");
   hud.setBudget(controller.budget);
   hudCtrl.updateBriefing(computeBriefingForCampaignWave(CAMPAIGN_WAVES[0]!));
+  hudCtrl.updateViability({ value: viability.value, fraction: viability.fraction });
   hud.setStatus("Build phase — place components and click READY");
 }
 

@@ -65,11 +65,11 @@ describe("PhysicsCampaignController", () => {
     expect(callbacks.phaseChanges.at(-1)).toEqual({ phase: "simulate", waveIndex: 0 });
   });
 
-  it("onWaveEnd(passed=true) → won phase, nextWave advances WITHOUT resetting budget", () => {
+  it("onWaveEnd → won phase, nextWave advances WITHOUT resetting budget", () => {
     const { controller, callbacks } = makeController();
     controller.tryPlace("server", { x: 1, y: 1 }); // budget 500 - 100 = 400
     controller.ready();
-    controller.onWaveEnd(true);
+    controller.onWaveEnd();
     expect(controller.phase).toBe("won");
     controller.nextWave();
     expect(controller.currentWaveIndex).toBe(1);
@@ -79,32 +79,36 @@ describe("PhysicsCampaignController", () => {
     expect(callbacks.phaseChanges.map((p) => p.phase)).toEqual(["simulate", "won", "build"]);
   });
 
+  it("applyPenalty deducts from budget and fires onBudgetChange", () => {
+    const { controller, callbacks } = makeController();
+    controller.ready();
+    controller.onWaveEnd();
+    controller.applyPenalty(120);
+    expect(controller.budget).toBe(380);
+    expect(callbacks.budgetChanges.at(-1)).toBe(380);
+  });
+
+  it("applyPenalty allows budget to go negative", () => {
+    const { controller } = makeController();
+    controller.ready();
+    controller.onWaveEnd();
+    controller.applyPenalty(600);
+    expect(controller.budget).toBe(-100);
+  });
+
   it("first wave starts at wave[0].startBudget", () => {
     const { controller } = makeController();
     expect(controller.currentWaveIndex).toBe(0);
     expect(controller.budget).toBe(500);
   });
 
-  it("onWaveEnd(passed=false) → lost phase, retry resets to current wave start", () => {
-    const { controller, callbacks } = makeController();
-    controller.tryPlace("server", { x: 1, y: 1 });
-    expect(controller.budget).toBe(400);
-    controller.ready();
-    controller.onWaveEnd(false);
-    expect(controller.phase).toBe("lost");
-    controller.retry();
-    expect(controller.phase).toBe("build");
-    expect(controller.budget).toBe(500);
-    expect(callbacks.phaseChanges.map((p) => p.phase)).toEqual(["simulate", "lost", "build"]);
-  });
-
   it("nextWave on the last wave triggers campaign-complete", () => {
     const { controller } = makeController();
     controller.ready();
-    controller.onWaveEnd(true);
+    controller.onWaveEnd();
     controller.nextWave();
     controller.ready();
-    controller.onWaveEnd(true);
+    controller.onWaveEnd();
     controller.nextWave();
     expect(controller.phase).toBe("campaign-complete");
   });

@@ -116,7 +116,10 @@ export class Sim {
     };
     if (packet.direction === "forward") {
       const cap = component.capabilities[0];
-      if (!cap) return;
+      if (!cap) {
+        this.lastStepEvents.push({ kind: "drop", componentId: component.id, reason: "no_capability", count: packet.requests.length });
+        return;
+      }
       const outcome = cap.onArriveRequest(packet, ctx);
       this.applyOutcome(outcome, component.id);
     } else {
