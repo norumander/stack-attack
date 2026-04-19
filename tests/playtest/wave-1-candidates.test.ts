@@ -59,7 +59,18 @@ describe("wave 1 — candidate architectures", () => {
       .entry("s1")
       .build();
 
-    const topologies = [intended, withCache, overEngineered, backendAsEntry, underBuilt];
+    // with-edge-cache: Client → Edge Cache → Server → DB. Edge Cache is
+    // client-facing and absorbs repeated api_read lookups at the edge.
+    const withEdgeCache = topology("with-edge-cache")
+      .add("edge_cache", "ec1")
+      .add("server", "s1")
+      .add("database", "db1")
+      .entry("ec1")
+      .connect("ec1", "s1")
+      .connect("s1", "db1")
+      .build();
+
+    const topologies = [intended, withCache, withEdgeCache, overEngineered, backendAsEntry, underBuilt];
     const results = topologies.map((t) =>
       simulatePlaytest(W1.wave, W1.sla, CUMULATIVE_BUDGET_W1, t, { seed: 42 }),
     );

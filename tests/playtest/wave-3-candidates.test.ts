@@ -101,7 +101,30 @@ describe("wave 3 — candidate architectures", () => {
       .connect("c1", "db1")
       .build();
 
-    const topologies = [intended, noCdn, noGateway, noEdge, overEngineered];
+    // cdn+edgecache: CDN absorbs large static; Edge Cache absorbs api_read
+    // at the edge. Tests whether layered edge caching beats CDN-only for
+    // mixed large/text traffic.
+    const cdnPlusEdgeCache = topology("cdn+edgecache")
+      .add("cdn", "cdn1")
+      .add("edge_cache", "ec1")
+      .add("api_gateway", "ag1")
+      .add("load_balancer", "lb1")
+      .add("server", "s1")
+      .add("server", "s2")
+      .add("data_cache", "c1")
+      .add("database", "db1")
+      .entry("cdn1")
+      .connect("cdn1", "ec1")
+      .connect("ec1", "ag1")
+      .connect("ag1", "lb1")
+      .connect("lb1", "s1")
+      .connect("lb1", "s2")
+      .connect("s1", "c1")
+      .connect("s2", "c1")
+      .connect("c1", "db1")
+      .build();
+
+    const topologies = [intended, noCdn, noGateway, noEdge, overEngineered, cdnPlusEdgeCache];
     const results = topologies.map((t) =>
       simulatePlaytest(W3.wave, W3.sla, CUMULATIVE_BUDGET_W3, t, { seed: 42 }),
     );

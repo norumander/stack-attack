@@ -1,5 +1,18 @@
 import type { ArrivalContext, Outcome, Packet, SimCapability, Request } from "../types";
 
+/**
+ * Coarse request-type tag used to restrict what a cache participates in.
+ * Matches the validator's RequestType enumeration for the types the cache
+ * is actually asked to distinguish.
+ */
+export type CachingRequestType =
+  | "api_read"
+  | "api_write"
+  | "auth_required"
+  | "stream_data"
+  | "large_payload"
+  | "async_work";
+
 export type CachingCapabilityOptions = {
   readonly capacity: number;
   readonly revenuePerRead: number;
@@ -11,7 +24,25 @@ export type CachingCapabilityOptions = {
    * non-write requests).
    */
   readonly largeOnly?: boolean;
+  /**
+   * When set, only reads whose coarse type is in this list participate in
+   * the LRU. Other reads (and all writes) forward unchanged and do not
+   * populate slots on the response leg. Suitable for an Edge Cache that
+   * fronts text lookups (api_read) but passes binaries / streams / auth
+   * through. If both `largeOnly` and `cacheableTypes` are set,
+   * `cacheableTypes` takes precedence (largeOnly is ignored).
+   */
+  readonly cacheableTypes?: ReadonlyArray<CachingRequestType>;
 };
+
+function classifyRequest(r: Request): CachingRequestType {
+  if (r.isAsync) return "async_work";
+  if (r.stream !== undefined) return "stream_data";
+  if (r.isWrite) return "api_write";
+  if (r.requiresAuth) return "auth_required";
+  if (r.isLarge) return "large_payload";
+  return "api_read";
+}
 
 /**
  * Stage A cache: key-keyed LRU slots. On read arrival, partitions requests
@@ -25,7 +56,24 @@ export class CachingCapability implements SimCapability {
   readonly id = "caching";
   private readonly slots: string[] = []; // front (index 0) = most recent
 
-  constructor(private readonly opts: CachingCapabilityOptions) {}
+  private readonly typeFilter: ReadonlySet<CachingRequestType> | null;
+
+  constructor(private readonly opts: CachingCapabilityOptions) {
+    this.typeFilter = opts.cacheableTypes
+      ? new Set(opts.cacheableTypes)
+      : null;
+  }
+
+  /** True if the request participates in this cache's LRU (hit/miss/populate).
+   *  Writes never participate. */
+  private participates(r: Request): boolean {
+    if (r.isWrite) return false;
+    if (this.typeFilter) {
+      return this.typeFilter.has(classifyRequest(r));
+    }
+    if (this.opts.largeOnly && !r.isLarge) return false;
+    return true;
+  }
 
   hasKey(k: string): boolean {
     return this.slots.includes(k);
@@ -74,11 +122,7 @@ export class CachingCapability implements SimCapability {
     const hits: Request[] = [];
     const misses: Request[] = [];
     for (const r of packet.requests) {
-      if (r.isWrite) {
-        misses.push(r);
-        continue;
-      }
-      if (this.opts.largeOnly && !r.isLarge) {
+      if (!this.participates(r)) {
         misses.push(r);
         continue;
       }
@@ -131,8 +175,7 @@ export class CachingCapability implements SimCapability {
 
   onArriveResponse(packet: Packet, _ctx: ArrivalContext): void {
     for (const r of packet.requests) {
-      if (r.isWrite) continue;
-      if (this.opts.largeOnly && !r.isLarge) continue;
+      if (!this.participates(r)) continue;
       this.populate(r.key);
     }
   }

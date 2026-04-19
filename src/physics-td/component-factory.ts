@@ -20,6 +20,7 @@ export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
   ["data_cache", 150],
   ["load_balancer", 175],
   ["cdn", 200],
+  ["edge_cache", 175],
   ["api_gateway", 250],
   ["queue", 125],
   ["worker", 150],
@@ -36,6 +37,7 @@ export const COMPONENT_SPRITE_TYPE: ReadonlyMap<string, string> = new Map([
   ["data_cache", "data_cache"],
   ["load_balancer", "load_balancer"],
   ["cdn", "cdn"],
+  ["edge_cache", "edge_cache"],
   ["api_gateway", "api_gateway"],
   ["queue", "queue"],
   ["worker", "worker"],
@@ -48,6 +50,7 @@ export const COMPONENT_SPRITE_TYPE: ReadonlyMap<string, string> = new Map([
 export const CLIENT_FACING_COMPONENT_TYPES: ReadonlySet<string> = new Set([
   "server",
   "cdn",
+  "edge_cache",
   "api_gateway",
   "load_balancer",
   "streaming_server",
@@ -59,7 +62,7 @@ export function isClientFacing(type: string): boolean {
 }
 
 export const COMPONENT_FACTORY: ReadonlyArray<string> = [
-  "server", "database", "data_cache", "load_balancer", "cdn", "api_gateway",
+  "server", "database", "data_cache", "load_balancer", "cdn", "edge_cache", "api_gateway",
   "queue", "worker", "streaming_server", "dns_gtm", "blob_storage", "circuit_breaker",
 ];
 
@@ -107,6 +110,17 @@ export function buildSimComponent(
       return new SimComponent({
         id,
         capabilities: [new CachingCapability({ capacity: 24, revenuePerRead: revenue.perRead, largeOnly: true })],
+        ...z,
+        ...l,
+      });
+    case "edge_cache":
+      return new SimComponent({
+        id,
+        capabilities: [new CachingCapability({
+          capacity: 40,
+          revenuePerRead: revenue.perRead,
+          cacheableTypes: ["api_read"],
+        })],
         ...z,
         ...l,
       });

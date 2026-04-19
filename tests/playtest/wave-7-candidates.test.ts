@@ -126,7 +126,25 @@ describe("wave 7 — candidate architectures", () => {
       .connect("dns1", "ag_sa")
       .build();
 
-    const topologies = [intended, singleZone, twoZones, carryOver, overEngineered];
+    // with-edge-cache: intended per-zone stacks + a single front Edge Cache
+    // ahead of DNS/GTM. Tests if an edge text cache helps layered atop
+    // zone-aware routing. (Unzoned Edge Cache — text reads still resolve,
+    // but post-cache misses fan out via DNS/GTM.)
+    let b5 = topology("with-edge-cache")
+      .add("edge_cache", "ec1")
+      .add("dns_gtm", "dns1")
+      .entry("ec1")
+      .connect("ec1", "dns1");
+    b5 = zoneStack(b5, "zone_na", "na");
+    b5 = zoneStack(b5, "zone_eu", "eu");
+    b5 = zoneStack(b5, "zone_ap", "ap");
+    const withEdgeCache = b5
+      .connect("dns1", "ag_na")
+      .connect("dns1", "ag_eu")
+      .connect("dns1", "ag_ap")
+      .build();
+
+    const topologies = [intended, singleZone, twoZones, carryOver, overEngineered, withEdgeCache];
     const results = topologies.map((t) =>
       simulatePlaytest(W7.wave, W7.sla, CUMULATIVE_BUDGET_W7, t, { seed: 42 }),
     );

@@ -80,7 +80,22 @@ describe("wave 2 — candidate architectures", () => {
       .connect("c1", "db1")
       .build();
 
-    const topologies = [intended, noCache, noScale, carryOver, overEngineered];
+    // edge-cache-replaces-scale: Client → Edge Cache → Server → Cache → DB.
+    // Testing if a single Edge Cache + Server beats LB + 2 Servers at 4x
+    // traffic. Edge Cache absorbs repeats at the edge; Data Cache absorbs
+    // tail misses behind the single Server.
+    const edgeCacheReplacesScale = topology("edge-cache-replaces-scale")
+      .add("edge_cache", "ec1")
+      .add("server", "s1")
+      .add("data_cache", "c1")
+      .add("database", "db1")
+      .entry("ec1")
+      .connect("ec1", "s1")
+      .connect("s1", "c1")
+      .connect("c1", "db1")
+      .build();
+
+    const topologies = [intended, noCache, noScale, carryOver, overEngineered, edgeCacheReplacesScale];
     const results = topologies.map((t) =>
       simulatePlaytest(W2.wave, W2.sla, CUMULATIVE_BUDGET_W2, t, { seed: 42 }),
     );
