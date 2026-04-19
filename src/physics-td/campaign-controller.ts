@@ -145,10 +145,11 @@ export class PhysicsCampaignController {
       this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex - 1);
       return;
     }
-    // Budget carries forward from prior wave end. No refill grant.
+    // Budget carries forward from prior wave end, plus the next wave's startBudget grant.
+    this.budget += this.opts.waves[this.currentWaveIndex]!.startBudget;
     this.phase = "build";
     this.opts.callbacks.onPhaseChange(this.phase, this.currentWaveIndex);
-    // No onBudgetChange call — budget did not change.
+    this.opts.callbacks.onBudgetChange(this.budget);
   }
 
   /**

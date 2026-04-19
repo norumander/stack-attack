@@ -65,7 +65,7 @@ describe("PhysicsCampaignController", () => {
     expect(callbacks.phaseChanges.at(-1)).toEqual({ phase: "simulate", waveIndex: 0 });
   });
 
-  it("onWaveEnd → won phase, nextWave advances WITHOUT resetting budget", () => {
+  it("onWaveEnd → won phase, nextWave carries budget forward plus next wave's startBudget grant", () => {
     const { controller, callbacks } = makeController();
     controller.tryPlace("server", { x: 1, y: 1 }); // budget 500 - 100 = 400
     controller.ready();
@@ -74,8 +74,9 @@ describe("PhysicsCampaignController", () => {
     controller.nextWave();
     expect(controller.currentWaveIndex).toBe(1);
     expect(controller.phase).toBe("build");
-    // Budget should carry forward, NOT reset to wave-2's startBudget (700).
-    expect(controller.budget).toBe(400);
+    // Carried 400 from wave 1 + wave-2 grant of 700 = 1100.
+    expect(controller.budget).toBe(1100);
+    expect(callbacks.budgetChanges.at(-1)).toBe(1100);
     expect(callbacks.phaseChanges.map((p) => p.phase)).toEqual(["simulate", "won", "build"]);
   });
 
