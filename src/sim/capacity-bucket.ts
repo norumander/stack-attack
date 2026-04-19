@@ -10,6 +10,10 @@ export type CapacityBucketOptions = {
 export class CapacityBucket {
   private credits: number;
   private max: number;
+  /** Tokens consumed since the last `refill()` call. Used by AutoScale to
+   * compute a windowed utilization rate rather than sampling instantaneous
+   * remaining credits (which is spiky under sparse arrivals). */
+  private consumedThisStep = 0;
 
   constructor(opts: CapacityBucketOptions) {
     this.max = opts.capacityPerSecond;
@@ -24,6 +28,11 @@ export class CapacityBucket {
     return this.max;
   }
 
+  /** Tokens consumed since the last `refill()` call (i.e. this sim step). */
+  getConsumedThisStep(): number {
+    return this.consumedThisStep;
+  }
+
   /** Resize the bucket's max capacity. Does not refill credits; clamps if
    * current credits exceed new max. Used by AutoScale tier bumps. */
   setCapacity(capacityPerSecond: number): void {
@@ -34,10 +43,12 @@ export class CapacityBucket {
   tryConsume(amount: number): boolean {
     if (amount > this.credits) return false;
     this.credits -= amount;
+    this.consumedThisStep += amount;
     return true;
   }
 
   refill(dt: number): void {
     this.credits = Math.min(this.max, this.credits + this.max * dt);
+    this.consumedThisStep = 0;
   }
 }
