@@ -1,5 +1,6 @@
 import type { ComponentId, ConnectionId } from "@core/types/ids";
 import type { WaveRevenue } from "@sim/wave";
+import type { TopologyError } from "./validate-topology";
 
 export type Phase = "build" | "simulate" | "won" | "campaign-complete";
 
@@ -53,6 +54,15 @@ export class PhysicsCampaignController {
   readonly placedTypes: Map<ComponentId, string> = new Map();
   /** key = sourceId + ":" + targetId → forward connection id (so deletion can find it) */
   readonly placedConnections: Map<string, ConnectionId> = new Map();
+
+  /**
+   * Most recent pre-sim topology validation result. Populated by the
+   * bootstrap on READY before `phase = "simulate"`. Does not block
+   * simulation — surfaced as a warning in the HUD.
+   * TODO: wire to a HUD warning UI so players see unreachable request
+   * types before the wave starts.
+   */
+  lastTopologyErrors: readonly TopologyError[] = [];
 
   constructor(private readonly opts: CampaignOptions) {
     this.budget = opts.waves[0]?.startBudget ?? 0;
