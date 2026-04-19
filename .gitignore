@@ -7,3 +7,4 @@ coverage/
 .claude.local.md
 .superpowers/
 .env
+.claude/settings.local.json

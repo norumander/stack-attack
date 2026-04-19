@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BrainLift — Level Select</title>
+  <title>Stack Attack — Level Select</title>
+  <link rel="stylesheet" href="./auth/auth.css" />
   <style>
     html, body {
       margin: 0;
@@ -96,19 +97,22 @@
   <div class="page">
     <div class="title">Select Level</div>
     <div class="level-grid">
-      <a href="./game.html" class="level-card">
+      <a href="./game.html?level=url-shortener" class="level-card">
         <div class="level-num">Level 01</div>
-        <div class="level-name">System Architecture</div>
+        <div class="level-name">URL Shortener</div>
         <div class="level-desc">
-          Traffic floods in. Place the right infrastructure — server, cache, database — to hold the SLA across five waves.
+          A tiny service. Reads dwarf writes. A Server, a Database, and a Data Cache should be enough — if you route it right.
         </div>
       </a>
-      <div class="level-card locked">
+      <a href="./game.html?level=netflix" class="level-card">
         <div class="level-num">Level 02</div>
-        <div class="level-name">Coming Soon</div>
-        <div class="level-desc">More to come.</div>
-      </div>
+        <div class="level-name">Build Netflix</div>
+        <div class="level-desc">
+          Peak-hour streaming. Writes, reads, and viewers all want the same hot titles. Scale the system before the SLA drops.
+        </div>
+      </a>
     </div>
   </div>
+  <script type="module" src="./levels-boot.ts"></script>
 </body>
 </html>

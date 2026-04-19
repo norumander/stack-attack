@@ -1,4 +1,4 @@
-# BrainLift: System Architecture Tower Defense Game
+# Stack Attack: System Architecture Tower Defense Game (concept — archived research)
 
 ---
 
