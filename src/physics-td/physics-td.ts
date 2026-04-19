@@ -19,6 +19,7 @@ import { wireWorkers } from "./wire-workers";
 import * as hud from "./hud-bridge";
 import { Viability, DAMAGE_PER_FAILURE } from "./viability";
 import { validateTopology } from "./validate-topology";
+import { formatTopologyError } from "./topology-error-messages";
 import { computeSlaPenalty } from "./wave-penalty";
 import { ComponentDossierStore } from "./dossier-store";
 import { showDossier } from "./show-dossier";
@@ -107,6 +108,35 @@ async function main(): Promise<void> {
   // because onPhaseChange is only called during gameplay, after assignment).
   let infoPanel!: InfoPanelHandle;
 
+  /**
+   * Re-run the pre-sim topology validator and publish human-readable
+   * messages into the HUD's mirror div. Called after every topology change
+   * in build phase so the player sees live feedback instead of waiting for
+   * READY. Cheap (BFS over a tiny graph); no throttling required.
+   *
+   * Reads `sim` from closure so it picks up the post-clearWaveWorld
+   * replacement instance.
+   */
+  function revalidateTopology(): void {
+    if (controller.phase !== "build") {
+      hud.setTopologyErrors([]);
+      return;
+    }
+    const wave = CAMPAIGN_WAVES[controller.currentWaveIndex];
+    if (!wave) {
+      hud.setTopologyErrors([]);
+      return;
+    }
+    // Empty canvas (only the client) — nothing to validate, show nothing.
+    if (sim.components.size === 0) {
+      hud.setTopologyErrors([]);
+      return;
+    }
+    const errors = validateTopology(sim, wave.wave, CLIENT_ID, componentTypes);
+    controller.lastTopologyErrors = errors;
+    hud.setTopologyErrors(errors.map(formatTopologyError));
+  }
+
   const controller = new PhysicsCampaignController({
     waves: CAMPAIGN_WAVES.map((w) => ({ id: w.id, startBudget: w.startBudget, revenue: w.wave.revenue })),
     componentCosts: COMPONENT_COSTS,
@@ -115,9 +145,11 @@ async function main(): Promise<void> {
         positions.set(id, gridPos);
         componentTypes.set(id, type);
         refs.placement?.applyPlacement(type, id, gridPos);
+        revalidateTopology();
       },
       onConnected: (sourceId, targetId, forwardId, backId) => {
         refs.connect?.applyConnection(sourceId, targetId, forwardId, backId);
+        revalidateTopology();
       },
       onComponentDeleted: (id) => {
         // Remove all sim connections touching this component; renderer side is
@@ -132,6 +164,7 @@ async function main(): Promise<void> {
         positions.delete(id);
         componentTypes.delete(id);
         renderer.removeComponent(id);
+        revalidateTopology();
       },
       onConnectionDeleted: (forwardId) => {
         const fwd = sim.connections.get(forwardId);
@@ -142,6 +175,7 @@ async function main(): Promise<void> {
           sim.connections.delete(twinId);
           renderer.removeConnection(twinId);
         }
+        revalidateTopology();
       },
       onPhaseChange: (phase, waveIndex) => {
         const wave = CAMPAIGN_WAVES[waveIndex];
@@ -152,10 +186,12 @@ async function main(): Promise<void> {
           hud.setStatus("Build phase — place components, READY when done");
           hud.setReadyDisabled(false);
           setupClientForBuild();
+          revalidateTopology();
         } else if (phase === "simulate") {
           hud.setStatus("Wave running — tick 0/100");
           hud.setReadyDisabled(true);
           hudCtrl.hideBriefing();
+          hud.setTopologyErrors([]);
         } else if (phase === "won") {
           infoPanel.hide();
           hud.setStatus("Wave WON");
