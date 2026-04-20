@@ -9,6 +9,13 @@ import type {
 } from "./topology-renderer.js";
 import type { ComponentId, ConnectionId, RequestId } from "@core/types/ids.js";
 import { gridToWorld, worldToGrid } from "./cyberpunk/iso-projection.js";
+
+/**
+ * Game-view zoom factor. Applied to the world container so the iso board
+ * and all sprites scale together; HUD (DOM overlay) is unaffected. All
+ * screen→world conversions must divide by this to invert the scale.
+ */
+const GAME_VIEW_ZOOM = 1.2;
 import { CYBERPUNK_TOKENS } from "./cyberpunk/tokens.js";
 import { createBoard, loadBoardTextures, type BoardTextures } from "./cyberpunk/board.js";
 import {
@@ -109,6 +116,7 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     this.app = app;
 
     const world = new Container();
+    world.scale.set(GAME_VIEW_ZOOM);
     app.stage.addChild(world);
     this.world = world;
 
@@ -243,7 +251,8 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
 
       // Active component drag — snap to the grid cell under the cursor.
       if (this.isDraggingComponent && this.potentialDragComponent) {
-        const grid = worldToGrid(sx - this.worldCenterX, sy - this.worldCenterY);
+        const w = this.screenToWorld(sx, sy);
+        const grid = worldToGrid(w.x, w.y);
         this.updateComponent(this.potentialDragComponent, { gridPosition: grid });
       }
 
@@ -357,7 +366,10 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
   }
 
   private screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
-    return { x: screenX - this.worldCenterX, y: screenY - this.worldCenterY };
+    return {
+      x: (screenX - this.worldCenterX) / GAME_VIEW_ZOOM,
+      y: (screenY - this.worldCenterY) / GAME_VIEW_ZOOM,
+    };
   }
 
   /**
@@ -494,7 +506,13 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     this.selectionRing?.set(id);
   }
   setPlacementGhost(type: string | null, screenPos: { x: number; y: number } | null): void {
-    this.placementGhost?.set(type, screenPos, this.worldCenterX, this.worldCenterY);
+    // Pre-convert screen pos into world coords (accounting for zoom) so
+    // placement-ghost doesn't need to know about the world scale.
+    const worldPos = screenPos
+      ? { x: screenPos.x / GAME_VIEW_ZOOM, y: screenPos.y / GAME_VIEW_ZOOM }
+      : null;
+    const worldCenterScaled = { x: this.worldCenterX / GAME_VIEW_ZOOM, y: this.worldCenterY / GAME_VIEW_ZOOM };
+    this.placementGhost?.set(type, worldPos, worldCenterScaled.x, worldCenterScaled.y);
     this.placingActive = type !== null;
   }
   setConnectionMode(active: boolean): void {
@@ -524,7 +542,8 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     return null;
   }
   screenToGrid(screenX: number, screenY: number): { x: number; y: number } {
-    return worldToGrid(screenX - this.worldCenterX, screenY - this.worldCenterY);
+    const w = this.screenToWorld(screenX, screenY);
+    return worldToGrid(w.x, w.y);
   }
   worldToScreen(gridPos: { x: number; y: number }): { x: number; y: number } {
     const w = gridToWorld(gridPos.x, gridPos.y);
