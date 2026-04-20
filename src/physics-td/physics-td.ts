@@ -937,7 +937,7 @@ async function boot(): Promise<void> {
   // session (deep-link, expired token), bounce them home so they can sign in.
   // In local dev without Supabase env configured, skip the gate so contributors
   // can play without setting up Supabase. Production is unaffected.
-  const user = await resolveInitialSession();
+  const user = await resolveInitialSession(8000);
   if (!user && isAuthConfigured) {
     window.location.href = "./index.html";
     return;

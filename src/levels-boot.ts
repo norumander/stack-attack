@@ -11,7 +11,10 @@ import { resolveInitialSession } from "./auth-gate";
  * unaffected — env is present there, gate behaves as before.
  */
 async function boot(): Promise<void> {
-  const user = await resolveInitialSession();
+  // Use a longer timeout (8s) — on cold Vercel deploys, Supabase session
+  // restore can exceed the default 3s, causing a false redirect back to
+  // index.html even when the user is authenticated.
+  const user = await resolveInitialSession(8000);
   if (!user && isAuthConfigured) {
     window.location.href = "./index.html";
     return;

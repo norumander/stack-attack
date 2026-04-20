@@ -686,7 +686,7 @@ async function main(): Promise<void> {
 }
 
 async function boot(): Promise<void> {
-  const user = await resolveInitialSession();
+  const user = await resolveInitialSession(8000);
   if (!user && isAuthConfigured) {
     window.location.href = "./index.html";
     return;
