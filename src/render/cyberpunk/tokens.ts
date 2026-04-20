@@ -28,7 +28,7 @@ export const CYBERPUNK_TOKENS = {
   },
   board: {
     /** Board extent in tiles (N×N). Even so the origin is on a tile corner. */
-    size: 24,
+    size: 30,
   },
   timing: {
     /** Default packet traversal fallback if durationMs is missing or invalid. */
