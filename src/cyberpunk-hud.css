@@ -1483,9 +1483,13 @@ body.renderer-iso .cp-palette-cell {
   color: #FFF1E8 !important;
   border: 2px solid #000000 !important;
   box-shadow: none !important;
-  /* Cell itself 20% smaller than the 84px default. */
+  /* Square tile: same width and height. */
   width: 67px !important;
-  padding: 6px 4px 4px !important;
+  height: 67px !important;
+  aspect-ratio: 1 / 1 !important;
+  padding: 4px !important;
+  justify-content: center !important;
+  gap: 2px !important;
 }
 body.renderer-iso .cp-palette-cell:hover {
   background: #1D2B53 !important;
@@ -1508,5 +1512,45 @@ body.renderer-iso .cp-palette-icon {
   width: 44px !important;
   height: 44px !important;
   filter: none !important;
+}
+
+/* READY button — pico-8 treatment. Green solid fill, ink border,
+   block shadow in maroon, Press Start 2P caps, steps transitions.
+   Disabled uses dark grey. Neon pulse animation disabled. */
+body.renderer-iso .cp-ready-btn {
+  background: #00E436 !important;              /* pi-green */
+  color: #000000 !important;
+  border: 3px solid #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: 5px 5px 0 #7E2553 !important;    /* pi-maroon block shadow */
+  font-family: "Press Start 2P", monospace !important;
+  font-size: 12px !important;
+  letter-spacing: 0.1em !important;
+  text-shadow: none !important;
+  text-transform: uppercase;
+  padding: 14px 28px !important;
+  transition: transform 80ms steps(2), box-shadow 80ms steps(2), filter 80ms steps(2) !important;
+  animation: none !important;
+}
+body.renderer-iso .cp-ready-btn:hover:not(.cp-disabled):not(:disabled) {
+  background: #00E436 !important;
+  transform: translate(-1px, -1px) !important;
+  box-shadow: 6px 6px 0 #7E2553 !important;
+  filter: brightness(1.15);
+}
+body.renderer-iso .cp-ready-btn:active:not(.cp-disabled):not(:disabled) {
+  transform: translate(2px, 2px) !important;
+  box-shadow: 2px 2px 0 #7E2553 !important;
+}
+body.renderer-iso .cp-ready-btn.cp-disabled,
+body.renderer-iso .cp-ready-btn:disabled {
+  background: #5F574F !important;             /* pi-dkgrey */
+  color: #83769C !important;                  /* pi-lavender */
+  box-shadow: 4px 4px 0 #000000 !important;
+  opacity: 1 !important;
+  cursor: not-allowed;
+  animation: none !important;
+  filter: none !important;
+  transform: none !important;
 }
 
