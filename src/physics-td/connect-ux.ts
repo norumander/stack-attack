@@ -65,7 +65,7 @@ export class ConnectUX {
       from: { componentId: sourceId, portId: "p" as PortId },
       to: { componentId: targetId, portId: "p" as PortId },
       bandwidth: 500,
-      latencySeconds: 0.5,
+      latencySeconds: 0.1,
       twinId: backId,
       direction: "forward",
     });
@@ -74,7 +74,7 @@ export class ConnectUX {
       from: { componentId: targetId, portId: "p" as PortId },
       to: { componentId: sourceId, portId: "p" as PortId },
       bandwidth: 500,
-      latencySeconds: 0.5,
+      latencySeconds: 0.1,
       twinId: forwardId,
       direction: "back",
     });

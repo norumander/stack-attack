@@ -408,6 +408,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
       trafficSource: ts,
       waveStartTime: sim.simTime,
       waveEndTime: sim.simTime + wave.wave.duration,
+      ...(wave.wave.rampSeconds !== undefined && { rampSeconds: wave.wave.rampSeconds }),
     });
     sim.addClient(client);
     wireWorkers(sim);

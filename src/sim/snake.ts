@@ -38,10 +38,19 @@ export function launchDueSnakes(
 ): void {
   for (const client of clients.values()) {
     while (client.nextLaunchTime <= simTime && client.snake.length > 0) {
+      const interval = 1 / client.packetRate;
+      // During ramp, probabilistically skip this slot. The expected launch
+      // rate equals packetRate × rampFactor, ramping linearly from 0 to full
+      // over rampSeconds without exploding the inter-packet interval.
+      const rf = client.rampFactor(simTime);
+      if (rf < 1 && rng() > rf) {
+        client.nextLaunchTime += interval;
+        continue;
+      }
       const head = client.snake.shift()!;
       const egresses = collectForwardEgresses(connections, client.id);
       if (egresses.length === 0) {
-        client.nextLaunchTime += 1 / client.packetRate;
+        client.nextLaunchTime += interval;
         continue;
       }
       const idx = Math.floor(rng() * egresses.length);
@@ -50,7 +59,7 @@ export function launchDueSnakes(
       head.speed = components ? effectiveEdgeSpeed(chosen, components) : chosen.speed;
       head.progress = 0;
       activePackets.push(head);
-      client.nextLaunchTime += 1 / client.packetRate;
+      client.nextLaunchTime += interval;
     }
   }
 }

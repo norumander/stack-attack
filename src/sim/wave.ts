@@ -31,4 +31,10 @@ export type WaveDef = {
   readonly streamConfig?: StreamConfig;
   readonly zoneDistribution?: ReadonlyMap<Zone, number>;
   readonly entryClients: ReadonlyArray<ComponentId>;
+  /**
+   * Seconds over which traffic ramps from 0 to full `packetRate`.
+   * Gives caches and downstream components time to warm before peak load.
+   * Defaults to 0 (instant full intensity).
+   */
+  readonly rampSeconds?: number;
 };
