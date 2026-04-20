@@ -105,19 +105,18 @@ function buildLayout(
     columnTotals.set(col, (columnTotals.get(col) ?? 0) + 1);
   }
 
-  // Column spacing (x) — 1.5 grid units between tiers gives adjacent columns
-  // clear horizontal breathing room while keeping storage tier (col 7) on
-  // the visible board. 2+ was too wide — databases ran off the right edge.
-  const COL_SPACING = 1.5;
-  // Row spacing (y) — 3 units between siblings so labels never collide and
-  // dense stacks (e.g. 4 servers) stay legible (y = -4.5..+4.5).
+  // Row spacing (y) = 3 units — dense stacks (4 servers) span y=-4.5..+4.5.
+  // Column spacing (x) = 2.5 units — wider than rows would overflow the
+  // visible iso board at 8 columns. Gives each column ~2.5 tiles of
+  // breathing room horizontally, plenty for labels + edges.
+  const COL_SPACING = 2.5;
   const ROW_SPACING = 3;
 
-  // Shift the topology so ingress columns sit just right of the client's
-  // landing point at x=-3. With COL_SPACING=1.5 and MID_COL=1, edge (col 0)
-  // lands at x=-1.5 and storage (col 7) lands at x=9 — everything visible
-  // on the iso board, client cleanly left of the ingress edge.
-  const MID_COL = 1;
+  // Center the whole architecture on the board. With 8 tier columns
+  // (0..7) the geometric mid is 3.5; shifting by that amount places the
+  // topology symmetrically around x=0 so no quadrant of the board wastes
+  // space.
+  const MID_COL = 3.5;
 
   // Second pass: assign each component a grid position. Within a column,
   // rows are centered around y=0; e.g. three components get y=-2, 0, +2.
@@ -338,8 +337,11 @@ async function main(): Promise<void> {
   controller.preplace(layout);
   wireWorkers(sim);
 
-  // ─── Place a visible client at x=-3 (matches campaign) ──────────────
-  const CLIENT_POS = { x: -3, y: 0 };
+  // ─── Place a visible client at the left end of the topology ─────────
+  // With the architecture centered (ingress tier at x ≈ -8.75), the client
+  // sits one tile further left so it reads as the traffic source entering
+  // the leftmost tier.
+  const CLIENT_POS = { x: -10, y: 0 };
   positions.set(CLIENT_ID, CLIENT_POS);
   renderer.addComponent(CLIENT_ID, {
     type: "client",
