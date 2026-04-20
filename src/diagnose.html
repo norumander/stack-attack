@@ -12,19 +12,26 @@
     html, body { margin: 0; padding: 0; background: #0a1420; color: #ccddee; font-family: monospace; overflow: hidden; }
     #canvas-host { position: absolute; inset: 0; }
     .td-hud-mirror { display: none; }
+    /*
+     * Briefing narrative anchors to bottom-left so it doesn't overlap the
+     * top-right HUD stack (BUDGET / PHASE / VIABILITY / briefing card). The
+     * component palette sits bottom-center, so bottom-left is the empty
+     * quadrant of the viewport.
+     */
     #td-diagnose-briefing {
       position: fixed;
-      top: 80px;
-      right: 24px;
-      max-width: 360px;
-      padding: 16px;
-      background: rgba(30, 50, 80, 0.6);
-      border: 1px solid rgba(94, 240, 255, 0.3);
+      top: 240px;
+      left: 24px;
+      max-width: 320px;
+      padding: 14px 16px;
+      background: rgba(30, 50, 80, 0.75);
+      border: 1px solid rgba(94, 240, 255, 0.35);
       border-radius: 6px;
       color: #ccddee;
       font-size: 13px;
       line-height: 1.5;
       z-index: 10;
+      pointer-events: none;
     }
   </style>
 </head>

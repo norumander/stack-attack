@@ -57,6 +57,9 @@ const DRAIN_SECONDS = 4;
  * (PhysicsDiagnoseController.preplace accepts a positionFor callback).
  */
 function tierColumnFor(type: string): number {
+  // Each component type gets its own column so no single column over-stacks.
+  // Columns read left-to-right: ingress → gateway → compute → caches/aux →
+  // storage. Adjacent numbering groups related tiers.
   switch (type) {
     case "dns_gtm":
       return 0;
@@ -67,45 +70,72 @@ function tierColumnFor(type: string): number {
     case "load_balancer":
       return 3;
     case "server":
-    case "streaming_server":
-    case "queue":
       return 4;
-    case "data_cache":
-    case "edge_cache":
-    case "worker":
-    case "circuit_breaker":
+    case "streaming_server":
       return 5;
-    case "database":
-    case "blob_storage":
+    case "queue":
       return 6;
+    case "worker":
+      return 7;
+    case "circuit_breaker":
+      return 8;
+    case "edge_cache":
+      return 9;
+    case "data_cache":
+      return 10;
+    case "database":
+      return 11;
+    case "blob_storage":
+      return 12;
     default:
-      return 5;
+      return 6;
   }
 }
 
 /**
  * Build a deterministic positionFor hook for a topology: assign each
  * component to a column based on its type, stack by arrival order within
- * the column. Returns a closure ready to hand to `controller.preplace()`.
+ * the column. Each column is centered vertically around y=0 so dense
+ * tiers don't crowd sparse ones, and column spacing is x*2 so labels
+ * don't collide. Returns a closure ready to hand to `controller.preplace()`.
  */
 function buildLayout(
   level: DiagnoseLevel,
 ): (topologyId: string, index: number) => { x: number; y: number } {
-  const typesById = new Map<string, string>();
-  for (const c of level.startingTopology.components) typesById.set(c.id, c.type);
-  const colCounts = new Map<number, number>();
+  // First pass: count components per column so we can center the stacks.
+  const columnTotals = new Map<number, number>();
+  for (const c of level.startingTopology.components) {
+    const col = tierColumnFor(c.type);
+    columnTotals.set(col, (columnTotals.get(col) ?? 0) + 1);
+  }
+
+  // Column spacing (x) — 1 grid unit between tiers keeps everything on-screen.
+  const COL_SPACING = 1;
+  // Row spacing (y) — 2 units between siblings keeps their labels legible.
+  const ROW_SPACING = 2;
+
+  // Shift the topology so ingress columns sit just right of the client's
+  // landing point at x=-3. With COL_SPACING=1 and MID_COL=2, cdn (col 1)
+  // lands at x=-1 and storage (col 12) lands at x=10 — everything visible
+  // on the iso board, client cleanly to the left of the ingress edge.
+  const MID_COL = 2;
+
+  // Second pass: assign each component a grid position. Within a column,
+  // rows are centered around y=0; e.g. three components get y=-2, 0, +2.
+  const colIndex = new Map<number, number>();
   const assigned = new Map<string, { x: number; y: number }>();
   for (const c of level.startingTopology.components) {
     const col = tierColumnFor(c.type);
-    const row = colCounts.get(col) ?? 0;
-    colCounts.set(col, row + 1);
-    // Center each column vertically around y=0 by subtracting half the
-    // final count at render time — but we only know the count as we go.
-    // Simpler: let rows walk upward from 0 so they stay within grid bounds
-    // the renderer already clips; good enough for eyeballing connectivity.
-    assigned.set(c.id, { x: col, y: row });
+    const total = columnTotals.get(col) ?? 1;
+    const row = colIndex.get(col) ?? 0;
+    colIndex.set(col, row + 1);
+    const centeredRow = row - (total - 1) / 2;
+    assigned.set(c.id, {
+      x: (col - MID_COL) * COL_SPACING,
+      y: Math.round(centeredRow * ROW_SPACING),
+    });
   }
-  return (topologyId: string) => assigned.get(topologyId) ?? { x: 5, y: 0 };
+  return (topologyId: string) => assigned.get(topologyId) ?? { x: 4, y: 0 };
 }
 
 async function waitForHudController(): Promise<CyberpunkHudController> {
