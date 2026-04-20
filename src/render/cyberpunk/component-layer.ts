@@ -206,11 +206,14 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     const typeScale = isClient ? 2 : 0.5;
     const finalScale = CYBERPUNK_TOKENS.scale.spriteScale * typeScale;
 
-    // Client sits at the east vertex of its tile shifted one grid row
-    // south. In iso: east vertex = (+halfW, 0); one tile south in grid
-    // = (-halfW, +halfH). Sum = (0, +halfH). halfW=40, halfH=20.
-    const offsetX = isClient ? 0 : 0;
-    const offsetY = isClient ? CYBERPUNK_TOKENS.scale.isoHalfHeight : 0;
+    // Client sits at south vertex of its tile (0, +halfH) — rightmost
+    // iso point of the tile-one-south. Infra components shift down half
+    // a screen-tile so they visually sit on the tile surface instead of
+    // floating above it. halfW=40, halfH=20.
+    const offsetX = 0;
+    const offsetY = isClient
+      ? CYBERPUNK_TOKENS.scale.isoHalfHeight
+      : CYBERPUNK_TOKENS.scale.isoHalfHeight;
 
     const baseSprite = new Sprite(tex.base);
     baseSprite.anchor.set(0.5, 0.75);
