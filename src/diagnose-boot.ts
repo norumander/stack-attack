@@ -57,38 +57,34 @@ const DRAIN_SECONDS = 4;
  * (PhysicsDiagnoseController.preplace accepts a positionFor callback).
  */
 function tierColumnFor(type: string): number {
-  // Each component type gets its own column so no single column over-stacks.
-  // Columns read left-to-right: ingress → gateway → compute → caches/aux →
-  // storage. Adjacent numbering groups related tiers.
+  // Columns read left-to-right: edge → gateway → LB → compute/buffers →
+  // workers → caches/CB → storage. Related types share a column so the
+  // topology stays compact horizontally, and wider COL_SPACING + ROW_SPACING
+  // give each tile room to breathe.
   switch (type) {
     case "dns_gtm":
-      return 0;
     case "cdn":
-      return 1;
+      return 0;
     case "api_gateway":
-      return 2;
+      return 1;
     case "load_balancer":
-      return 3;
+      return 2;
     case "server":
-      return 4;
+      return 3;
     case "streaming_server":
-      return 5;
     case "queue":
-      return 6;
+      return 4;
     case "worker":
-      return 7;
+      return 5;
     case "circuit_breaker":
-      return 8;
-    case "edge_cache":
-      return 9;
     case "data_cache":
-      return 10;
-    case "database":
-      return 11;
-    case "blob_storage":
-      return 12;
-    default:
+    case "edge_cache":
       return 6;
+    case "database":
+    case "blob_storage":
+      return 7;
+    default:
+      return 4;
   }
 }
 
@@ -109,16 +105,19 @@ function buildLayout(
     columnTotals.set(col, (columnTotals.get(col) ?? 0) + 1);
   }
 
-  // Column spacing (x) — 1 grid unit between tiers keeps everything on-screen.
-  const COL_SPACING = 1;
-  // Row spacing (y) — 2 units between siblings keeps their labels legible.
-  const ROW_SPACING = 2;
+  // Column spacing (x) — 1.5 grid units between tiers gives adjacent columns
+  // clear horizontal breathing room while keeping storage tier (col 7) on
+  // the visible board. 2+ was too wide — databases ran off the right edge.
+  const COL_SPACING = 1.5;
+  // Row spacing (y) — 3 units between siblings so labels never collide and
+  // dense stacks (e.g. 4 servers) stay legible (y = -4.5..+4.5).
+  const ROW_SPACING = 3;
 
   // Shift the topology so ingress columns sit just right of the client's
-  // landing point at x=-3. With COL_SPACING=1 and MID_COL=2, cdn (col 1)
-  // lands at x=-1 and storage (col 12) lands at x=10 — everything visible
-  // on the iso board, client cleanly to the left of the ingress edge.
-  const MID_COL = 2;
+  // landing point at x=-3. With COL_SPACING=1.5 and MID_COL=1, edge (col 0)
+  // lands at x=-1.5 and storage (col 7) lands at x=9 — everything visible
+  // on the iso board, client cleanly left of the ingress edge.
+  const MID_COL = 1;
 
   // Second pass: assign each component a grid position. Within a column,
   // rows are centered around y=0; e.g. three components get y=-2, 0, +2.
