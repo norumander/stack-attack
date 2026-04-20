@@ -84,8 +84,8 @@ export const BITLY_WAVES: ReadonlyArray<CampaignWave> = [
     narrative:
       "Traffic now spreads NA/EU/AP. Stand up DNS/GTM at the edge and replicate backend stacks per zone so each user hits a local server.",
     wave: {
-      intensity: 200,
-      packetRate: 12,
+      intensity: 150,
+      packetRate: 20,
       duration: 14,
       composition: { writeRatio: 0.05, authRatio: 0, streamRatio: 0, largeRatio: 0, asyncRatio: 0.15 },
       keyDistribution: { kind: "zipf", alpha: 1.3, spaceSize: 240 },
@@ -98,7 +98,7 @@ export const BITLY_WAVES: ReadonlyArray<CampaignWave> = [
       ]),
       entryClients: [CLIENT_ID],
     },
-    sla: { availability: 0.82, maxAvgLatencySeconds: 1.5, maxDropRate: 0.18 },
-    startBudget: 1550,
+    sla: { availability: 0.82, maxAvgLatencySeconds: 2, maxDropRate: 0.18 },
+    startBudget: 2000,
   },
 ];

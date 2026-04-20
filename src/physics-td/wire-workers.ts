@@ -20,6 +20,9 @@ export function wireWorkers(sim: Sim): void {
         const queueCap = sourceComp.capabilities.find((c) => c instanceof QueueCapability);
         if (queueCap instanceof QueueCapability) {
           cap.queue = queueCap;
+          // Mark this edge so the Queue skips it when forwarding non-async
+          // traffic. Workers pull from the queue directly.
+          queueCap.workerEgressIds.add(conn.id);
           break;
         }
       }

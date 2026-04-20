@@ -614,6 +614,57 @@ body.renderer-iso .cp-palette-cost {
 }
 
 /* ================================================================
+   Zone selector bar — inside palette, above component cells
+   ================================================================ */
+
+body.renderer-iso .cp-zone-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--sc-border);
+}
+
+body.renderer-iso .cp-zone-bar-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: var(--sc-ink-dim);
+}
+
+body.renderer-iso .cp-zone-btn-group {
+  display: flex;
+  gap: 4px;
+}
+
+body.renderer-iso .cp-zone-btn {
+  padding: 3px 12px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  color: var(--sc-ink-dim);
+  background: transparent;
+  border: 1px solid var(--sc-border);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+body.renderer-iso .cp-zone-btn:hover {
+  background: var(--sc-panel-hi);
+  border-color: var(--sc-border-bright);
+  color: var(--sc-ink);
+}
+
+body.renderer-iso .cp-zone-btn--active {
+  background: rgba(94, 240, 255, 0.15);
+  border-color: var(--sc-border-bright);
+  color: var(--sc-ink);
+  box-shadow: 0 0 8px rgba(94, 240, 255, 0.2);
+}
+
+/* ================================================================
    READY button — bottom-right
    ================================================================ */
 
@@ -1298,6 +1349,16 @@ body.renderer-iso .cp-win-cta {
 }
 body.renderer-iso .cp-win-cta:hover {
   filter: brightness(1.1);
+}
+body.renderer-iso .cp-win-cta--secondary {
+  background: transparent;
+  color: var(--sc-ink-dim);
+  border: 1px solid var(--sc-border);
+  margin-top: 4px;
+}
+body.renderer-iso .cp-win-cta--secondary:hover {
+  border-color: var(--sc-border-bright);
+  color: var(--sc-ink);
 }
 
 body.renderer-iso .cp-info-details-btn {

@@ -33,4 +33,9 @@ export class Viability {
     if (amount <= 0) return;
     this.current = Math.max(0, this.current - amount);
   }
+
+  /** Reset to full. Used when retrying a wave. */
+  reset(): void {
+    this.current = this.max;
+  }
 }

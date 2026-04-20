@@ -10,7 +10,7 @@ import { TrafficSource } from "@sim/traffic-source";
 import { makeSimRng } from "@sim/rng";
 import { BrowserDriver } from "../sim-demo/browser-driver";
 import { SimToRendererAdapter } from "../sim-demo/sim-to-renderer";
-import { PhysicsCampaignController } from "./campaign-controller";
+import { PhysicsCampaignController, type Phase } from "./campaign-controller";
 import { COMPONENT_COSTS } from "./component-factory";
 import { CAMPAIGN_WAVES, computeBriefingForCampaignWave, type CampaignWave } from "./waves";
 import { BITLY_WAVES } from "./bitly-waves";
@@ -216,6 +216,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
           hud.setStatus("Build phase — place components, READY when done");
           hud.setReadyDisabled(false);
           setupClientForBuild();
+          hudCtrl.setZones(wave.wave.zoneDistribution ? [...wave.wave.zoneDistribution.keys()] : []);
           revalidateTopology();
         } else if (phase === "simulate") {
           hud.setStatus("Wave running — tick 0/100");
@@ -297,6 +298,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
   }
 
   refs.placement = new PlacementUX(sim, renderer, controller);
+  refs.placement.setZoneResolver(() => hudCtrl.getSelectedZone());
   refs.connect = new ConnectUX(
     sim,
     renderer,
@@ -680,6 +682,23 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
   function showCampaignCompleteModal(): void {
     document.querySelector(".cp-win-overlay")?.remove();
 
+    // Persist completion so the level select page can show it.
+    const levelId =
+      (window as unknown as { __stackAttackLevelId?: StackAttackLevelId | null })
+        .__stackAttackLevelId ?? null;
+    if (levelId) {
+      const key = `stackattack:completed:${levelId}`;
+      const avgLatency = metrics.latencyCount > 0 ? metrics.latencySum / metrics.latencyCount : 0;
+      const delivered = metrics.responded + metrics.terminated;
+      const availability = metrics.totalRequests > 0 ? delivered / metrics.totalRequests : 1;
+      localStorage.setItem(key, JSON.stringify({
+        completedAt: new Date().toISOString(),
+        waves: waves.length,
+        finalAvailability: availability,
+        viabilityRemaining: viability.value,
+      }));
+    }
+
     const overlay = document.createElement("div");
     overlay.className = "cp-win-overlay";
     const modal = document.createElement("div");
@@ -695,15 +714,23 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     sub.textContent = `${waves.length} waves cleared. The grid is yours.`;
     modal.appendChild(sub);
 
+    const stats = document.createElement("div");
+    stats.className = "cp-win-preview";
+    stats.appendChild(winPreviewRow("Viability", `${viability.value}%`));
+    stats.appendChild(winPreviewRow("Revenue", `$${metrics.revenue}`));
+    modal.appendChild(stats);
+
     const cta = document.createElement("button");
     cta.type = "button";
     cta.className = "cp-win-cta";
-    cta.textContent = "RESTART";
+    cta.textContent = "BACK TO LEVELS";
     modal.appendChild(cta);
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
-    cta.addEventListener("click", () => window.location.reload());
+    cta.addEventListener("click", () => {
+      window.location.href = "./levels.html";
+    });
     cta.focus();
   }
 
@@ -721,6 +748,40 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     return row;
   }
 
+  function retryCurrentWave(): void {
+    document.querySelector(".cp-win-overlay")?.remove();
+    // Reset viability so the retry starts fresh.
+    viability.reset();
+    dead = false;
+    hudCtrl.updateViability({ value: viability.value, fraction: viability.fraction });
+    // Reset metrics but keep topology + budget.
+    metrics = { responded: 0, terminated: 0, drops: 0, revenue: 0, latencySum: 0, latencyCount: 0, totalRequests: 0 };
+    perComponentDrops = new Map();
+    perComponentProcessed = new Map();
+    metricsAggregator.reset();
+    seenPacketIds.clear();
+    // Kill any active driver/adapter so the render loop stops.
+    driver = null;
+    adapter = null;
+    // Detach SimClient + flush in-flight packets so build phase is clean.
+    sim.clients.delete(CLIENT_ID);
+    sim.activePackets.length = 0;
+    // Clear crashed components from the sim so they accept traffic on retry.
+    sim.crashedComponents.clear();
+    // Re-enter build phase for the same wave.
+    controller.phase = "build" as Phase;
+    hud.setPhase("build");
+    hud.setReadyDisabled(false);
+    hud.setTopologyErrors([]);
+    const wave = waves[controller.currentWaveIndex];
+    if (wave) {
+      hudCtrl.updateBriefing(computeBriefingForCampaignWave(wave));
+      hudCtrl.setZones(wave.wave.zoneDistribution ? [...wave.wave.zoneDistribution.keys()] : []);
+    }
+    hud.setStatus("Build phase — retry wave, adjust topology and click READY");
+    revalidateTopology();
+  }
+
   function showDeathModal(): void {
     document.querySelector(".cp-win-overlay")?.remove();
     const overlay = document.createElement("div");
@@ -736,19 +797,26 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     const sub = document.createElement("div");
     sub.className = "cp-win-narrative";
     sub.textContent =
-      "Too many failed requests. The grid is offline. Restart from the first deployment.";
+      "Too many failed requests. The grid is offline.";
     modal.appendChild(sub);
 
-    const cta = document.createElement("button");
-    cta.type = "button";
-    cta.className = "cp-win-cta";
-    cta.textContent = "RESTART CAMPAIGN";
-    modal.appendChild(cta);
+    const retryBtn = document.createElement("button");
+    retryBtn.type = "button";
+    retryBtn.className = "cp-win-cta";
+    retryBtn.textContent = "RETRY WAVE";
+    modal.appendChild(retryBtn);
+
+    const restartBtn = document.createElement("button");
+    restartBtn.type = "button";
+    restartBtn.className = "cp-win-cta cp-win-cta--secondary";
+    restartBtn.textContent = "RESTART CAMPAIGN";
+    modal.appendChild(restartBtn);
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
-    cta.addEventListener("click", () => window.location.reload());
-    cta.focus();
+    retryBtn.addEventListener("click", () => retryCurrentWave());
+    restartBtn.addEventListener("click", () => window.location.reload());
+    retryBtn.focus();
   }
 
   function clearWaveWorld(): void {
@@ -776,6 +844,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     // PlacementUX/ConnectUX hold a Sim reference — rebuild them so they
     // operate on the new instance.
     refs.placement = new PlacementUX(sim, renderer, controller);
+    refs.placement.setZoneResolver(() => hudCtrl.getSelectedZone());
     refs.connect = new ConnectUX(
       sim,
       renderer,
@@ -840,6 +909,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
   hud.setBudget(controller.budget);
   hudCtrl.updateBriefing(computeBriefingForCampaignWave(waves[0]!));
   hudCtrl.updateViability({ value: viability.value, fraction: viability.fraction });
+  hudCtrl.setZones(waves[0]!.wave.zoneDistribution ? [...waves[0]!.wave.zoneDistribution.keys()] : []);
   hud.setStatus("Build phase — place components and click READY");
 }
 

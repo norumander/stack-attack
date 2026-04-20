@@ -10,6 +10,10 @@ export interface CyberpunkHudController {
   showToast(message: string): void;
   /** Returns palette button elements keyed by component type — used for NEW badges and click interception. */
   getPaletteButtons(): ReadonlyMap<string, HTMLButtonElement>;
+  /** Show/hide the zone selector and set available zones. */
+  setZones(zones: ReadonlyArray<string>): void;
+  /** Returns the currently selected zone, or undefined for "no zone". */
+  getSelectedZone(): string | undefined;
 }
 
 interface PaletteEntry {
@@ -85,6 +89,8 @@ function buildHud(): void {
     updateNextBill,
     showToast,
     getPaletteButtons: () => paletteButtons,
+    setZones: setZonesImpl,
+    getSelectedZone: () => selectedZone,
   };
 }
 
@@ -397,6 +403,76 @@ function buildInfoPanel(root: HTMLElement): void {
   });
 }
 
+// ─── Zone selector (above palette, only visible for multi-zone waves) ─
+
+const ZONE_LABELS: Record<string, string> = {
+  zone_na: "NA",
+  zone_eu: "EU",
+  zone_ap: "AP",
+};
+
+let zoneBar: HTMLElement | null = null;
+let selectedZone: string | undefined;
+let zoneButtons: HTMLButtonElement[] = [];
+
+function buildZoneBar(root: HTMLElement): void {
+  zoneBar = div("cp-zone-bar cp-hidden");
+
+  const label = div("cp-zone-bar-label");
+  label.textContent = "ZONE";
+  zoneBar.append(label);
+
+  const btnGroup = div("cp-zone-btn-group");
+  zoneBar.append(btnGroup);
+
+  // "None" button for unzoned placement
+  const noneBtn = document.createElement("button");
+  noneBtn.type = "button";
+  noneBtn.className = "cp-zone-btn cp-zone-btn--active";
+  noneBtn.textContent = "—";
+  noneBtn.title = "No zone (local)";
+  noneBtn.addEventListener("click", () => selectZone(undefined));
+  btnGroup.append(noneBtn);
+  zoneButtons.push(noneBtn);
+
+  root.append(zoneBar);
+}
+
+function setZonesImpl(zones: ReadonlyArray<string>): void {
+  if (!zoneBar) return;
+  // Remove old zone buttons (keep the "none" button at index 0)
+  while (zoneButtons.length > 1) {
+    const btn = zoneButtons.pop()!;
+    btn.remove();
+  }
+  if (zones.length === 0) {
+    zoneBar.classList.add("cp-hidden");
+    selectedZone = undefined;
+    return;
+  }
+  zoneBar.classList.remove("cp-hidden");
+  const btnGroup = zoneBar.querySelector(".cp-zone-btn-group")!;
+  for (const zone of zones) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cp-zone-btn";
+    btn.textContent = ZONE_LABELS[zone] ?? zone;
+    btn.dataset.zone = zone;
+    btn.addEventListener("click", () => selectZone(zone));
+    btnGroup.append(btn);
+    zoneButtons.push(btn);
+  }
+  selectZone(undefined);
+}
+
+function selectZone(zone: string | undefined): void {
+  selectedZone = zone;
+  for (const btn of zoneButtons) {
+    const isActive = btn.dataset.zone === zone || (!btn.dataset.zone && zone === undefined);
+    btn.classList.toggle("cp-zone-btn--active", isActive);
+  }
+}
+
 // ─── Palette strip (bottom-center) ────────────────────────────────────
 
 const paletteButtons = new Map<string, HTMLButtonElement>();
@@ -408,6 +484,8 @@ function buildPaletteStrip(root: HTMLElement): void {
   const label = div("cp-palette-header");
   label.textContent = "COMPONENT PALETTE";
   strip.append(label);
+
+  buildZoneBar(strip);
 
   const cells = div("cp-palette-cells");
   strip.append(cells);

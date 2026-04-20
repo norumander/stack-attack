@@ -1,3 +1,4 @@
+import type { ConnectionId } from "@core/types/ids";
 import type { ArrivalContext, Outcome, Packet, SimCapability } from "../types";
 
 export type QueueCapabilityOptions = {
@@ -7,12 +8,19 @@ export type QueueCapabilityOptions = {
 export class QueueCapability implements SimCapability {
   readonly id = "queue";
   readonly held: Packet[] = [];
+  /**
+   * Edge IDs that lead to Worker components. Set by wireWorkers so the
+   * Queue skips these when forwarding non-async traffic downstream.
+   * Workers pull from the queue directly; they don't receive forwarded packets.
+   */
+  readonly workerEgressIds = new Set<ConnectionId>();
+
   constructor(private readonly opts: QueueCapabilityOptions) {}
 
   onArriveRequest(packet: Packet, ctx: ArrivalContext): Outcome {
     const allAsync = packet.requests.every((r) => r.isAsync);
     if (!allAsync) {
-      const egress = ctx.egressEdges[0];
+      const egress = ctx.egressEdges.find((e) => !this.workerEgressIds.has(e.id));
       if (!egress) return { kind: "drop", reason: "no_egress", count: packet.requests.length };
       const child: Packet = {
         id: ctx.mintPacketId(), requests: packet.requests, edgeId: egress.id, progress: 0, speed: egress.speed,

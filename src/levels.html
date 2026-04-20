@@ -173,6 +173,9 @@
       margin-top: 8px;
       letter-spacing: 0.04em;
     }
+    .meta .record--cleared {
+      color: var(--pi-lime);
+    }
 
     .tag {
       font-family: var(--pi-font-display);
@@ -247,7 +250,7 @@
 
     <p class="section-header">Campaign · Build From Scratch</p>
     <nav class="grid" aria-label="Campaign levels">
-      <a class="card" href="./game.html?level=url-shortener">
+      <a class="card" href="./game.html?level=url-shortener" data-level="url-shortener">
         <div class="portrait portrait--brand portrait--bitly" aria-label="bit.ly">
           <span class="brand">bit.ly</span>
         </div>
@@ -260,7 +263,7 @@
         <span class="tag">GO ▸</span>
       </a>
 
-      <a class="card" href="./game.html?level=netflix">
+      <a class="card" href="./game.html?level=netflix" data-level="netflix">
         <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix">
           <span class="brand">N</span>
         </div>
@@ -409,5 +412,23 @@
   </div>
   <script type="module" src="./crt-overlay.ts"></script>
   <script type="module" src="./levels-boot.ts"></script>
+  <script>
+    // Show completion state for campaign levels
+    document.querySelectorAll("[data-level]").forEach(function(card) {
+      var levelId = card.getAttribute("data-level");
+      var raw = localStorage.getItem("stackattack:completed:" + levelId);
+      if (!raw) return;
+      try {
+        var data = JSON.parse(raw);
+        var record = card.querySelector(".record");
+        if (record) {
+          record.className = "record record--cleared";
+          record.textContent = "CLEARED · viability " + (data.viabilityRemaining ?? "?") + "% · " + (data.waves ?? "?") + " waves";
+        }
+        var tag = card.querySelector(".tag");
+        if (tag) tag.textContent = "REPLAY \u25B8";
+      } catch (e) { /* ignore bad data */ }
+    });
+  </script>
 </body>
 </html>

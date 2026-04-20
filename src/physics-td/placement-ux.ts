@@ -9,6 +9,7 @@ import {
 import { setStatus } from "./hud-bridge";
 import { CYBERPUNK_TOKENS } from "../render/cyberpunk/tokens";
 import type { ComponentId } from "@core/types/ids";
+import type { Zone } from "@sim/types";
 
 /**
  * Board tile range matches src/render/cyberpunk/board.ts which draws tiles
@@ -41,6 +42,7 @@ function isOnBoard(grid: { x: number; y: number }): boolean {
  */
 export class PlacementUX {
   private placingType: string | null = null;
+  private zoneResolver: (() => Zone | undefined) | null = null;
 
   constructor(
     private readonly sim: Sim,
@@ -96,6 +98,11 @@ export class PlacementUX {
     setStatus("Build phase — place components and click READY");
   }
 
+  /** Provide a callback that returns the currently selected zone. */
+  setZoneResolver(resolver: () => Zone | undefined): void {
+    this.zoneResolver = resolver;
+  }
+
   /**
    * Apply a successful tryPlace by minting the SimComponent + adding to
    * the renderer. Called from the controller's onPlaced callback.
@@ -106,21 +113,23 @@ export class PlacementUX {
     gridPos: { x: number; y: number },
     label?: string,
   ): void {
+    const zone = this.zoneResolver?.();
     const comp = buildSimComponent(
       type,
       componentId,
       this.controller.currentWaveRevenue(),
-      undefined,
+      zone,
       label,
     );
     if (!comp) return;
     this.sim.addComponent(comp);
     const sprite = COMPONENT_SPRITE_TYPE.get(type) ?? "server";
+    const zoneBadge = zone ? ` [${zone.replace("zone_", "").toUpperCase()}]` : "";
     this.renderer.addComponent(componentId, {
       type: sprite,
       displayName: `${type}-${(componentId as unknown as string).slice(-3)}`,
       gridPosition: gridPos,
-      ...(label !== undefined ? { label } : {}),
+      ...(label !== undefined ? { label: `${label}${zoneBadge}` } : {}),
     });
   }
 }
