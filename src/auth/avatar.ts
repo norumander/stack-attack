@@ -22,9 +22,36 @@ export const ROTATION_ORDER = [
   "south-west",
 ] as const;
 
-const BASE_PATH = "./assets/stack-attack/engineers";
+// Explicitly register each engineer sprite via `new URL(..., import.meta.url)`
+// so Vite rewrites them to the correct hashed URLs in production. A raw
+// string path like "./assets/..." does NOT work: the browser resolves it
+// against the current document URL at runtime (e.g. /game.html), which
+// produces 404s on the deployed app because `src/assets` is never served as
+// a static path. This mirrors the pattern used in `src/render/cyberpunk/*`.
+const SPRITE_URLS: Record<"male" | "female", Record<string, string>> = {
+  male: {
+    south: new URL("../assets/stack-attack/engineers/male/south.png", import.meta.url).href,
+    "south-east": new URL("../assets/stack-attack/engineers/male/south-east.png", import.meta.url).href,
+    east: new URL("../assets/stack-attack/engineers/male/east.png", import.meta.url).href,
+    "north-east": new URL("../assets/stack-attack/engineers/male/north-east.png", import.meta.url).href,
+    north: new URL("../assets/stack-attack/engineers/male/north.png", import.meta.url).href,
+    "north-west": new URL("../assets/stack-attack/engineers/male/north-west.png", import.meta.url).href,
+    west: new URL("../assets/stack-attack/engineers/male/west.png", import.meta.url).href,
+    "south-west": new URL("../assets/stack-attack/engineers/male/south-west.png", import.meta.url).href,
+  },
+  female: {
+    south: new URL("../assets/stack-attack/engineers/female/south.png", import.meta.url).href,
+    "south-east": new URL("../assets/stack-attack/engineers/female/south-east.png", import.meta.url).href,
+    east: new URL("../assets/stack-attack/engineers/female/east.png", import.meta.url).href,
+    "north-east": new URL("../assets/stack-attack/engineers/female/north-east.png", import.meta.url).href,
+    north: new URL("../assets/stack-attack/engineers/female/north.png", import.meta.url).href,
+    "north-west": new URL("../assets/stack-attack/engineers/female/north-west.png", import.meta.url).href,
+    west: new URL("../assets/stack-attack/engineers/female/west.png", import.meta.url).href,
+    "south-west": new URL("../assets/stack-attack/engineers/female/south-west.png", import.meta.url).href,
+  },
+};
 
-function folderFor(key: string): string {
+function folderFor(key: string): "male" | "female" {
   return key === "engineer_female" ? "female" : "male";
 }
 
@@ -33,7 +60,9 @@ export function avatarSpritePath(
   key: string,
   direction: (typeof ROTATION_ORDER)[number] = "south",
 ): string {
-  return `${BASE_PATH}/${folderFor(key)}/${direction}.png`;
+  const folder = folderFor(key);
+  const url = SPRITE_URLS[folder][direction];
+  return url ?? SPRITE_URLS.male.south!;
 }
 
 /**
