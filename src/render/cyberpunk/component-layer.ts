@@ -15,15 +15,14 @@ const SPRITE_URLS: Record<string, string> = {
   api_gateway: new URL("../../assets/api_gateway.png", import.meta.url).href,
   queue: new URL("../../assets/queue.png", import.meta.url).href,
   worker: new URL("../../assets/worker.png", import.meta.url).href,
+  streaming_server: new URL("../../assets/streaming_server.png", import.meta.url).href,
+  edge_cache: new URL("../../assets/edge_cache.png", import.meta.url).href,
+  dns_gtm: new URL("../../assets/dns_gtm.png", import.meta.url).href,
+  blob_storage: new URL("../../assets/blob_storage.png", import.meta.url).href,
+  circuit_breaker: new URL("../../assets/circuit_breaker.png", import.meta.url).href,
 };
 
-const FALLBACK_BY_TYPE: Record<string, string> = {
-  streaming_server: "server",
-  blob_storage: "database",
-  edge_cache: "data_cache",
-  dns_gtm: "load_balancer",
-  circuit_breaker: "api_gateway",
-};
+const FALLBACK_BY_TYPE: Record<string, string> = {};
 
 /**
  * Each component texture is split into two layers at load time:
