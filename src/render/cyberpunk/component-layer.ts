@@ -202,16 +202,25 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     // (60x60) and reads smaller than the infra components (80x80), so it
     // gets doubled; infra sprites halve to feel like objects sitting on a
     // tile instead of filling it.
-    const typeScale = visual.type === "client" ? 2 : 0.5;
+    const isClient = visual.type === "client";
+    const typeScale = isClient ? 2 : 0.5;
     const finalScale = CYBERPUNK_TOKENS.scale.spriteScale * typeScale;
+
+    // Client sits at the east vertex of its tile shifted one grid row
+    // south. In iso: east vertex = (+halfW, 0); one tile south in grid
+    // = (-halfW, +halfH). Sum = (0, +halfH). halfW=40, halfH=20.
+    const offsetX = isClient ? 0 : 0;
+    const offsetY = isClient ? CYBERPUNK_TOKENS.scale.isoHalfHeight : 0;
 
     const baseSprite = new Sprite(tex.base);
     baseSprite.anchor.set(0.5, 0.75);
     baseSprite.scale.set(finalScale);
+    baseSprite.position.set(offsetX, offsetY);
 
     const highlightSprite = new Sprite(tex.highlight);
     highlightSprite.anchor.set(0.5, 0.75);
     highlightSprite.scale.set(finalScale);
+    highlightSprite.position.set(offsetX, offsetY);
     // Start untinted — green (healthy) when utilization is 0.
     highlightSprite.tint = utilizationColor(0);
 
@@ -226,6 +235,10 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     });
     label.anchor.set(0.5, 0);
     label.y = 16;
+    // Display-name label below the sprite is hidden — the short-identifier
+    // badge above the sprite is enough chrome. Keep the Text instance alive
+    // so downstream update paths that .text = ... don't error.
+    label.visible = false;
 
     const pendingLabel = new Text({
       text: "",
