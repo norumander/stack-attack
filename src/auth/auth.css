@@ -94,9 +94,9 @@
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    rgba(255, 255, 255, 0.05) 40%,
-    rgba(255, 255, 255, 0.18) 50%,
-    rgba(255, 255, 255, 0.05) 60%,
+    rgba(255, 241, 232, 0.05) 40%,
+    rgba(255, 241, 232, 0.18) 50%,
+    rgba(255, 241, 232, 0.05) 60%,
     transparent 100%
   );
   animation: sa-crt-beam var(--sa-crt-beam-speed) cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
