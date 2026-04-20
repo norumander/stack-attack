@@ -18,6 +18,13 @@ const SPRITE_URLS: Record<string, string> = {
 const FALLBACK_BY_TYPE: Record<string, string> = {
   streaming_server: "server",
   blob_storage: "database",
+  // Queue is a buffer/pipeline — visually closest to database (storage shape).
+  queue: "database",
+  // Worker is a processing unit — visually closest to a server.
+  worker: "server",
+  edge_cache: "data_cache",
+  dns_gtm: "load_balancer",
+  circuit_breaker: "api_gateway",
 };
 
 /**
