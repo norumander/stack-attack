@@ -7,8 +7,8 @@
  *
  * Starting topology progression (each level builds on the previous level's
  * intended fix):
- *   L1 — Baseline Instagram. Profile DB has no cache → celebrity hot-key
- *        saturates it.
+ *   L1 — Baseline Instagram. No cache between servers and Posts DB →
+ *        celebrity hot-key saturates the database.
  *   L2 — L1 + Profile Cache. Photo uploads route through API Servers →
  *        Servers drown while Streaming/Blob sit idle.
  *   L3 — L2 + ag1 → ss_reels rewire. Single Worker per queue → queues back
@@ -38,9 +38,7 @@ function baseInstagram(): ReturnType<typeof topology> {
     .add("server", "s2", "API Server 2")
     .add("server", "s3", "API Server 3")
     .add("server", "s4", "API Server 4")
-    .add("data_cache", "c_feed", "Feed Cache")
     .add("database", "db_posts", "Posts DB")
-    .add("database", "db_profile", "Profile DB")
     .add("queue", "q_notif", "Notifications Queue")
     .add("worker", "w_notif", "Notifications Worker")
     .add("queue", "q_likes", "Likes Queue")
@@ -54,16 +52,11 @@ function baseInstagram(): ReturnType<typeof topology> {
     .connect("lb_api", "s2")
     .connect("lb_api", "s3")
     .connect("lb_api", "s4")
-    .connect("s1", "c_feed")
-    .connect("s2", "c_feed")
-    .connect("s3", "c_feed")
-    .connect("s4", "c_feed")
-    .connect("c_feed", "cb_posts")
+    .connect("s1", "cb_posts")
+    .connect("s2", "cb_posts")
+    .connect("s3", "cb_posts")
+    .connect("s4", "cb_posts")
     .connect("cb_posts", "db_posts")
-    .connect("s1", "db_profile")
-    .connect("s2", "db_profile")
-    .connect("s3", "db_profile")
-    .connect("s4", "db_profile")
     .connect("ag1", "q_notif")
     .connect("q_notif", "w_notif")
     .connect("w_notif", "db_posts")
@@ -77,7 +70,7 @@ function baseInstagram(): ReturnType<typeof topology> {
   // Players add blob storage if they want as a remediation option.
 }
 
-/** Level 2 starting topology: L1 + Profile Cache (the expected L1 fix). */
+/** Level 2 starting topology: L1 + Data Cache (the expected L1 fix). */
 function level2Start(): ReturnType<typeof topology> {
   return topology("instagram-2-start")
     .add("cdn", "cdn1", "CDN")
@@ -87,10 +80,8 @@ function level2Start(): ReturnType<typeof topology> {
     .add("server", "s2", "API Server 2")
     .add("server", "s3", "API Server 3")
     .add("server", "s4", "API Server 4")
-    .add("data_cache", "c_feed", "Feed Cache")
-    .add("data_cache", "c_profile", "Profile Cache")
+    .add("data_cache", "c_posts", "Posts Cache")
     .add("database", "db_posts", "Posts DB")
-    .add("database", "db_profile", "Profile DB")
     .add("queue", "q_notif", "Notifications Queue")
     .add("worker", "w_notif", "Notifications Worker")
     .add("queue", "q_likes", "Likes Queue")
@@ -104,17 +95,12 @@ function level2Start(): ReturnType<typeof topology> {
     .connect("lb_api", "s2")
     .connect("lb_api", "s3")
     .connect("lb_api", "s4")
-    .connect("s1", "c_feed")
-    .connect("s2", "c_feed")
-    .connect("s3", "c_feed")
-    .connect("s4", "c_feed")
-    .connect("c_feed", "cb_posts")
+    .connect("s1", "c_posts")
+    .connect("s2", "c_posts")
+    .connect("s3", "c_posts")
+    .connect("s4", "c_posts")
+    .connect("c_posts", "cb_posts")
     .connect("cb_posts", "db_posts")
-    .connect("s1", "c_profile")
-    .connect("s2", "c_profile")
-    .connect("s3", "c_profile")
-    .connect("s4", "c_profile")
-    .connect("c_profile", "db_profile")
     .connect("ag1", "q_notif")
     .connect("q_notif", "w_notif")
     .connect("w_notif", "db_posts")
@@ -148,10 +134,8 @@ function level4Start(): ReturnType<typeof topology> {
     .add("server", "s2", "API Server 2")
     .add("server", "s3", "API Server 3")
     .add("server", "s4", "API Server 4")
-    .add("data_cache", "c_feed", "Feed Cache")
-    .add("data_cache", "c_profile", "Profile Cache")
+    .add("data_cache", "c_posts", "Posts Cache")
     .add("database", "db_posts", "Posts DB")
-    .add("database", "db_profile", "Profile DB")
     .add("queue", "q_notif", "Notifications Queue")
     .add("worker", "w_notif", "Notifications Worker")
     .add("worker", "w_notif2", "Notifications Worker 2")
@@ -167,17 +151,12 @@ function level4Start(): ReturnType<typeof topology> {
     .connect("lb_api", "s2")
     .connect("lb_api", "s3")
     .connect("lb_api", "s4")
-    .connect("s1", "c_feed")
-    .connect("s2", "c_feed")
-    .connect("s3", "c_feed")
-    .connect("s4", "c_feed")
-    .connect("c_feed", "cb_posts")
+    .connect("s1", "c_posts")
+    .connect("s2", "c_posts")
+    .connect("s3", "c_posts")
+    .connect("s4", "c_posts")
+    .connect("c_posts", "cb_posts")
     .connect("cb_posts", "db_posts")
-    .connect("s1", "c_profile")
-    .connect("s2", "c_profile")
-    .connect("s3", "c_profile")
-    .connect("s4", "c_profile")
-    .connect("c_profile", "db_profile")
     .connect("ag1", "q_notif")
     .connect("q_notif", "w_notif")
     .connect("q_notif", "w_notif2")
@@ -189,15 +168,11 @@ function level4Start(): ReturnType<typeof topology> {
     .connect("w_likes", "db_posts")
     .connect("w_likes2", "db_posts")
     .connect("ag1", "ss_reels")
-    // ss_reels needs a non-streaming egress so the static validator is
-    // happy for api_write/large_payload propagation. In production this
-    // represents metadata writes from stream ingest into Posts DB.
     .connect("ss_reels", "db_posts");
 
-  // Everything currently in zone_na.
   for (const id of [
     "cdn1", "ag1", "lb_api", "s1", "s2", "s3", "s4",
-    "c_feed", "c_profile", "db_posts", "db_profile",
+    "c_posts", "db_posts",
     "q_notif", "w_notif", "w_notif2", "q_likes", "w_likes", "w_likes2",
     "ss_reels", "cb_posts",
   ]) {
@@ -211,7 +186,6 @@ function level4Start(): ReturnType<typeof topology> {
  *  redundancy. These are the L5 flaws. */
 function level5Start(): ReturnType<typeof topology> {
   const t = topology("instagram-5-start")
-    // DNS/GTM in front of everything.
     .add("dns_gtm", "gtm", "DNS/GTM")
     // NA stack
     .add("cdn", "cdn1", "CDN NA")
@@ -221,10 +195,8 @@ function level5Start(): ReturnType<typeof topology> {
     .add("server", "s2", "API Server 2")
     .add("server", "s3", "API Server 3")
     .add("server", "s4", "API Server 4")
-    .add("data_cache", "c_feed", "Feed Cache NA")
-    .add("data_cache", "c_profile", "Profile Cache NA")
+    .add("data_cache", "c_posts", "Posts Cache NA")
     .add("database", "db_posts", "Posts DB NA")
-    .add("database", "db_profile", "Profile DB NA")
     .add("queue", "q_notif", "Notifications Queue")
     .add("worker", "w_notif", "Notifications Worker")
     .add("worker", "w_notif2", "Notifications Worker 2")
@@ -236,7 +208,7 @@ function level5Start(): ReturnType<typeof topology> {
     // APAC stack (minimal: CDN + Server + Cache + DB)
     .add("cdn", "cdn_ap", "CDN APAC")
     .add("server", "s_ap", "API Server APAC")
-    .add("data_cache", "c_ap", "Feed Cache APAC")
+    .add("data_cache", "c_ap", "Cache APAC")
     .add("database", "db_ap", "Posts DB APAC")
     .entry("gtm")
     // NA wiring
@@ -247,17 +219,12 @@ function level5Start(): ReturnType<typeof topology> {
     .connect("lb_api", "s2")
     .connect("lb_api", "s3")
     .connect("lb_api", "s4")
-    .connect("s1", "c_feed")
-    .connect("s2", "c_feed")
-    .connect("s3", "c_feed")
-    .connect("s4", "c_feed")
-    .connect("c_feed", "cb_posts")
+    .connect("s1", "c_posts")
+    .connect("s2", "c_posts")
+    .connect("s3", "c_posts")
+    .connect("s4", "c_posts")
+    .connect("c_posts", "cb_posts")
     .connect("cb_posts", "db_posts")
-    .connect("s1", "c_profile")
-    .connect("s2", "c_profile")
-    .connect("s3", "c_profile")
-    .connect("s4", "c_profile")
-    .connect("c_profile", "db_profile")
     .connect("ag1", "q_notif")
     .connect("q_notif", "w_notif")
     .connect("q_notif", "w_notif2")
@@ -279,7 +246,7 @@ function level5Start(): ReturnType<typeof topology> {
   // Zone assignments.
   for (const id of [
     "gtm", "cdn1", "ag1", "lb_api", "s1", "s2", "s3", "s4",
-    "c_feed", "c_profile", "db_posts", "db_profile",
+    "c_posts", "db_posts",
     "q_notif", "w_notif", "w_notif2", "q_likes", "w_likes", "w_likes2",
     "ss_reels", "cb_posts",
   ]) {
@@ -299,14 +266,14 @@ export const INSTAGRAM_LEVELS: ReadonlyArray<DiagnoseLevel> = [
     id: "instagram-1",
     title: "Instagram L1 — Celebrity Post",
     briefing:
-      "A celebrity just posted. Hot traffic is hammering one profile. Find the bottleneck, fix it before the SLA breaks.",
+      "A celebrity just posted. Hot traffic is hammering one profile. The Posts DB is drowning under read load. Find the bottleneck, fix it before the SLA breaks.",
     narrative:
-      "Profile reads concentrate on a single hot key. Look at the path from API Servers to the Profile DB — what's missing?",
+      "Hot reads concentrate on a single key — the celebrity's post. Every request goes straight to the database with no caching layer. Add a Data Cache between the servers and the Posts DB.",
     startingTopology: baseInstagram().build() satisfies TopologyDef,
     remediationBudget: 400,
     wave: {
-      intensity: 100,
-      packetRate: 10,
+      intensity: 80,
+      packetRate: 15,
       duration: 12,
       composition: { writeRatio: 0.15, authRatio: 0.05, streamRatio: 0, largeRatio: 0, asyncRatio: 0 },
       keyDistribution: { kind: "zipf", alpha: 1.3, spaceSize: 200 },

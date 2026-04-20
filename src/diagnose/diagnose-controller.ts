@@ -81,11 +81,15 @@ export class PhysicsDiagnoseController extends BaseController {
     const topo = this.level.startingTopology;
 
     // 1) Place every component, recording its minted id keyed by topology id.
+    //    Register the topology→minted mapping BEFORE firing onPlaced so the
+    //    callback can resolve the topology label via topologyIdMap.
     topo.components.forEach((comp, i) => {
       const pos = positionFor ? positionFor(comp.id, i) : defaultLayout(i);
-      // Reuse base logic but BYPASS cost — these are inherited, not bought.
-      const minted = this.mintAndRegisterComponent(comp.type, pos);
-      this.topologyIdMap.set(comp.id, minted);
+      const id = mintComponentId();
+      this.topologyIdMap.set(comp.id, id);
+      this.placedComponents.add(id);
+      this.placedTypes.set(id, comp.type);
+      this.diagnoseCallbacks.onPlaced(comp.type, id, pos);
     });
 
     // 2) Wire every connection. Skip (with a console warn) any edge that
@@ -103,18 +107,6 @@ export class PhysicsDiagnoseController extends BaseController {
     }
   }
 
-  /**
-   * Place a component WITHOUT spending budget. Used only by `preplace` —
-   * inherited components don't cost the player anything. Mirrors the
-   * base's `tryPlace` minus the cost check and deduction.
-   */
-  private mintAndRegisterComponent(type: string, gridPos: { x: number; y: number }): ComponentId {
-    const id = mintComponentId();
-    this.placedComponents.add(id);
-    this.placedTypes.set(id, type);
-    this.diagnoseCallbacks.onPlaced(type, id, gridPos);
-    return id;
-  }
 
   ready(): void {
     if (this.phase !== "build") return;

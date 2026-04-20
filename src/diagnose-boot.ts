@@ -259,7 +259,7 @@ async function main(): Promise<void> {
           from: { componentId: sourceId, portId: "p" as PortId },
           to: { componentId: targetId, portId: "p" as PortId },
           bandwidth: 500,
-          latencySeconds: 0.5,
+          latencySeconds: 0.1,
           twinId: backId,
           direction: "forward",
         });
@@ -268,7 +268,7 @@ async function main(): Promise<void> {
           from: { componentId: targetId, portId: "p" as PortId },
           to: { componentId: sourceId, portId: "p" as PortId },
           bandwidth: 500,
-          latencySeconds: 0.5,
+          latencySeconds: 0.1,
           twinId: forwardId,
           direction: "back",
         });
@@ -473,6 +473,26 @@ async function main(): Promise<void> {
     firedChaosIndices.clear();
     waveElapsedSeconds = 0;
 
+    // ── Dev diagnostics ──
+    const compLines = [...sim.components.values()].map((c) => {
+      const type = componentTypes.get(c.id) ?? "?";
+      const label = componentLabels.get(c.id) ?? "";
+      const cap = c.bucket ? `cap=${c.bucket.capacity()}/s` : "unlimited";
+      return `  [${c.id}] ${type} "${label}" (${cap})`;
+    });
+    const connLines = [...sim.connections.values()]
+      .filter((c) => c.direction === "forward")
+      .map((c) => {
+        const fromLabel = componentLabels.get(c.from.componentId as ComponentId) ?? c.from.componentId;
+        const toLabel = componentLabels.get(c.to.componentId as ComponentId) ?? c.to.componentId;
+        return `  ${fromLabel} → ${toLabel}`;
+      });
+    console.log(
+      `[wave-start] ${level.id} | intensity=${level.wave.intensity} packetRate=${level.wave.packetRate}\n` +
+      `COMPONENTS:\n${compLines.join("\n")}\n` +
+      `CONNECTIONS:\n${connLines.join("\n")}`
+    );
+
     adapter = new SimToRendererAdapter(sim, renderer, positions);
     driver = new BrowserDriver(sim, { stepSeconds: 1 / 60 });
     waveStartMs = performance.now();
@@ -515,6 +535,9 @@ async function main(): Promise<void> {
       for (const ev of driver.tickEvents) {
         if (ev.kind === "drop") {
           metrics.drops += ev.count;
+          if (ev.count > 0) {
+            console.warn("[drop]", ev.reason, "×" + ev.count, "at", ev.componentId, `(type=${componentTypes.get(ev.componentId as ComponentId) ?? "?"})`);
+          }
         } else if (ev.kind === "terminate") {
           metrics.terminated += ev.count;
           metrics.revenue += ev.revenue;

@@ -218,9 +218,9 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
       text: visual.label ?? "",
       style: {
         fontFamily: "system-ui, sans-serif",
-        fontSize: 10,
-        fontWeight: "600",
-        fill: 0xeaf6ff,
+        fontSize: 12,
+        fontWeight: "700",
+        fill: 0xffffff,
         align: "center",
       },
     });
@@ -241,8 +241,8 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
           b.height + padY * 2,
           3,
         )
-        .fill({ color: 0x0a1420, alpha: 0.8 })
-        .stroke({ color: 0x5ef0ff, alpha: 0.45, width: 1 });
+        .fill({ color: 0x0a1420, alpha: 0.92 })
+        .stroke({ color: 0x5ef0ff, alpha: 0.6, width: 1 });
     };
     redrawNameBadgeBg();
 

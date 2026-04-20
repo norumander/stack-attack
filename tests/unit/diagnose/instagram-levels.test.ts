@@ -42,7 +42,7 @@ describe("Instagram diagnose arc — 5 levels", () => {
         expect(ids.has(edge.from)).toBe(true);
         expect(ids.has(edge.to)).toBe(true);
       }
-      expect(topo.components.length).toBeGreaterThanOrEqual(15);
+      expect(topo.components.length).toBeGreaterThanOrEqual(12);
     },
   );
 
@@ -54,23 +54,23 @@ describe("Instagram diagnose arc — 5 levels", () => {
     },
   );
 
-  it("Level 1 expected fix (add Profile Cache) passes SLA on playtest", () => {
-    // Fix: insert a data_cache between Servers and Profile DB.
+  it("Level 1 expected fix (add Posts Cache) passes SLA on playtest", () => {
+    // Fix: insert a data_cache between Servers and Posts CB.
     const start = INSTAGRAM_LEVELS[0]!.startingTopology;
     const fix: TopologyDef = {
       ...start,
       components: [
         ...start.components,
-        { type: "data_cache", id: "c_profile", label: "Profile Cache" },
+        { type: "data_cache", id: "c_posts", label: "Posts Cache" },
       ],
       connections: [
-        // Drop s* → db_profile; route via c_profile.
-        ...start.connections.filter((c) => c.to !== "db_profile" || !c.from.startsWith("s")),
-        { from: "s1", to: "c_profile" },
-        { from: "s2", to: "c_profile" },
-        { from: "s3", to: "c_profile" },
-        { from: "s4", to: "c_profile" },
-        { from: "c_profile", to: "db_profile" },
+        // Drop s* → cb_posts; route via c_posts.
+        ...start.connections.filter((c) => c.to !== "cb_posts" || !c.from.startsWith("s")),
+        { from: "s1", to: "c_posts" },
+        { from: "s2", to: "c_posts" },
+        { from: "s3", to: "c_posts" },
+        { from: "s4", to: "c_posts" },
+        { from: "c_posts", to: "cb_posts" },
       ],
     };
     const level = INSTAGRAM_LEVELS[0]!;
