@@ -560,6 +560,9 @@ body.renderer-iso .cp-palette-icon[data-type="database"] {
 body.renderer-iso .cp-palette-icon[data-type="data_cache"] {
   background-image: url("./assets/data-cache.png");
 }
+body.renderer-iso .cp-palette-icon[data-type="edge_cache"] {
+  background-image: url("./assets/edge_cache.png");
+}
 body.renderer-iso .cp-palette-icon[data-type="load_balancer"] {
   background-image: url("./assets/load_balancer.png");
 }
@@ -568,6 +571,24 @@ body.renderer-iso .cp-palette-icon[data-type="cdn"] {
 }
 body.renderer-iso .cp-palette-icon[data-type="api_gateway"] {
   background-image: url("./assets/api_gateway.png");
+}
+body.renderer-iso .cp-palette-icon[data-type="queue"] {
+  background-image: url("./assets/queue.png");
+}
+body.renderer-iso .cp-palette-icon[data-type="worker"] {
+  background-image: url("./assets/worker.png");
+}
+body.renderer-iso .cp-palette-icon[data-type="streaming_server"] {
+  background-image: url("./assets/streaming_server.png");
+}
+body.renderer-iso .cp-palette-icon[data-type="blob_storage"] {
+  background-image: url("./assets/blob_storage.png");
+}
+body.renderer-iso .cp-palette-icon[data-type="dns_gtm"] {
+  background-image: url("./assets/dns_gtm.png");
+}
+body.renderer-iso .cp-palette-icon[data-type="circuit_breaker"] {
+  background-image: url("./assets/circuit_breaker.png");
 }
 
 body.renderer-iso .cp-palette-name {
