@@ -29,13 +29,28 @@ function emit(event: AuthEvent): void {
 }
 
 // ─── Profile fetch ───────────────────────────────────────────────────
-async function fetchProfile(userId: string): Promise<Profile | null> {
-  const { data } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .single();
-  return data;
+// Guarded so a single in-flight fetch can't pile up behind itself when
+// onAuthStateChange fires multiple events in quick succession. Deduping
+// matters because a hung SELECT on an HTTP/2 connection will block every
+// subsequent request behind it — including writes the user is trying to
+// perform from the UI.
+let inFlightProfileFetch: Promise<Profile | null> | null = null;
+
+function fetchProfile(userId: string): Promise<Profile | null> {
+  if (inFlightProfileFetch) return inFlightProfileFetch;
+  inFlightProfileFetch = (async () => {
+    try {
+      const { data } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .single();
+      return data;
+    } finally {
+      inFlightProfileFetch = null;
+    }
+  })();
+  return inFlightProfileFetch;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────
@@ -87,11 +102,47 @@ export function waitForAuth(): Promise<User> {
   });
 }
 
+/**
+ * Wait until the background profile fetch resolves (or fails). Use this in
+ * boot scripts to decide whether a user needs to go through profile setup —
+ * without it, the `profile: null` that `signed_in` now carries would trigger
+ * setup for users who already have a profile row.
+ *
+ * Resolves with the profile (or null if the user has none), or null on
+ * timeout. Never rejects.
+ */
+export function waitForProfile(timeoutMs = 6000): Promise<Profile | null> {
+  return new Promise((resolve) => {
+    if (currentProfile) {
+      resolve(currentProfile);
+      return;
+    }
+    let settled = false;
+    const finish = (profile: Profile | null) => {
+      if (settled) return;
+      settled = true;
+      unsub();
+      clearTimeout(timer);
+      resolve(profile);
+    };
+    const unsub = onAuthChange((event) => {
+      if (event.type === "profile_ready") finish(event.profile);
+      if (event.type === "signed_out") finish(null);
+    });
+    const timer = setTimeout(() => finish(currentProfile ?? null), timeoutMs);
+  });
+}
+
 // ─── Bootstrap ───────────────────────────────────────────────────────
-supabase.auth.onAuthStateChange(async (_eventType, session: Session | null) => {
+// Emit `signed_in` synchronously with the user only. The profile fetch
+// runs in the background and emits `profile_ready` when it resolves.
+// Splitting these two events is what prevents a slow/hung SELECT from
+// blocking the auth-gate timeout — callers that only need the user
+// (`resolveInitialSession`, `waitForAuth`) unblock in milliseconds even
+// when Supabase's REST endpoint is cold.
+supabase.auth.onAuthStateChange((_eventType, session: Session | null) => {
   if (session?.user) {
     currentUser = session.user;
-    currentProfile = await fetchProfile(session.user.id);
 
     const savedHash = localStorage.getItem("sa_pre_auth_hash");
     if (savedHash) {
@@ -102,6 +153,17 @@ supabase.auth.onAuthStateChange(async (_eventType, session: Session | null) => {
     }
 
     emit({ type: "signed_in", user: currentUser, profile: currentProfile });
+
+    // Fire-and-forget: populate currentProfile in the background and emit
+    // profile_ready for UIs that want to wait on it (nav bar, landing).
+    fetchProfile(session.user.id)
+      .then((profile) => {
+        currentProfile = profile;
+        if (profile) emit({ type: "profile_ready", profile });
+      })
+      .catch((err) => {
+        console.warn("[auth] background fetchProfile failed:", err);
+      });
   } else {
     currentUser = null;
     currentProfile = null;

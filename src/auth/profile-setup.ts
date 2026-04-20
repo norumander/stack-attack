@@ -8,6 +8,20 @@ import {
   avatarSpritePath,
 } from "./avatar";
 
+/**
+ * Race a promise against a timeout. We use this on Supabase calls because a
+ * stale session or auto-refresh stall can make the client hang indefinitely
+ * — surfacing a clear timeout error is much better than a spinning button.
+ */
+function withTimeout<T>(p: PromiseLike<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    Promise.resolve(p),
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 export function showProfileSetup(): Promise<Profile> {
   return new Promise((resolve) => {
     const user = getUser();
@@ -91,11 +105,20 @@ export function showProfileSetup(): Promise<Profile> {
     saveBtn.textContent = "DEPLOY PROFILE";
     card.appendChild(saveBtn);
 
+    const errorEl = document.createElement("p");
+    errorEl.className = "sa-profile-error";
+    errorEl.hidden = true;
+    card.appendChild(errorEl);
+
     modal.appendChild(card);
     document.body.appendChild(modal);
 
     saveBtn.addEventListener("click", async () => {
       const displayName = nameInput.value.trim() || "Commander";
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = "SAVING…";
+      errorEl.hidden = true;
 
       const profile: Profile = {
         id: user.id,
@@ -104,18 +127,54 @@ export function showProfileSetup(): Promise<Profile> {
         created_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase.from("profiles").insert({
-        id: user.id,
-        display_name: displayName,
-        avatar_key: selectedAvatar,
-      });
+      try {
+        // Raw PostgREST upsert — supabase-js 2.x has been observed hanging
+        // indefinitely on profile writes in this project (even with a fresh
+        // session), while an equivalent raw fetch completes normally. Using
+        // fetch gives us direct visibility into the HTTP status and body.
+        const supaUrl = import.meta.env.VITE_SUPABASE_URL as string;
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(),
+          5000,
+          "getSession",
+        );
+        const token = session?.access_token ?? anonKey;
 
-      if (error) {
-        console.error("[profile] insert error:", error);
-        await supabase
-          .from("profiles")
-          .update({ display_name: displayName, avatar_key: selectedAvatar })
-          .eq("id", user.id);
+        const resp = await withTimeout(
+          fetch(`${supaUrl}/rest/v1/profiles?on_conflict=id`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: anonKey,
+              Authorization: `Bearer ${token}`,
+              Prefer: "resolution=merge-duplicates,return=representation",
+            },
+            body: JSON.stringify({
+              id: user.id,
+              display_name: displayName,
+              avatar_key: selectedAvatar,
+            }),
+          }),
+          10000,
+          "profile upsert",
+        );
+
+        if (!resp.ok) {
+          const bodyText = await resp.text();
+          console.error("[profile] upsert failed:", resp.status, bodyText);
+          throw new Error(
+            `HTTP ${resp.status}: ${bodyText.slice(0, 300)}`,
+          );
+        }
+      } catch (err) {
+        console.error("[profile] save failed:", err);
+        errorEl.textContent =
+          `Couldn't save profile: ${err instanceof Error ? err.message : String(err)}`;
+        errorEl.hidden = false;
+        saveBtn.disabled = false;
+        saveBtn.textContent = "DEPLOY PROFILE";
+        return;
       }
 
       setProfile(profile);

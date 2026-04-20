@@ -1,6 +1,7 @@
 export { supabase, isAuthConfigured } from "./supabase-client";
 export {
   waitForAuth,
+  waitForProfile,
   getUser,
   getProfile,
   signInWithGoogle,

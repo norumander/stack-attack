@@ -1,6 +1,6 @@
 import {
   waitForAuth,
-  getProfile,
+  waitForProfile,
   showLoginOverlay,
   hideLoginOverlay,
   showProfileSetup,
@@ -36,7 +36,11 @@ async function boot(): Promise<void> {
     hideLoginOverlay();
   }
 
-  if (!getProfile()) {
+  // Profile fetch runs in the background (auth-state.ts emits profile_ready
+  // separately from signed_in). Wait for it here so we don't flash the
+  // setup overlay at users who already have a profile row.
+  const profile = await waitForProfile();
+  if (!profile) {
     await showProfileSetup();
   }
 
