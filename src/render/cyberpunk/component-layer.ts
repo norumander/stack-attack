@@ -196,6 +196,18 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
   const states = new Map<ComponentId, ComponentRenderState>();
 
   const add = (id: ComponentId, visual: ComponentVisual): void => {
+    // Defensive: if this id is already in the scene, remove it first so we
+    // don't orphan the old container. Happens when wave cleanup in boot
+    // doesn't removeComponent the client (client lives in sim.clients, not
+    // sim.components) and setupClientForBuild re-adds it — the old sprite
+    // was left behind, reading as an "afterimage" when the client moves.
+    const existing = states.get(id);
+    if (existing) {
+      container.removeChild(existing.container);
+      existing.container.destroy({ children: true });
+      states.delete(id);
+    }
+
     const tex = resolveTextures(textures, visual.type);
 
     // Per-type sprite scale override. Client is the landing-page typist
