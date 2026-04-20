@@ -1,0 +1,33 @@
+/* Shared Pico-8 palette + typography.
+   Single source of truth. Import from any stylesheet that needs --pi-* vars. */
+:root {
+  /* 16-color Pico-8 palette — canonical names. */
+  --pi-black:    #000000;
+  --pi-navy:     #1D2B53;
+  --pi-maroon:   #7E2553;
+  --pi-dkgreen:  #008751;
+  --pi-brown:    #AB5236;
+  --pi-dkgrey:   #5F574F;
+  --pi-lgrey:    #C2C3C7;
+  --pi-white:    #FFF1E8;
+  --pi-red:      #FF004D;
+  --pi-orange:   #FFA300;
+  --pi-yellow:   #FFEC27;
+  --pi-green:    #00E436;
+  --pi-blue:     #29ADFF;
+  --pi-lavender: #83769C;
+  --pi-pink:     #FF77A8;
+  --pi-peach:    #FFCCAA;
+
+  /* Aliases in use across the codebase. Mapped to canonical colors above. */
+  --pi-bg-2:    var(--pi-navy);        /* deep navy background */
+  --pi-bg-3:    #3a3a8a;               /* mid navy (landing radial) — not in strict pico-8 */
+  --pi-cream:   var(--pi-white);
+  --pi-magenta: var(--pi-maroon);
+  --pi-cyan:    var(--pi-blue);
+  --pi-lime:    var(--pi-green);
+  --pi-ink:     var(--pi-black);
+
+  --pi-font-display: "Press Start 2P", "Courier New", monospace;
+  --pi-font-body:    "VT323", "Courier New", monospace;
+}
