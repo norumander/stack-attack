@@ -5,23 +5,7 @@
    ══════════════════════════════════════════════════════════════════════ */
 
 @import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap");
-
-:root {
-  --pi-bg-2:    #1d2b53;
-  --pi-bg-3:    #3a3a8a;
-  --pi-cream:   #fff1e8;
-  --pi-yellow:  #ffec27;
-  --pi-orange:  #ffa300;
-  --pi-pink:    #ff77a8;
-  --pi-magenta: #7e2553;
-  --pi-cyan:    #29adff;
-  --pi-lime:    #00e436;
-  --pi-red:     #ff004d;
-  --pi-ink:     #000000;
-
-  --pi-font-display: "Press Start 2P", "Courier New", monospace;
-  --pi-font-body:    "VT323", "Courier New", monospace;
-}
+@import url("../styles/palette.css");
 
 /* Crisp pixel rendering for every sprite on every page */
 .sa-login-overlay *,
@@ -110,9 +94,9 @@
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    rgba(255, 255, 255, 0.05) 40%,
-    rgba(255, 255, 255, 0.18) 50%,
-    rgba(255, 255, 255, 0.05) 60%,
+    rgba(255, 241, 232, 0.05) 40%,
+    rgba(255, 241, 232, 0.18) 50%,
+    rgba(255, 241, 232, 0.05) 60%,
     transparent 100%
   );
   animation: sa-crt-beam var(--sa-crt-beam-speed) cubic-bezier(0.25, 0.1, 0.25, 1) infinite;

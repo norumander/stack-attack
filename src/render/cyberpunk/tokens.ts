@@ -4,17 +4,17 @@
  */
 export const CYBERPUNK_TOKENS = {
   palette: {
-    bg: 0x050816,
-    tileLine: 0x1a3060,
-    connection: 0x5ef0ff,
-    connectionDim: 0x3a8fa0,
-    packet: 0xaef7ff,
-    packetReturn: 0x5ef0ff,
-    selectionRing: 0x5ef0ff,
-    ghost: 0xaef7ff,
-    flashOverload: 0xff4d4d,
-    flashDrop: 0xff9c4d,
-    flashResponded: 0x5ef0ff,
+    bg: 0x1d2b53,             // pi-navy — canvas background
+    tileLine: 0x1d2b53,       // pi-navy — grid lines on floor tiles
+    connection: 0x29adff,     // pi-blue — active connection
+    connectionDim: 0x83769c,  // pi-lavender — idle connection
+    packet: 0x29adff,         // pi-blue — forward packet
+    packetReturn: 0xffec27,   // pi-yellow — return packet
+    selectionRing: 0xffec27,  // pi-yellow — selection highlight
+    ghost: 0xffccaa,          // pi-peach — placement ghost
+    flashOverload: 0xff004d,  // pi-red
+    flashDrop: 0xffa300,      // pi-orange
+    flashResponded: 0x00e436, // pi-green
   },
   scale: {
     /** Integer pixel scale for 64px component sprites. */

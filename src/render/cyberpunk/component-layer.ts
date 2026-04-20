@@ -5,6 +5,29 @@ import { CYBERPUNK_TOKENS } from "./tokens.js";
 import { gridToWorld } from "./iso-projection.js";
 import { utilizationColor } from "../utilization-color.js";
 
+// NOTE: Cyberpunk sprite URLs archived for rollback. To revert the retheme:
+//   1. cp src/assets/_cyberpunk-archive/*.png src/assets/
+//   2. Uncomment CYBERPUNK_SPRITE_URLS below, delete the live SPRITE_URLS,
+//      and rename the archive back to SPRITE_URLS.
+// See docs/superpowers/specs/2026-04-20-pico8-retheme-design.md
+//
+// const CYBERPUNK_SPRITE_URLS: Record<string, string> = {
+//   client: new URL("../../assets/_cyberpunk-archive/client.png", import.meta.url).href,
+//   server: new URL("../../assets/_cyberpunk-archive/server.png", import.meta.url).href,
+//   database: new URL("../../assets/_cyberpunk-archive/database.png", import.meta.url).href,
+//   data_cache: new URL("../../assets/_cyberpunk-archive/data-cache.png", import.meta.url).href,
+//   load_balancer: new URL("../../assets/_cyberpunk-archive/load_balancer.png", import.meta.url).href,
+//   cdn: new URL("../../assets/_cyberpunk-archive/cdn.png", import.meta.url).href,
+//   api_gateway: new URL("../../assets/_cyberpunk-archive/api_gateway.png", import.meta.url).href,
+//   queue: new URL("../../assets/_cyberpunk-archive/queue.png", import.meta.url).href,
+//   worker: new URL("../../assets/_cyberpunk-archive/worker.png", import.meta.url).href,
+//   streaming_server: new URL("../../assets/_cyberpunk-archive/streaming_server.png", import.meta.url).href,
+//   edge_cache: new URL("../../assets/_cyberpunk-archive/edge_cache.png", import.meta.url).href,
+//   dns_gtm: new URL("../../assets/_cyberpunk-archive/dns_gtm.png", import.meta.url).href,
+//   blob_storage: new URL("../../assets/_cyberpunk-archive/blob_storage.png", import.meta.url).href,
+//   circuit_breaker: new URL("../../assets/_cyberpunk-archive/circuit_breaker.png", import.meta.url).href,
+// };
+
 const SPRITE_URLS: Record<string, string> = {
   client: new URL("../../assets/client.png", import.meta.url).href,
   server: new URL("../../assets/server.png", import.meta.url).href,
@@ -76,9 +99,9 @@ function splitBitmap(bitmap: ImageBitmap): ComponentSplitTextures {
     const g = src.data[i + 1]!;
     const b = src.data[i + 2]!;
     const a = src.data[i + 3]!;
-    // Cyan heuristic: alpha present, green+blue bright and similar, red well below both.
-    const isCyan =
-      a > 0 && g > 100 && b > 100 && r < g - 20 && r < b - 20 && Math.abs(g - b) < 60;
+    // Pico-8 blue detector (#29ADFF = 41, 173, 255). Exact match — sprites are
+    // generated in a fixed 16-color palette so we don't need tolerance.
+    const isCyan = a > 0 && r === 0x29 && g === 0xad && b === 0xff;
 
     if (isCyan) {
       // Flatten to grayscale intensity so sprite.tint shows the target color cleanly.
@@ -173,15 +196,46 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
   const states = new Map<ComponentId, ComponentRenderState>();
 
   const add = (id: ComponentId, visual: ComponentVisual): void => {
+    // Defensive: if this id is already in the scene, remove it first so we
+    // don't orphan the old container. Happens when wave cleanup in boot
+    // doesn't removeComponent the client (client lives in sim.clients, not
+    // sim.components) and setupClientForBuild re-adds it — the old sprite
+    // was left behind, reading as an "afterimage" when the client moves.
+    const existing = states.get(id);
+    if (existing) {
+      container.removeChild(existing.container);
+      existing.container.destroy({ children: true });
+      states.delete(id);
+    }
+
     const tex = resolveTextures(textures, visual.type);
+
+    // Per-type sprite scale override. Client is the landing-page typist
+    // (60x60) and reads smaller than the infra components (80x80), so it
+    // gets doubled; infra sprites halve to feel like objects sitting on a
+    // tile instead of filling it.
+    const isClient = visual.type === "client";
+    const typeScale = isClient ? 2 : 0.5;
+    const finalScale = CYBERPUNK_TOKENS.scale.spriteScale * typeScale;
+
+    // Client sits at south vertex of its tile (0, +halfH) — rightmost
+    // iso point of the tile-one-south. Infra components shift down half
+    // a screen-tile so they visually sit on the tile surface instead of
+    // floating above it. halfW=40, halfH=20.
+    const offsetX = 0;
+    const offsetY = isClient
+      ? CYBERPUNK_TOKENS.scale.isoHalfHeight
+      : CYBERPUNK_TOKENS.scale.isoHalfHeight - 5;
 
     const baseSprite = new Sprite(tex.base);
     baseSprite.anchor.set(0.5, 0.75);
-    baseSprite.scale.set(CYBERPUNK_TOKENS.scale.spriteScale);
+    baseSprite.scale.set(finalScale);
+    baseSprite.position.set(offsetX, offsetY);
 
     const highlightSprite = new Sprite(tex.highlight);
     highlightSprite.anchor.set(0.5, 0.75);
-    highlightSprite.scale.set(CYBERPUNK_TOKENS.scale.spriteScale);
+    highlightSprite.scale.set(finalScale);
+    highlightSprite.position.set(offsetX, offsetY);
     // Start untinted — green (healthy) when utilization is 0.
     highlightSprite.tint = utilizationColor(0);
 
@@ -196,6 +250,10 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     });
     label.anchor.set(0.5, 0);
     label.y = 16;
+    // Display-name label below the sprite is hidden — the short-identifier
+    // badge above the sprite is enough chrome. Keep the Text instance alive
+    // so downstream update paths that .text = ... don't error.
+    label.visible = false;
 
     const pendingLabel = new Text({
       text: "",

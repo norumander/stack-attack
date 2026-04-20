@@ -47,9 +47,9 @@ export interface ConnectionLayer {
 
 /** Perpendicular offset applied to each lane — total separation is 2× this. */
 const LANE_OFFSET_PX = 18;
-/** Distinct color for response-leg lanes (warm amber vs the cyan forward lane). */
-const CONNECTION_BACK_CORE = 0xff9c4d;
-const CONNECTION_BACK_HIGHLIGHT = 0xffd9a8;
+/** Pico-8 palette — back (response) leg. Yellow core, darker yellow shadow. */
+const CONNECTION_BACK_CORE = 0xffec27; // pi-yellow
+const CONNECTION_BACK_HIGHLIGHT = 0xffec27; // same — no neon inner glow
 /**
  * Inset applied to each end of whichever lane "overshoots" the canonical
  * endpoints along the canonical direction. With a fixed (+X / −X) lane offset,
@@ -98,11 +98,20 @@ function insetPathEnds(path: Point[], inset: number): Point[] {
  * when source and target share a grid row or column the corner coincides
  * with an endpoint and the path degenerates to a straight line.
  */
+/** Components render with a +15px y-offset (see component-layer.ts add()),
+ *  so the connection endpoints shift down by the same amount to meet the
+ *  sprites at their visual center. */
+const ENDPOINT_Y_OFFSET = 15;
+
 function routePath(fromGX: number, fromGY: number, toGX: number, toGY: number): Point[] {
-  const start = gridToWorld(fromGX, fromGY);
-  const corner = gridToWorld(toGX, fromGY);
-  const end = gridToWorld(toGX, toGY);
-  return [start, corner, end];
+  const s = gridToWorld(fromGX, fromGY);
+  const c = gridToWorld(toGX, fromGY);
+  const e = gridToWorld(toGX, toGY);
+  return [
+    { x: s.x, y: s.y + ENDPOINT_Y_OFFSET },
+    { x: c.x, y: c.y + ENDPOINT_Y_OFFSET },
+    { x: e.x, y: e.y + ENDPOINT_Y_OFFSET },
+  ];
 }
 
 export function createConnectionLayer(components: ComponentLayer): ConnectionLayer {
@@ -183,21 +192,19 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
       const highlightColor = s.direction === "forward"
         ? CYBERPUNK_TOKENS.palette.packet
         : CONNECTION_BACK_HIGHLIGHT;
-      strokePath(outer, s.path, CYBERPUNK_TOKENS.cable.outerWidth, CYBERPUNK_TOKENS.palette.tileLine, 1);
-      strokePath(
-        core,
-        s.path,
-        CYBERPUNK_TOKENS.cable.coreWidth,
-        coreColor,
-        0.65 + s.loadUtilization * 0.35,
-      );
-      strokePath(
-        highlight,
-        s.path,
-        CYBERPUNK_TOKENS.cable.highlightWidth,
-        highlightColor,
-        1,
-      );
+      // Pico-8 cable: thick outline wrapping a solid-colored core.
+      // Each leg's edge is only slightly darker than its core, echoing
+      // the yellow→orange subtle-step transition:
+      //   forward: pi-blue core, mid-blue edge (one tone down)
+      //   back:    pi-yellow core, pi-orange edge
+      // Widths come from the shared cable tokens so both directions
+      // render identically — the perceived thickness match depends on
+      // the edge/core contrast being similar.
+      const outerColor = s.direction === "forward" ? 0x1D75D0 : 0xFFA300;
+      strokePath(outer, s.path, CYBERPUNK_TOKENS.cable.outerWidth, outerColor, 1);
+      strokePath(core, s.path, CYBERPUNK_TOKENS.cable.coreWidth, coreColor, 1);
+      void highlightColor; // preserved to avoid removing the param path
+      highlight.clear();
     }
   };
 

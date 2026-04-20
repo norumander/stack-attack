@@ -9,3 +9,4 @@ coverage/
 .env
 .claude/settings.local.json
 .mcp.json
+.rejects/

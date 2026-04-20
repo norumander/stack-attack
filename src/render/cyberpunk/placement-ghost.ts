@@ -44,7 +44,9 @@ export function createPlacementGhost(textures: ComponentTextureMap): PlacementGh
       // and avoids the double-tint from stacking base + highlight.
       currentSprite = new Sprite(split.base);
       currentSprite.anchor.set(0.5, 0.75);
-      currentSprite.scale.set(CYBERPUNK_TOKENS.scale.spriteScale);
+      // Match the in-board component scale (0.5x for infra, 2x for client).
+      const typeScale = type === "client" ? 2 : 0.5;
+      currentSprite.scale.set(CYBERPUNK_TOKENS.scale.spriteScale * typeScale);
       currentSprite.alpha = 0.55;
       currentSprite.tint = CYBERPUNK_TOKENS.palette.ghost;
       container.addChild(currentSprite);
@@ -53,8 +55,14 @@ export function createPlacementGhost(textures: ComponentTextureMap): PlacementGh
 
     const grid = worldToGrid(screenPos.x - worldCenterX, screenPos.y - worldCenterY);
     const world = gridToWorld(grid.x, grid.y);
+    // Match the in-board component y-offset (isoHalfHeight - 5 = 15px for
+    // infra, isoHalfHeight = 20px for client) so the preview lands where
+    // the real sprite will.
+    const offsetY = type === "client"
+      ? CYBERPUNK_TOKENS.scale.isoHalfHeight
+      : CYBERPUNK_TOKENS.scale.isoHalfHeight - 5;
     currentSprite.x = world.x;
-    currentSprite.y = world.y;
+    currentSprite.y = world.y + offsetY;
   };
 
   return { container, set };

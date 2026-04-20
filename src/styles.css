@@ -1,18 +1,20 @@
 :root {
-  --bg: #0f1117;
-  --surface: #1a1d27;
-  --surface-2: #242834;
-  --border: #2e3344;
-  --text: #e1e4ed;
-  --text-dim: #8b8fa3;
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --green: #22c55e;
-  --red: #ef4444;
-  --yellow: #eab308;
-  --orange: #f97316;
-  --blue: #3b82f6;
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  /* Classic-dashboard palette, mapped onto the Pico-8 palette.
+     Hidden in the renderer-iso HUD; used by legacy/debug views. */
+  --bg:           #1D2B53;  /* pi-navy */
+  --surface:      #1D2B53;
+  --surface-2:    #7E2553;  /* pi-maroon */
+  --border:       #83769C;  /* pi-lavender */
+  --text:         #FFF1E8;  /* pi-white */
+  --text-dim:     #83769C;
+  --accent:       #29ADFF;  /* pi-blue */
+  --accent-hover: #FFEC27;  /* pi-yellow */
+  --green:        #00E436;
+  --red:          #FF004D;
+  --yellow:       #FFEC27;
+  --orange:       #FFA300;
+  --blue:         #29ADFF;
+  font-family: "VT323", "Press Start 2P", "Courier New", monospace;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -94,7 +96,7 @@ button.secondary {
 button.secondary:hover { background: var(--border); }
 
 button.danger { background: var(--red); }
-button.danger:hover { background: #dc2626; }
+button.danger:hover { background: #FF004D; }
 
 .controls-row {
   display: flex;
@@ -345,7 +347,7 @@ textarea {
 }
 
 .td-ready-btn:hover {
-  background: #1ea853;
+  background: #00E436;
 }
 
 .td-ready-btn:disabled {
@@ -396,7 +398,7 @@ textarea {
   background: var(--green);
   color: var(--bg);
   border-color: var(--green);
-  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.3);
+  box-shadow: 0 0 0 4px rgba(0, 228, 54, 0.3);
 }
 
 /* Connection lines pulse during the simulate phase */
@@ -410,8 +412,8 @@ textarea {
 
 /* Components also pulse subtly during simulate phase */
 @keyframes td-comp-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-  50%      { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.4); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 228, 54, 0); }
+  50%      { box-shadow: 0 0 0 4px rgba(0, 228, 54, 0.4); }
 }
 .topology-visual.td-mode.simulating .td-comp {
   animation: td-comp-pulse 1.5s ease-in-out infinite;
@@ -430,9 +432,9 @@ textarea {
 .td-loss-modal[hidden] { display: none; }
 
 .td-loss-modal__content {
-  background: #1a1e2e;
-  color: #e1e4ed;
-  border: 2px solid #ef4444;
+  background: #1D2B53;
+  color: #FFF1E8;
+  border: 2px solid #FF004D;
   border-radius: 10px;
   padding: 32px 40px;
   min-width: 360px;
@@ -444,7 +446,7 @@ textarea {
 .td-loss-modal__title {
   margin: 0 0 12px;
   font-size: 22px;
-  color: #ef4444;
+  color: #FF004D;
   letter-spacing: 0.5px;
 }
 
@@ -452,7 +454,7 @@ textarea {
   margin: 0 0 24px;
   font-size: 13px;
   line-height: 1.6;
-  color: #94a3b8;
+  color: #83769C;
 }
 
 .td-loss-modal__buttons {
@@ -462,9 +464,9 @@ textarea {
 }
 
 .td-loss-modal__btn {
-  background: #2e3344;
-  color: #e1e4ed;
-  border: 1px solid #3a4155;
+  background: #83769C;
+  color: #FFF1E8;
+  border: 1px solid #83769C;
   padding: 10px 20px;
   border-radius: 6px;
   cursor: pointer;
@@ -474,17 +476,17 @@ textarea {
 }
 
 .td-loss-modal__btn:hover {
-  background: #3a4155;
+  background: #83769C;
 }
 
 .td-loss-modal__btn--primary {
-  background: #4A90D9;
-  border-color: #4A90D9;
+  background: #29ADFF;
+  border-color: #29ADFF;
   color: white;
 }
 
 .td-loss-modal__btn--primary:hover {
-  background: #3a7ec0;
+  background: #29ADFF;
 }
 
 .topology-visual.td-mode .td-status {
@@ -521,75 +523,75 @@ textarea {
   right: 8px;
   width: 260px;
   padding: 12px 14px;
-  background: #1a1d29;
-  border: 1px solid #2e3344;
+  background: #1D2B53;
+  border: 1px solid #83769C;
   border-radius: 6px;
-  color: #e1e4ed;
+  color: #FFF1E8;
   font-size: 12px;
   z-index: 15;
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 .td-briefing[hidden] { display: none; }
-.td-briefing__title { font-size: 14px; font-weight: 700; margin-bottom: 8px; color: #60a5fa; }
+.td-briefing__title { font-size: 14px; font-weight: 700; margin-bottom: 8px; color: #29ADFF; }
 .td-briefing__row { margin-bottom: 4px; line-height: 1.5; }
-.td-briefing__row .k { color: #8b8fa3; font-weight: 500; margin-right: 4px; }
+.td-briefing__row .k { color: #83769C; font-weight: 500; margin-right: 4px; }
 
 /* === TD component info panel === */
 .td-info-panel {
   position: fixed; right: 16px; top: 120px; width: 280px;
   max-height: calc(100vh - 160px); overflow-y: auto;
   padding: 14px 16px;
-  background: #1a1d29; border: 1px solid #2e3344; border-radius: 8px;
-  color: #e1e4ed; font-size: 12px; z-index: 20;
+  background: #1D2B53; border: 1px solid #83769C; border-radius: 8px;
+  color: #FFF1E8; font-size: 12px; z-index: 20;
   box-shadow: 0 8px 24px rgba(0,0,0,0.5);
 }
 .td-info-panel[hidden] { display: none; }
 .td-info-panel__close {
   position: absolute; top: 6px; right: 8px;
-  background: none; border: none; color: #8b8fa3; font-size: 18px;
+  background: none; border: none; color: #83769C; font-size: 18px;
   cursor: pointer; padding: 0; width: 20px; height: 20px; line-height: 16px;
 }
-.td-info-panel__close:hover { color: #e1e4ed; }
-.td-info-panel__header { font-size: 16px; font-weight: 700; color: #60a5fa; margin-bottom: 8px; padding-right: 20px; }
-.td-info-panel__description { line-height: 1.5; margin-bottom: 12px; color: #d1d5db; }
-.td-info-panel__section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #8b8fa3; margin-top: 12px; margin-bottom: 6px; font-weight: 600; }
+.td-info-panel__close:hover { color: #FFF1E8; }
+.td-info-panel__header { font-size: 16px; font-weight: 700; color: #29ADFF; margin-bottom: 8px; padding-right: 20px; }
+.td-info-panel__description { line-height: 1.5; margin-bottom: 12px; color: #FFF1E8; }
+.td-info-panel__section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #83769C; margin-top: 12px; margin-bottom: 6px; font-weight: 600; }
 .td-info-panel__caps { list-style: disc inside; padding-left: 0; margin: 0; line-height: 1.6; }
 .td-info-panel__stats { font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.6; }
 .td-info-panel__stat-row { display: flex; justify-content: space-between; padding: 2px 0; }
-.td-info-panel__stat-row .k { color: #8b8fa3; }
-.td-info-panel__stat-row .v { color: #e1e4ed; }
+.td-info-panel__stat-row .k { color: #83769C; }
+.td-info-panel__stat-row .v { color: #FFF1E8; }
 
 /* === TD dev-only wave jump buttons === */
 .td-hud__dev {
   margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px dashed #2e3344;
+  border-top: 1px dashed #83769C;
 }
 .td-hud__dev h4 {
   margin: 0 0 8px 0;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  color: #8b8fa3;
+  color: #83769C;
   font-weight: 600;
 }
 .td-dev-wave-select {
   width: 100%;
   padding: 6px 8px;
-  background: #2a2e3d;
-  color: #d1d5db;
-  border: 1px solid #3a3f52;
+  background: #7E2553;
+  color: #FFF1E8;
+  border: 1px solid #83769C;
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
 }
 .td-dev-wave-select:hover {
-  background: #363b4f;
-  color: #ffffff;
+  background: #83769C;
+  color: #FFF1E8;
 }
 .td-dev-wave-select:focus {
   outline: none;
-  border-color: #5a6178;
+  border-color: #FFA300;
 }
