@@ -198,13 +198,20 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
   const add = (id: ComponentId, visual: ComponentVisual): void => {
     const tex = resolveTextures(textures, visual.type);
 
+    // Per-type sprite scale override. Client is the landing-page typist
+    // (60x60) and reads smaller than the infra components (80x80), so it
+    // gets doubled; infra sprites halve to feel like objects sitting on a
+    // tile instead of filling it.
+    const typeScale = visual.type === "client" ? 2 : 0.5;
+    const finalScale = CYBERPUNK_TOKENS.scale.spriteScale * typeScale;
+
     const baseSprite = new Sprite(tex.base);
     baseSprite.anchor.set(0.5, 0.75);
-    baseSprite.scale.set(CYBERPUNK_TOKENS.scale.spriteScale);
+    baseSprite.scale.set(finalScale);
 
     const highlightSprite = new Sprite(tex.highlight);
     highlightSprite.anchor.set(0.5, 0.75);
-    highlightSprite.scale.set(CYBERPUNK_TOKENS.scale.spriteScale);
+    highlightSprite.scale.set(finalScale);
     // Start untinted — green (healthy) when utilization is 0.
     highlightSprite.tint = utilizationColor(0);
 
