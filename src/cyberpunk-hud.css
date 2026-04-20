@@ -1481,19 +1481,32 @@ body.renderer-iso .cp-label {
 body.renderer-iso .cp-palette-cell {
   background: #000000 !important;
   color: #FFF1E8 !important;
-  box-shadow: 3px 3px 0 #7E2553 !important;
+  border: 2px solid #000000 !important;
+  box-shadow: none !important;
+  /* Cell itself 20% smaller than the 84px default. */
+  width: 67px !important;
+  padding: 6px 4px 4px !important;
 }
 body.renderer-iso .cp-palette-cell:hover {
   background: #1D2B53 !important;
-  box-shadow: 4px 4px 0 #7E2553 !important;
+  box-shadow: none !important;
+  transform: translateY(-1px) !important;
 }
+body.renderer-iso .cp-palette-cell.cp-placing,
 body.renderer-iso .cp-palette-cell.cp-palette-cell--placing {
   background: #FFEC27 !important;
   color: #1D2B53 !important;
-  box-shadow: inset 3px 3px 0 #7E2553, 4px 4px 0 #7E2553 !important;
+  box-shadow: inset 2px 2px 0 #7E2553 !important;
 }
 body.renderer-iso .cp-palette-cell:disabled {
   background: #1D2B53 !important;
   color: #83769C !important;
+  box-shadow: none !important;
+}
+/* Icon inside each cell 20% smaller (56 → 44). Neon glow removed. */
+body.renderer-iso .cp-palette-icon {
+  width: 44px !important;
+  height: 44px !important;
+  filter: none !important;
 }
 
