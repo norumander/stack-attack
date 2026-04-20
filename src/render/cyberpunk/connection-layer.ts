@@ -47,9 +47,9 @@ export interface ConnectionLayer {
 
 /** Perpendicular offset applied to each lane — total separation is 2× this. */
 const LANE_OFFSET_PX = 18;
-/** Distinct color for response-leg lanes (warm amber vs the cyan forward lane). */
-const CONNECTION_BACK_CORE = 0xff9c4d;
-const CONNECTION_BACK_HIGHLIGHT = 0xffd9a8;
+/** Pico-8 palette — back (response) leg. Yellow core, darker yellow shadow. */
+const CONNECTION_BACK_CORE = 0xffec27; // pi-yellow
+const CONNECTION_BACK_HIGHLIGHT = 0xffec27; // same — no neon inner glow
 /**
  * Inset applied to each end of whichever lane "overshoots" the canonical
  * endpoints along the canonical direction. With a fixed (+X / −X) lane offset,
@@ -99,9 +99,9 @@ function insetPathEnds(path: Point[], inset: number): Point[] {
  * with an endpoint and the path degenerates to a straight line.
  */
 /** Components render with a +15px y-offset (see component-layer.ts add()),
- *  so the connection endpoints shift down by 10px here to meet the sprites
- *  closer to their visual center than to their tile-center anchor. */
-const ENDPOINT_Y_OFFSET = 10;
+ *  so the connection endpoints shift down by the same amount to meet the
+ *  sprites at their visual center. */
+const ENDPOINT_Y_OFFSET = 15;
 
 function routePath(fromGX: number, fromGY: number, toGX: number, toGY: number): Point[] {
   const s = gridToWorld(fromGX, fromGY);
@@ -192,21 +192,13 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
       const highlightColor = s.direction === "forward"
         ? CYBERPUNK_TOKENS.palette.packet
         : CONNECTION_BACK_HIGHLIGHT;
-      strokePath(outer, s.path, CYBERPUNK_TOKENS.cable.outerWidth, CYBERPUNK_TOKENS.palette.tileLine, 1);
-      strokePath(
-        core,
-        s.path,
-        CYBERPUNK_TOKENS.cable.coreWidth,
-        coreColor,
-        0.65 + s.loadUtilization * 0.35,
-      );
-      strokePath(
-        highlight,
-        s.path,
-        CYBERPUNK_TOKENS.cable.highlightWidth,
-        highlightColor,
-        1,
-      );
+      // Pico-8 cable: thick pi-ink outline wrapping a solid-colored core.
+      // The legacy inner highlight (bright neon sheen) is omitted — keeps
+      // the look flat and cartoony instead of glowing.
+      strokePath(outer, s.path, CYBERPUNK_TOKENS.cable.outerWidth, 0x000000, 1);
+      strokePath(core, s.path, CYBERPUNK_TOKENS.cable.coreWidth, coreColor, 1);
+      void highlightColor; // preserved to avoid removing the param path
+      highlight.clear();
     }
   };
 

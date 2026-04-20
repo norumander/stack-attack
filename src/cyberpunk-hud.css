@@ -1467,9 +1467,25 @@ body.renderer-iso .cp-label {
 
 /* Viability / chaos / connection panels inherit panel treatment above */
 
-/* Component palette keeps the dark background (ink black) — sits apart
-   from the navy panels so the component tiles stay readable. */
-body.renderer-iso .cp-palette {
+/* Component palette panel: pico-8 navy like other panels. Each CELL
+   inside gets the dark (ink black) background so the component icons
+   read cleanly inside their tile button. */
+body.renderer-iso .cp-palette-cell {
   background: #000000 !important;
+  color: #FFF1E8 !important;
+  box-shadow: 3px 3px 0 #7E2553 !important;
+}
+body.renderer-iso .cp-palette-cell:hover {
+  background: #1D2B53 !important;
+  box-shadow: 4px 4px 0 #7E2553 !important;
+}
+body.renderer-iso .cp-palette-cell.cp-palette-cell--placing {
+  background: #FFEC27 !important;
+  color: #1D2B53 !important;
+  box-shadow: inset 3px 3px 0 #7E2553, 4px 4px 0 #7E2553 !important;
+}
+body.renderer-iso .cp-palette-cell:disabled {
+  background: #1D2B53 !important;
+  color: #83769C !important;
 }
 
