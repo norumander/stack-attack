@@ -1450,7 +1450,8 @@ body.renderer-iso .cp-loss-buttons {
 /* Palette cells — no hover glow, just the block button treatment */
 body.renderer-iso .cp-palette-cell {
   padding: 6px 8px !important;
-  font-size: 9px !important;
+  font-size: 8px !important;
+  color: #FFA300 !important; /* pi-orange, matches title-font edge */
 }
 body.renderer-iso .cp-palette-cell.cp-palette-cell--placing {
   background: #FFEC27 !important;          /* pi-yellow when selected */
