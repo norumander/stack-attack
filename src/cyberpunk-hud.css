@@ -1451,9 +1451,10 @@ body.renderer-iso .cp-loss-buttons {
 body.renderer-iso .cp-palette-cell {
   padding: 6px 8px !important;
 }
-/* Palette cell label (component name) — 1pt smaller than default + pi-orange. */
+/* Palette cell label (component name) — pi-orange, 6px for the
+   square-tile layout (was 8px before we went square). */
 body.renderer-iso .cp-palette-name {
-  font-size: 8px !important;
+  font-size: 6px !important;
   color: #FFA300 !important;
 }
 body.renderer-iso .cp-palette-cost {
