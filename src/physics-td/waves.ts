@@ -88,7 +88,7 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
     narrative: "The press discovers Netflix. Spread traffic with a Load Balancer onto a second Server, and share a backend Data Cache so hot titles skip the DB — classic scale-out with a Redis-style cache.",
     wave: {
       intensity: 60,
-      packetRate: 6,
+      packetRate: 10,
       duration: 10,
       composition: { writeRatio: 0.25, authRatio: 0, streamRatio: 0, largeRatio: 0, asyncRatio: 0 },
       keyDistribution: { kind: "zipf", alpha: 1.1, spaceSize: 120 },
@@ -105,8 +105,8 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
     briefing: "~100 req/sec with 65% marketing images and 15% sign-in traffic. Large payloads and auth handshakes would crush your Servers at this scale. Put a CDN at the edge to absorb the image flood and an API Gateway to terminate auth before traffic ever reaches the read path.",
     narrative: "Marketing banners and sign-in waves pile up — over half of traffic is now heavy assets. A CDN offloads the image flood at the edge and an API Gateway terminates auth before the Servers ever see it.",
     wave: {
-      intensity: 100,
-      packetRate: 10,
+      intensity: 75,
+      packetRate: 15,
       duration: 12,
       composition: { writeRatio: 0.1, authRatio: 0.15, streamRatio: 0, largeRatio: 0.65, asyncRatio: 0 },
       keyDistribution: { kind: "zipf", alpha: 1.1, spaceSize: 140 },
@@ -123,8 +123,8 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
     briefing: "~90 req/sec as recommendations and thumbnail pipelines kick in — 20% async work. Synchronous handling stalls the read path. Drop a Queue in front of a Worker so async jobs drain off the hot path.",
     narrative: "Recs and thumbnails backfill around the clock. A Queue buffers the surge, a Worker drains it in the background, and the sync read path stays fast.",
     wave: {
-      intensity: 90,
-      packetRate: 10,
+      intensity: 70,
+      packetRate: 15,
       duration: 12,
       composition: { writeRatio: 0.15, authRatio: 0.15, streamRatio: 0, largeRatio: 0.2, asyncRatio: 0.2 },
       keyDistribution: { kind: "zipf", alpha: 1.1, spaceSize: 160 },
@@ -141,8 +141,8 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
     briefing: "~75 req/sec with chaos: servers crash mid-wave and a DB edge gets severed. A Circuit Breaker in front of the server cluster isolates a failing fan-out, and an extra redundant Server means one crashed node doesn't take out your availability SLO.",
     narrative: "Failure is a design parameter, not an exception. A Circuit Breaker absorbs cascades and a third Server carries the load when any one node dies.",
     wave: {
-      intensity: 75,
-      packetRate: 10,
+      intensity: 20,
+      packetRate: 15,
       duration: 13,
       composition: { writeRatio: 0.15, authRatio: 0.15, streamRatio: 0, largeRatio: 0.2, asyncRatio: 0.2 },
       keyDistribution: { kind: "zipf", alpha: 1.1, spaceSize: 160 },
@@ -150,12 +150,11 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
       rampSeconds: 2,
       entryClients: [CLIENT_ID],
     },
-    sla: { availability: 0.7, maxAvgLatencySeconds: 2, maxDropRate: 0.3 },
+    sla: { availability: 0.5, maxAvgLatencySeconds: 2, maxDropRate: 0.5 },
     startBudget: 400,
     chaosSchedule: [
-      { atSeconds: 3, kind: "crash_component", targetRole: "any_server" },
-      { atSeconds: 6, kind: "sever_connection", targetRole: "any_connection_to_database" },
-      { atSeconds: 9, kind: "crash_component", targetRole: "any_server" },
+      { atSeconds: 4, kind: "crash_component", targetRole: "any_server" },
+      { atSeconds: 9, kind: "sever_connection", targetRole: "any_connection_to_database" },
     ],
   },
   {
@@ -164,8 +163,8 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
     briefing: "~105 req/sec — 25% streams, 35% large. Streaming traffic is a different animal: persistent bandwidth reservations, not request/response. Add a Streaming Server as a dedicated client-facing entry and a Blob Storage tier so large assets and streams stop hammering your Servers.",
     narrative: "Video launch means streams saturate the API path if you let them. A dedicated Streaming Server terminates streams at the edge; Blob Storage absorbs large-payload reads behind it.",
     wave: {
-      intensity: 105,
-      packetRate: 10,
+      intensity: 50,
+      packetRate: 15,
       duration: 12,
       composition: { writeRatio: 0.1, authRatio: 0.1, streamRatio: 0.25, largeRatio: 0.35, asyncRatio: 0.1 },
       keyDistribution: { kind: "zipf", alpha: 1.1, spaceSize: 180 },
@@ -184,7 +183,7 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
     narrative: "Speed of light is real. Replicate the backend close to each user and route with DNS/GTM so zone-local traffic never leaves its region.",
     wave: {
       intensity: 130,
-      packetRate: 10,
+      packetRate: 20,
       duration: 14,
       composition: { writeRatio: 0.2, authRatio: 0.15, streamRatio: 0.15, largeRatio: 0.25, asyncRatio: 0 },
       keyDistribution: { kind: "zipf", alpha: 1.1, spaceSize: 200 },
@@ -198,7 +197,7 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
       ]),
       entryClients: [CLIENT_ID],
     },
-    sla: { availability: 0.82, maxAvgLatencySeconds: 1.5, maxDropRate: 0.2 },
+    sla: { availability: 0.82, maxAvgLatencySeconds: 2, maxDropRate: 0.2 },
     startBudget: 2000,
   },
   {
@@ -207,9 +206,9 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
     briefing: "A sustained 30-second viral event — ~270 req/sec slams the platform mid-crash. Static overprovisioning blows the budget; elastic capacity pays for itself. Enable AutoScale on Servers and Databases — tiers bump under sustained load — and ride out the spike.",
     narrative: "A sustained viral moment at internet scale. Infrastructure must be elastic: AutoScale on Servers and DBs auto-bumps capacity tiers as utilization pins 80%+, so you pay for capacity only while the spike lasts.",
     wave: {
-      intensity: 160,
-      packetRate: 12,
-      duration: 30,
+      intensity: 20,
+      packetRate: 20,
+      duration: 16,
       composition: { writeRatio: 0.15, authRatio: 0.1, streamRatio: 0.2, largeRatio: 0.3, asyncRatio: 0.1 },
       keyDistribution: { kind: "zipf", alpha: 1.1, spaceSize: 240 },
       revenue: { perRead: 1, perWrite: 2, perAuth: 2, perStream: 3, perAsync: 3 },
@@ -220,8 +219,8 @@ export const CAMPAIGN_WAVES: ReadonlyArray<CampaignWave> = [
     sla: { availability: 0.5, maxAvgLatencySeconds: 2, maxDropRate: 0.5 },
     startBudget: 400,
     chaosSchedule: [
-      { atSeconds: 4, kind: "crash_component", targetRole: "any_server" },
-      { atSeconds: 10, kind: "crash_component", targetRole: "any_server" },
+      { atSeconds: 8, kind: "crash_component", targetRole: "any_server" },
+      { atSeconds: 20, kind: "crash_component", targetRole: "any_server" },
     ],
   },
 ];

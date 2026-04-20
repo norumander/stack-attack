@@ -435,6 +435,22 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     // TODO: surface these as a pre-wave HUD warning panel.
     controller.lastTopologyErrors = validateTopology(sim, wave.wave, CLIENT_ID, componentTypes);
 
+    // ── Dev diagnostics ──
+    console.log("[wave-start]", {
+      waveIndex: controller.currentWaveIndex,
+      intensity: wave.wave.intensity,
+      packetRate: wave.wave.packetRate,
+      perPacketCount: Math.round(wave.wave.intensity / wave.wave.packetRate),
+      rampSeconds: wave.wave.rampSeconds ?? 0,
+      components: [...sim.components.values()].map((c) => ({
+        id: c.id, type: componentTypes.get(c.id), zone: c.zone ?? null,
+        capacity: c.bucket?.capacity() ?? "unlimited",
+      })),
+      connections: [...sim.connections.values()]
+        .filter((c) => c.direction === "forward")
+        .map((c) => `${c.from.componentId} → ${c.to.componentId} (lat=${c.latencySeconds}s)`),
+    });
+
     adapter = new SimToRendererAdapter(sim, renderer, positions);
     driver = new BrowserDriver(sim, { stepSeconds: 1 / 60 });
     waveStartMs = performance.now();
@@ -466,6 +482,9 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
         if (ev.kind === "drop") {
           metrics.drops += ev.count;
           failuresThisFrame += ev.count;
+          if (ev.count > 0) {
+            console.warn("[drop]", ev.reason, "×" + ev.count, "at", ev.componentId, `(type=${componentTypes.get(ev.componentId as ComponentId) ?? "?"})`);
+          }
           const compId = ev.componentId as ComponentId;
           let tally = perComponentDrops.get(compId);
           if (!tally) { tally = { total: 0, byReason: new Map() }; perComponentDrops.set(compId, tally); }
