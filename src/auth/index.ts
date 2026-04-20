@@ -1,4 +1,4 @@
-export { supabase } from "./supabase-client";
+export { supabase, isAuthConfigured } from "./supabase-client";
 export {
   waitForAuth,
   getUser,

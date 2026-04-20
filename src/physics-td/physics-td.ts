@@ -27,7 +27,7 @@ import { showDossier } from "./show-dossier";
 import { bindInfoPanel, type InfoPanelHandle } from "./component-info-panel";
 import { ComponentMetricsAggregator } from "./component-metrics";
 import type { ComponentId } from "@core/types/ids";
-import { injectNavBar } from "../auth/index";
+import { injectNavBar, isAuthConfigured } from "../auth/index";
 import { resolveInitialSession } from "../auth-gate";
 import { mountChatbotDrawer } from "../chatbot/chatbot-drawer";
 import { serializeContextForChat } from "../chatbot/serialize-context";
@@ -845,8 +845,10 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
 async function boot(): Promise<void> {
   // Auth happens on the landing page. If someone reaches /game.html without a
   // session (deep-link, expired token), bounce them home so they can sign in.
+  // In local dev without Supabase env configured, skip the gate so contributors
+  // can play without setting up Supabase. Production is unaffected.
   const user = await resolveInitialSession();
-  if (!user) {
+  if (!user && isAuthConfigured) {
     window.location.href = "./index.html";
     return;
   }
@@ -857,7 +859,7 @@ async function boot(): Promise<void> {
   const levelId = readLevelIdFromUrl(window.location.search);
   (window as unknown as { __stackAttackLevelId: StackAttackLevelId | null }).__stackAttackLevelId = levelId;
 
-  injectNavBar();
+  if (user) injectNavBar();
   const waves = levelId === "url-shortener" ? BITLY_WAVES : CAMPAIGN_WAVES;
   await main(waves);
 }

@@ -12,7 +12,7 @@ import { PhysicsDiagnoseController } from "./diagnose/diagnose-controller";
 import { COMPONENT_COSTS } from "./physics-td/component-factory";
 import { resolveDiagnoseLevel } from "./diagnose/url";
 import { resolveInitialSession } from "./auth-gate";
-import { injectNavBar } from "./auth/index";
+import { injectNavBar, isAuthConfigured } from "./auth/index";
 import { mountChatbotDrawer } from "./chatbot/chatbot-drawer";
 import type { ChatRequest } from "./chatbot/chat-client";
 
@@ -98,11 +98,11 @@ async function main(): Promise<void> {
 
 async function boot(): Promise<void> {
   const user = await resolveInitialSession();
-  if (!user) {
+  if (!user && isAuthConfigured) {
     window.location.href = "./index.html";
     return;
   }
-  injectNavBar();
+  if (user) injectNavBar();
   await main();
 }
 
