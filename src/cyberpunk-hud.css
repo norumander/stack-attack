@@ -1451,10 +1451,10 @@ body.renderer-iso .cp-loss-buttons {
 body.renderer-iso .cp-palette-cell {
   padding: 6px 8px !important;
 }
-/* Palette cell label (component name) — pi-orange, 6px for the
-   square-tile layout (was 8px before we went square). */
+/* Palette cell label (component name) — pi-orange, 7px for the
+   square-tile layout. */
 body.renderer-iso .cp-palette-name {
-  font-size: 6px !important;
+  font-size: 7px !important;
   color: #FFA300 !important;
 }
 body.renderer-iso .cp-palette-cost {
@@ -1484,9 +1484,9 @@ body.renderer-iso .cp-palette-cell {
   color: #FFF1E8 !important;
   border: 2px solid #000000 !important;
   box-shadow: none !important;
-  /* Square tile: same width and height. */
-  width: 67px !important;
-  height: 67px !important;
+  /* Square tile: 10% larger than before (67 → 74). */
+  width: 74px !important;
+  height: 74px !important;
   aspect-ratio: 1 / 1 !important;
   padding: 4px !important;
   justify-content: center !important;
@@ -1508,10 +1508,10 @@ body.renderer-iso .cp-palette-cell:disabled {
   color: #83769C !important;
   box-shadow: none !important;
 }
-/* Icon inside each cell 20% smaller (56 → 44). Neon glow removed. */
+/* Icon inside each cell: scales with the cell (44 → 48). Neon glow removed. */
 body.renderer-iso .cp-palette-icon {
-  width: 44px !important;
-  height: 44px !important;
+  width: 48px !important;
+  height: 48px !important;
   filter: none !important;
 }
 
