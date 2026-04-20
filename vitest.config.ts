@@ -7,6 +7,9 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     environmentMatchGlobs: [
       ["tests/unit/game/**", "happy-dom"],
+      // Any test that transitively imports a Pixi renderer needs a DOM
+      // environment so Pixi's BrowserAdapter can read `navigator`.
+      ["tests/unit/level-id-param.test.ts", "happy-dom"],
     ],
   },
   resolve: {
