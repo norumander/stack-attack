@@ -193,10 +193,12 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
         ? CYBERPUNK_TOKENS.palette.packet
         : CONNECTION_BACK_HIGHLIGHT;
       // Pico-8 cable: thick outline wrapping a solid-colored core. No
-      // inner neon highlight. Back (yellow) legs get an orange outline
-      // so they echo the title wordmark's yellow + pink/ink drop-shadow
-      // treatment; forward (blue) legs keep the ink-black outline.
-      const outerColor = s.direction === "forward" ? 0x000000 : 0xFFA300;
+      // inner neon highlight. Each leg gets an edge color that echoes
+      // the title wordmark's colored drop-shadow — forward (blue) core
+      // gets a pi-navy edge, back (yellow) core gets a pi-orange edge.
+      // Widths come from the shared cable tokens so both directions
+      // render identically.
+      const outerColor = s.direction === "forward" ? 0x1D2B53 : 0xFFA300;
       strokePath(outer, s.path, CYBERPUNK_TOKENS.cable.outerWidth, outerColor, 1);
       strokePath(core, s.path, CYBERPUNK_TOKENS.cable.coreWidth, coreColor, 1);
       void highlightColor; // preserved to avoid removing the param path
