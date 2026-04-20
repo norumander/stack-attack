@@ -95,65 +95,19 @@ body.renderer-iso #cp-hud-root .cp-info-close {
    Panel base (shared by wave pill, resources, briefing, info, loss)
    ================================================================ */
 
+/* Pico-8 panel chrome: solid fill, chunky ink border, hard block shadow. */
 body.renderer-iso .cp-panel {
   position: absolute;
-  background: var(--sc-panel);
-  backdrop-filter: blur(10px) saturate(1.25);
-  -webkit-backdrop-filter: blur(10px) saturate(1.25);
-  border: 1px solid var(--sc-border);
-  box-shadow: var(--sc-glow), inset 0 1px 0 rgba(41, 173, 255, 0.12);
+  background: #1D2B53; /* pi-navy */
+  border: 3px solid #000000; /* pi-ink */
+  box-shadow: 5px 5px 0 #7E2553; /* pi-maroon */
+  border-radius: 0;
   padding: 14px 20px;
+  font-family: "Press Start 2P", monospace;
 }
-
-/* Top hairline accent */
-body.renderer-iso .cp-panel::before {
-  content: "";
-  position: absolute;
-  top: -1px;
-  left: 14px;
-  right: 14px;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--sc-border-bright) 30%,
-    var(--sc-border-bright) 70%,
-    transparent 100%
-  );
-  pointer-events: none;
-}
-
-/* L-shaped corner brackets */
-body.renderer-iso .cp-corner {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  pointer-events: none;
-}
-body.renderer-iso .cp-corner-tl {
-  top: -1px;
-  left: -1px;
-  border-top: 2px solid var(--sc-border-bright);
-  border-left: 2px solid var(--sc-border-bright);
-}
-body.renderer-iso .cp-corner-tr {
-  top: -1px;
-  right: -1px;
-  border-top: 2px solid var(--sc-border-bright);
-  border-right: 2px solid var(--sc-border-bright);
-}
-body.renderer-iso .cp-corner-bl {
-  bottom: -1px;
-  left: -1px;
-  border-bottom: 2px solid var(--sc-border-bright);
-  border-left: 2px solid var(--sc-border-bright);
-}
-body.renderer-iso .cp-corner-br {
-  bottom: -1px;
-  right: -1px;
-  border-bottom: 2px solid var(--sc-border-bright);
-  border-right: 2px solid var(--sc-border-bright);
-}
+/* No hairline accent, no corner brackets — keep it flat and chunky. */
+body.renderer-iso .cp-panel::before { display: none; }
+body.renderer-iso .cp-corner { display: none; }
 
 body.renderer-iso .cp-hidden {
   display: none !important;
@@ -165,23 +119,26 @@ body.renderer-iso .cp-mono {
 }
 
 body.renderer-iso .cp-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.32em;
+  font-family: "Press Start 2P", monospace;
+  font-size: 8px;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--sc-ink-dim);
+  color: #FFEC27; /* pi-yellow */
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 body.renderer-iso .cp-label::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  background: var(--sc-ink);
-  box-shadow: 0 0 8px var(--sc-ink);
-  animation: cp-blip 2.4s ease-in-out infinite;
+  content: "▸";
+  width: auto;
+  height: auto;
+  background: transparent;
+  box-shadow: none;
+  color: #FFA300; /* pi-orange */
+  animation: cp-blip 2.4s steps(2) infinite;
+  font-family: "Press Start 2P", monospace;
+  font-size: 10px;
 }
 
 @keyframes cp-blip {
@@ -200,13 +157,13 @@ body.renderer-iso .cp-wave-pill {
 }
 
 body.renderer-iso .cp-wave-value {
-  font-size: 30px;
-  font-weight: 700;
+  font-family: "Press Start 2P", monospace;
+  font-size: 20px;
   line-height: 1;
-  color: var(--sc-ink);
-  text-shadow: var(--sc-text-shadow);
+  color: #FFEC27; /* pi-yellow */
+  text-shadow: 2px 2px 0 #FF77A8, 3px 3px 0 #000000;
   letter-spacing: 0.04em;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 body.renderer-iso .cp-wave-phase {
@@ -1325,3 +1282,187 @@ body.renderer-iso .cp-info-details-btn:hover {
 body.renderer-iso .cp-info-details-btn:active {
   transform: translateY(1px);
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   PICO-8 CHROME OVERRIDE — solid panels, chunky ink borders, block
+   shadows. Overrides everything above by load order (not !important
+   because we want per-rule overrides further down to still work).
+   ════════════════════════════════════════════════════════════════════ */
+
+/* All panel-ish containers: solid navy fill, 3px ink border, 5px block shadow */
+body.renderer-iso .cp-panel,
+body.renderer-iso .cp-info-panel,
+body.renderer-iso .cp-dossier-modal,
+body.renderer-iso .cp-loss-modal,
+body.renderer-iso .cp-briefing,
+body.renderer-iso .cp-wave-pill,
+body.renderer-iso .cp-resources,
+body.renderer-iso .cp-palette,
+body.renderer-iso .cp-viability-panel,
+body.renderer-iso #cp-chaos-panel,
+body.renderer-iso #cp-connections-panel {
+  background: #1D2B53 !important;          /* pi-navy */
+  border: 3px solid #000000 !important;    /* pi-ink */
+  border-radius: 0 !important;
+  box-shadow: 5px 5px 0 #7E2553 !important; /* pi-maroon */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  font-family: "Press Start 2P", monospace;
+}
+
+/* Remove decorative hairlines + corner brackets everywhere */
+body.renderer-iso .cp-panel::before,
+body.renderer-iso .cp-info-panel::before,
+body.renderer-iso .cp-loss-modal::before,
+body.renderer-iso .cp-briefing::before,
+body.renderer-iso .cp-dossier-modal::before,
+body.renderer-iso .cp-corner,
+body.renderer-iso .cp-corner-tl,
+body.renderer-iso .cp-corner-tr,
+body.renderer-iso .cp-corner-bl,
+body.renderer-iso .cp-corner-br {
+  display: none !important;
+}
+
+/* Dashed dividers → solid ink */
+body.renderer-iso .cp-wave-progress-label,
+body.renderer-iso .cp-res-subhead {
+  border-top: 2px solid #000000 !important;
+}
+
+/* Headings — pico-8 yellow, chunky, pink/ink shadow */
+body.renderer-iso .cp-briefing-title,
+body.renderer-iso .cp-info-header,
+body.renderer-iso .cp-loss-title,
+body.renderer-iso .cp-dossier-title {
+  font-family: "Press Start 2P", monospace !important;
+  color: #FFEC27 !important;
+  text-shadow: 2px 2px 0 #FF77A8, 3px 3px 0 #000000 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase;
+}
+
+/* Body text → cream, VT323 for readability */
+body.renderer-iso .cp-briefing-body,
+body.renderer-iso .cp-briefing-narrative,
+body.renderer-iso .cp-info-desc,
+body.renderer-iso .cp-loss-detail,
+body.renderer-iso .cp-dossier-body,
+body.renderer-iso .cp-brief-val,
+body.renderer-iso .cp-brief-key,
+body.renderer-iso .cp-dossier-row-key,
+body.renderer-iso .cp-dossier-row-val,
+body.renderer-iso .cp-info-caps,
+body.renderer-iso .cp-info-stats {
+  font-family: "VT323", "Courier New", monospace !important;
+  font-size: 16px !important;
+  color: #FFF1E8 !important;
+}
+
+/* Buttons — solid orange fill, ink border, magenta block shadow, steps transition */
+body.renderer-iso .cp-btn,
+body.renderer-iso .cp-btn-primary,
+body.renderer-iso .cp-info-details-btn,
+body.renderer-iso .cp-dossier-cta,
+body.renderer-iso .cp-loss-buttons button,
+body.renderer-iso .cp-palette-cell {
+  font-family: "Press Start 2P", monospace !important;
+  font-size: 10px !important;
+  letter-spacing: 0.08em !important;
+  color: #1D2B53 !important;
+  background: #FFA300 !important;          /* pi-orange */
+  border: 3px solid #000000 !important;    /* pi-ink */
+  border-radius: 0 !important;
+  box-shadow: 4px 4px 0 #7E2553 !important; /* pi-maroon */
+  padding: 10px 16px !important;
+  cursor: pointer;
+  transition: transform 80ms steps(2), box-shadow 80ms steps(2), filter 80ms steps(2) !important;
+  text-transform: uppercase;
+  text-shadow: none !important;
+}
+body.renderer-iso .cp-btn:hover,
+body.renderer-iso .cp-btn-primary:hover,
+body.renderer-iso .cp-info-details-btn:hover,
+body.renderer-iso .cp-dossier-cta:hover,
+body.renderer-iso .cp-loss-buttons button:hover,
+body.renderer-iso .cp-palette-cell:hover {
+  transform: translate(-1px, -1px) !important;
+  box-shadow: 5px 5px 0 #7E2553 !important;
+  filter: brightness(1.1);
+}
+body.renderer-iso .cp-btn:active,
+body.renderer-iso .cp-btn-primary:active,
+body.renderer-iso .cp-info-details-btn:active,
+body.renderer-iso .cp-dossier-cta:active,
+body.renderer-iso .cp-loss-buttons button:active,
+body.renderer-iso .cp-palette-cell:active {
+  transform: translate(2px, 2px) !important;
+  box-shadow: 0 0 0 #7E2553 !important;
+}
+body.renderer-iso .cp-btn:disabled,
+body.renderer-iso .cp-btn-primary:disabled,
+body.renderer-iso .cp-palette-cell:disabled {
+  background: #5F574F !important;          /* pi-dkgrey */
+  color: #83769C !important;               /* pi-lavender */
+  box-shadow: 4px 4px 0 #000000 !important;
+  cursor: not-allowed;
+  filter: none !important;
+  transform: none !important;
+}
+
+/* Primary button = pi-green for READY-to-launch actions */
+body.renderer-iso .cp-btn-primary {
+  background: #00E436 !important;
+  color: #000000 !important;
+}
+
+/* Close buttons — small pink X */
+body.renderer-iso .cp-info-close,
+body.renderer-iso .cp-dossier-close {
+  background: #FF004D !important;
+  color: #FFF1E8 !important;
+  border: 2px solid #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: 3px 3px 0 #7E2553 !important;
+  font-family: "Press Start 2P", monospace !important;
+  font-size: 10px !important;
+  padding: 4px 6px !important;
+}
+body.renderer-iso .cp-info-close:hover,
+body.renderer-iso .cp-dossier-close:hover {
+  transform: translate(-1px, -1px) !important;
+  box-shadow: 4px 4px 0 #7E2553 !important;
+}
+body.renderer-iso .cp-info-close:active,
+body.renderer-iso .cp-dossier-close:active {
+  transform: translate(1px, 1px) !important;
+  box-shadow: 1px 1px 0 #7E2553 !important;
+}
+
+/* Loss modal sizing + palette */
+body.renderer-iso .cp-loss-modal {
+  padding: 28px 32px !important;
+}
+body.renderer-iso .cp-loss-buttons {
+  gap: 16px !important;
+}
+
+/* Palette cells — no hover glow, just the block button treatment */
+body.renderer-iso .cp-palette-cell {
+  padding: 6px 8px !important;
+  font-size: 9px !important;
+}
+body.renderer-iso .cp-palette-cell.cp-palette-cell--placing {
+  background: #FFEC27 !important;          /* pi-yellow when selected */
+  box-shadow: inset 3px 3px 0 #7E2553, 4px 4px 0 #7E2553 !important;
+}
+
+/* Labels / captions */
+body.renderer-iso .cp-label {
+  color: #FFEC27 !important;
+  font-family: "Press Start 2P", monospace !important;
+  font-size: 8px !important;
+  letter-spacing: 0.18em !important;
+}
+
+/* Viability / chaos / connection panels inherit panel treatment above */

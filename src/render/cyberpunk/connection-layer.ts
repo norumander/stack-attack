@@ -98,11 +98,20 @@ function insetPathEnds(path: Point[], inset: number): Point[] {
  * when source and target share a grid row or column the corner coincides
  * with an endpoint and the path degenerates to a straight line.
  */
+/** Components render with a +15px y-offset (see component-layer.ts add()),
+ *  so the connection endpoints shift down by 10px here to meet the sprites
+ *  closer to their visual center than to their tile-center anchor. */
+const ENDPOINT_Y_OFFSET = 10;
+
 function routePath(fromGX: number, fromGY: number, toGX: number, toGY: number): Point[] {
-  const start = gridToWorld(fromGX, fromGY);
-  const corner = gridToWorld(toGX, fromGY);
-  const end = gridToWorld(toGX, toGY);
-  return [start, corner, end];
+  const s = gridToWorld(fromGX, fromGY);
+  const c = gridToWorld(toGX, fromGY);
+  const e = gridToWorld(toGX, toGY);
+  return [
+    { x: s.x, y: s.y + ENDPOINT_Y_OFFSET },
+    { x: c.x, y: c.y + ENDPOINT_Y_OFFSET },
+    { x: e.x, y: e.y + ENDPOINT_Y_OFFSET },
+  ];
 }
 
 export function createConnectionLayer(components: ComponentLayer): ConnectionLayer {
