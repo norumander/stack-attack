@@ -143,7 +143,16 @@ export class SnakeLayer {
    * (fixed lerp factor per frame); kept for symmetry with PacketLayer.tick.
    */
   tick(_deltaMs: number): void {
-    for (const state of this.states.values()) {
+    for (const [clientId, state] of this.states) {
+      // Re-anchor the snake container to the client's current position every
+      // frame. Without this, dragging the client leaves the trail stuck at
+      // the old position (an afterimage) because update() is only called on
+      // packet-list change, not on every pointermove.
+      const clientState = this.componentLayer.get(clientId);
+      if (clientState) {
+        state.container.x = clientState.container.x;
+        state.container.y = clientState.container.y;
+      }
       for (let i = 0; i < state.sprites.length; i += 1) {
         const sprite = state.sprites[i]!;
         const anim = state.anims[i]!;

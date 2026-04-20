@@ -213,7 +213,7 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     const offsetX = 0;
     const offsetY = isClient
       ? CYBERPUNK_TOKENS.scale.isoHalfHeight
-      : CYBERPUNK_TOKENS.scale.isoHalfHeight;
+      : CYBERPUNK_TOKENS.scale.isoHalfHeight - 5;
 
     const baseSprite = new Sprite(tex.base);
     baseSprite.anchor.set(0.5, 0.75);
