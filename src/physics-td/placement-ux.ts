@@ -7,7 +7,26 @@ import {
   COMPONENT_COSTS,
 } from "./component-factory";
 import { setStatus } from "./hud-bridge";
+import { CYBERPUNK_TOKENS } from "../render/cyberpunk/tokens";
 import type { ComponentId } from "@core/types/ids";
+
+/**
+ * Board tile range matches src/render/cyberpunk/board.ts which draws tiles
+ * from -halfSize through halfSize-1 inclusive. Placements outside this
+ * range would sit on empty space next to the iso grid.
+ */
+const BOARD_HALF = Math.floor(CYBERPUNK_TOKENS.board.size / 2);
+const BOARD_MIN = -BOARD_HALF;
+const BOARD_MAX = BOARD_HALF - 1;
+
+function isOnBoard(grid: { x: number; y: number }): boolean {
+  return (
+    grid.x >= BOARD_MIN &&
+    grid.x <= BOARD_MAX &&
+    grid.y >= BOARD_MIN &&
+    grid.y <= BOARD_MAX
+  );
+}
 
 /**
  * Placement UX — translates palette button clicks + grid clicks into
@@ -44,6 +63,10 @@ export class PlacementUX {
         return;
       }
       const grid = this.renderer.screenToGrid(ev.screenX, ev.screenY);
+      if (!isOnBoard(grid)) {
+        setStatus("Cannot place: tile is outside the board");
+        return;
+      }
       const result = this.controller.tryPlace(this.placingType, grid);
       if (!result.ok) {
         setStatus(`Cannot place: ${result.reason}`);

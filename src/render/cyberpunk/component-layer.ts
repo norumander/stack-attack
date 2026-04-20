@@ -140,8 +140,15 @@ export interface ComponentRenderState {
   readonly highlightSprite: Sprite;
   readonly label: Text;
   readonly pendingLabel: Text;
-  /** Short identifier badge rendered above the sprite ("Server 1"). */
-  readonly nameBadge: Text;
+  /**
+   * Short identifier badge rendered above the sprite ("Server 1"). The
+   * Container wraps a dark rounded backing (Graphics) + the label (Text)
+   * so they translate together; expose them so label updates can refresh
+   * the backing geometry.
+   */
+  readonly nameBadge: Container;
+  readonly nameBadgeText: Text;
+  readonly nameBadgeBg: Graphics;
   type: string;
   gridX: number;
   gridY: number;
@@ -207,19 +214,45 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     pendingLabel.visible = false;
 
     // Short-identifier badge above the sprite ("Server 1", "Profile DB").
-    // Rendered in muted cyan to fit the cyberpunk palette without competing
-    // with utilization color on the sprite itself.
-    const nameBadge = new Text({
+    // Rendered with a dark rounded backing so the text stays legible against
+    // the busy iso board pattern. Backing sits behind the text in a shared
+    // Container so they move together.
+    const nameBadgeText = new Text({
       text: visual.label ?? "",
       style: {
         fontFamily: "system-ui, sans-serif",
         fontSize: 10,
         fontWeight: "600",
-        fill: 0xcdeeff,
+        fill: 0xeaf6ff,
         align: "center",
       },
     });
-    nameBadge.anchor.set(0.5, 1);
+    nameBadgeText.anchor.set(0.5, 0.5);
+
+    const nameBadgeBg = new Graphics();
+    const redrawNameBadgeBg = (): void => {
+      nameBadgeBg.clear();
+      if (!visual.label) return;
+      const b = nameBadgeText.getLocalBounds();
+      const padX = 5;
+      const padY = 2;
+      nameBadgeBg
+        .roundRect(
+          b.x - padX,
+          b.y - padY,
+          b.width + padX * 2,
+          b.height + padY * 2,
+          3,
+        )
+        .fill({ color: 0x0a1420, alpha: 0.8 })
+        .stroke({ color: 0x5ef0ff, alpha: 0.45, width: 1 });
+    };
+    redrawNameBadgeBg();
+
+    // Badge container groups backing + text so they translate together.
+    const nameBadge = new Container();
+    nameBadge.addChild(nameBadgeBg);
+    nameBadge.addChild(nameBadgeText);
     nameBadge.y = -46;
     nameBadge.visible = Boolean(visual.label);
 
@@ -244,6 +277,8 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
       label,
       pendingLabel,
       nameBadge,
+      nameBadgeText,
+      nameBadgeBg,
       type: visual.type,
       gridX: visual.gridPosition.x,
       gridY: visual.gridPosition.y,

@@ -17,20 +17,23 @@ interface PaletteEntry {
   readonly label: string;
 }
 
+// Labels with a newline wrap onto two lines inside the palette cell
+// (CSS `white-space: pre-line` on .cp-palette-name respects \n). Keeps
+// multi-word components legible without resizing every cell.
 const PALETTE: readonly PaletteEntry[] = [
   { type: "server", label: "Server" },
   { type: "database", label: "Database" },
-  { type: "data_cache", label: "Data Cache" },
-  { type: "edge_cache", label: "Edge Cache" },
+  { type: "data_cache", label: "Data\nCache" },
+  { type: "edge_cache", label: "Edge\nCache" },
   { type: "load_balancer", label: "Balancer" },
   { type: "cdn", label: "CDN" },
   { type: "api_gateway", label: "Gateway" },
   { type: "queue", label: "Queue" },
   { type: "worker", label: "Worker" },
   { type: "streaming_server", label: "Streaming" },
-  { type: "blob_storage", label: "Blob Storage" },
-  { type: "dns_gtm", label: "DNS / GTM" },
-  { type: "circuit_breaker", label: "Circuit Breaker" },
+  { type: "blob_storage", label: "Blob\nStorage" },
+  { type: "dns_gtm", label: "DNS\n/ GTM" },
+  { type: "circuit_breaker", label: "Circuit\nBreaker" },
 ];
 
 let hudController: CyberpunkHudController | null = null;

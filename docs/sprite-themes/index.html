@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sprite Theme Picker — Stack Attack</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-family: 'Press Start 2P', monospace;
+    padding: 24px;
+  }
+  h1 { text-align: center; color: #29adff; font-size: 18px; margin-bottom: 8px; }
+  .subtitle { text-align: center; color: #888; font-size: 9px; margin-bottom: 32px; }
+  .theme-section {
+    border: 2px solid #333;
+    border-radius: 8px;
+    margin-bottom: 40px;
+    padding: 24px;
+    background: #16162a;
+  }
+  .theme-header {
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+  .theme-desc {
+    font-size: 8px;
+    color: #999;
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 20px;
+  }
+  .component {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .component .label {
+    font-size: 6px;
+    color: #aaa;
+    text-align: center;
+    line-height: 1.4;
+  }
+  /* Isometric container */
+  .iso-wrap {
+    width: 72px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .iso {
+    width: 56px;
+    height: 56px;
+    transform: rotateX(55deg) rotateZ(-45deg);
+    transform-style: preserve-3d;
+    position: relative;
+  }
+  /* 3D box faces */
+  .face {
+    position: absolute;
+    backface-visibility: hidden;
+  }
+  .face.top {
+    width: 56px; height: 56px;
+    transform: translateZ(28px);
+  }
+  .face.front {
+    width: 56px; height: 28px;
+    bottom: 0; left: 0;
+    transform-origin: bottom;
+    transform: rotateX(-90deg);
+  }
+  .face.right {
+    width: 28px; height: 56px;
+    right: 0; top: 0;
+    transform-origin: right;
+    transform: rotateY(90deg);
+  }
+  /* Short box */
+  .iso.short .face.top { transform: translateZ(16px); }
+  .iso.short .face.front { height: 16px; transform-origin: bottom; transform: rotateX(-90deg); }
+  .iso.short .face.right { width: 16px; transform-origin: right; transform: rotateY(90deg); }
+  /* Tall box */
+  .iso.tall .face.top { transform: translateZ(40px); }
+  .iso.tall .face.front { height: 40px; transform-origin: bottom; transform: rotateX(-90deg); }
+  .iso.tall .face.right { width: 40px; transform-origin: right; transform: rotateY(90deg); }
+
+  /* ===== THEME 1: 8-Bit Data Center ===== */
+  .t1 { border-color: #7e7e5a; }
+  .t1 .theme-header { color: #ffec27; }
+
+  .t1 .server .top    { background: #c8b88a; }
+  .t1 .server .front  { background: #a89868; border: 2px solid #8a7a50; }
+  .t1 .server .right  { background: #b8a878; }
+  .t1 .server .front::after { content: ''; position: absolute; top: 4px; left: 6px; width: 6px; height: 6px; background: #29adff; border-radius: 50%; box-shadow: 10px 0 0 #29adff, 20px 0 0 #00e436; }
+
+  .t1 .database .top   { background: #c8b88a; }
+  .t1 .database .front { background: #a89868; }
+  .t1 .database .right { background: #b8a878; }
+  .t1 .database .front::after { content: ''; position: absolute; top: 3px; left: 4px; width: 48px; height: 4px; background: #29adff; box-shadow: 0 8px 0 #29adff, 0 16px 0 #29adff; }
+
+  .t1 .cache .top   { background: #5a8a5a; }
+  .t1 .cache .front { background: #4a7a4a; }
+  .t1 .cache .right { background: #3a6a3a; }
+  .t1 .cache .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 16px; height: 20px; background: #29adff; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+
+  .t1 .lb .top   { background: #c8b88a; }
+  .t1 .lb .front { background: #a89868; }
+  .t1 .lb .right { background: #b8a878; }
+  .t1 .lb .front::after { content: ''; position: absolute; top: 2px; left: 3px; width: 5px; height: 5px; background: #29adff; border-radius: 50%; box-shadow: 8px 0 #00e436, 16px 0 #ff004d, 24px 0 #29adff, 32px 0 #00e436, 40px 0 #ff004d; }
+
+  .t1 .cdn .top   { background: #888; }
+  .t1 .cdn .front { background: #666; }
+  .t1 .cdn .right { background: #777; }
+  .t1 .cdn .top::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 30px; height: 30px; border: 3px solid #29adff; border-radius: 50%; }
+
+  .t1 .apigw .top   { background: #8a5a5a; }
+  .t1 .apigw .front { background: #7a4a4a; }
+  .t1 .apigw .right { background: #6a3a3a; }
+  .t1 .apigw .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 14px; height: 16px; background: #29adff; clip-path: polygon(20% 0%, 80% 0%, 100% 30%, 100% 100%, 0% 100%, 0% 30%); }
+
+  .t1 .queue .top   { background: #9a9a7a; }
+  .t1 .queue .front { background: #8a8a6a; }
+  .t1 .queue .right { background: #7a7a5a; }
+  .t1 .queue .front::after { content: ''; position: absolute; bottom: 2px; left: 4px; width: 8px; height: 10px; background: #29adff; box-shadow: 12px 0 #29adff, 24px 0 #29adff, 36px 0 rgba(41,173,255,0.4); }
+
+  .t1 .worker .top   { background: #c8b88a; }
+  .t1 .worker .front { background: #333; }
+  .t1 .worker .right { background: #b8a878; }
+  .t1 .worker .front::after { content: ''; position: absolute; top: 3px; left: 6px; width: 36px; height: 16px; background: #29adff; }
+
+  .t1 .streaming .top   { background: #555; }
+  .t1 .streaming .front { background: #444; }
+  .t1 .streaming .right { background: #4a4a4a; }
+  .t1 .streaming .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 0; height: 0; border-left: 12px solid #29adff; border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
+
+  .t1 .edgecache .top   { background: #5a8a5a; }
+  .t1 .edgecache .front { background: #4a7a4a; }
+  .t1 .edgecache .right { background: #3a6a3a; }
+  .t1 .edgecache .top::after { content: ''; position: absolute; top: 8px; left: 8px; width: 8px; height: 12px; background: #29adff; border-radius: 2px; box-shadow: 14px -2px 0 0 #29adff; }
+
+  .t1 .dnsgtm .top   { background: #8a8a5a; }
+  .t1 .dnsgtm .front { background: #7a7a4a; }
+  .t1 .dnsgtm .right { background: #6a6a3a; }
+  .t1 .dnsgtm .front::after { content: ''; position: absolute; top: 3px; left: 6px; width: 4px; height: 18px; background: #29adff; box-shadow: 10px 2px #29adff, 20px -2px #29adff, 30px 4px #29adff; }
+
+  .t1 .blob .top   { background: #8a8a8a; }
+  .t1 .blob .front { background: #6a6a6a; }
+  .t1 .blob .right { background: #7a7a7a; }
+  .t1 .blob .front::after { content: ''; position: absolute; top: 4px; left: 8px; width: 32px; height: 6px; background: #29adff; box-shadow: 0 10px 0 #29adff, 0 20px 0 #29adff; }
+
+  .t1 .cb .top   { background: #8a5a5a; }
+  .t1 .cb .front { background: #7a4a4a; }
+  .t1 .cb .right { background: #6a3a3a; }
+  .t1 .cb .front::after { content: ''; position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 8px; height: 18px; background: #29adff; border-radius: 2px; }
+
+  /* ===== THEME 2: Steampunk ===== */
+  .t2 { border-color: #b8860b; }
+  .t2 .theme-header { color: #daa520; }
+
+  .t2 .server .top    { background: #b8860b; }
+  .t2 .server .front  { background: #8b6914; }
+  .t2 .server .right  { background: #a07812; }
+  .t2 .server .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 20px; border: 3px solid #29adff; border-radius: 50%; }
+  .t2 .server .top::after { content: ''; position: absolute; top: 4px; right: 4px; width: 8px; height: 20px; background: #555; border-radius: 2px; }
+
+  .t2 .database .top   { background: #8b6914; }
+  .t2 .database .front { background: #6b4f10; }
+  .t2 .database .right { background: #7a5c12; }
+  .t2 .database .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 28px; height: 28px; border: 4px solid #b8860b; border-radius: 50%; background: radial-gradient(circle, #29adff 20%, transparent 20%); }
+
+  .t2 .cache .top   { background: #b8860b; }
+  .t2 .cache .front { background: #8b6914; }
+  .t2 .cache .right { background: #a07812; }
+  .t2 .cache .front::after { content: ''; position: absolute; top: 4px; left: 12px; width: 24px; height: 4px; background: #29adff; border-radius: 8px; box-shadow: -4px 8px 0 #b8860b, 4px 8px 0 #b8860b; }
+
+  .t2 .lb .top   { background: #a07812; }
+  .t2 .lb .front { background: #7a5c12; }
+  .t2 .lb .right { background: #8b6914; }
+  .t2 .lb .front::after { content: ''; position: absolute; top: 2px; left: 50%; transform: translateX(-50%); width: 4px; height: 14px; background: #29adff; box-shadow: -10px 4px 0 #b8860b, 10px 4px 0 #b8860b; }
+
+  .t2 .cdn .top   { background: #8b6914; }
+  .t2 .cdn .front { background: #6b4f10; }
+  .t2 .cdn .right { background: #7a5c12; }
+  .t2 .cdn .top::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 10px; height: 24px; background: #555; border-radius: 2px; }
+  .t2 .cdn .front::after { content: ''; position: absolute; top: 4px; left: 4px; width: 6px; height: 3px; background: #29adff; box-shadow: 8px 0 #29adff, 16px 0 #29adff; }
+
+  .t2 .apigw .top   { background: #555; }
+  .t2 .apigw .front { background: #444; }
+  .t2 .apigw .right { background: #4a4a4a; }
+  .t2 .apigw .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 24px; border: 3px solid #b8860b; border-top: 6px solid #b8860b; background: linear-gradient(transparent 60%, #29adff 60%); }
+
+  .t2 .queue .top   { background: #8b4513; }
+  .t2 .queue .front { background: #6b3410; }
+  .t2 .queue .right { background: #7a3f12; }
+  .t2 .queue .front::after { content: ''; position: absolute; bottom: 4px; left: 4px; width: 44px; height: 4px; background: #8b6914; box-shadow: 0 -8px 0 rgba(41,173,255,0.6); }
+  .t2 .queue .top::after { content: ''; position: absolute; top: 8px; left: 8px; width: 8px; height: 8px; background: #29adff; box-shadow: 14px 0 #29adff, 28px 0 #29adff; }
+
+  .t2 .worker .top   { background: #555; }
+  .t2 .worker .front { background: #444; }
+  .t2 .worker .right { background: #4a4a4a; }
+  .t2 .worker .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 22px; height: 22px; border: 3px solid #b8860b; border-radius: 50%; background: radial-gradient(circle, #29adff 4px, transparent 4px); }
+  .t2 .worker .top::after { content: ''; position: absolute; top: 2px; left: 50%; transform: translateX(-50%); width: 6px; height: 10px; background: #8b6914; }
+
+  .t2 .streaming .top   { background: #b8860b; }
+  .t2 .streaming .front { background: #8b6914; }
+  .t2 .streaming .right { background: #a07812; }
+  .t2 .streaming .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 24px; height: 24px; border: 3px solid #29adff; border-radius: 50%; background: #6b4f10; }
+
+  .t2 .edgecache .top   { background: #a07812; }
+  .t2 .edgecache .front { background: #7a5c12; }
+  .t2 .edgecache .right { background: #8b6914; }
+  .t2 .edgecache .front::after { content: ''; position: absolute; top: 4px; left: 12px; width: 20px; height: 16px; border: 2px solid #29adff; border-radius: 50%; }
+
+  .t2 .dnsgtm .top   { background: #8b6914; }
+  .t2 .dnsgtm .front { background: #6b4f10; }
+  .t2 .dnsgtm .right { background: #7a5c12; }
+  .t2 .dnsgtm .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 20px; border: 2px solid #29adff; border-radius: 50%; }
+  .t2 .dnsgtm .top::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(45deg); width: 2px; height: 30px; background: #b8860b; box-shadow: 0 0 0 0, 15px -15px 0 0 transparent; }
+
+  .t2 .blob .top   { background: #6b4f10; }
+  .t2 .blob .front { background: #554010; }
+  .t2 .blob .right { background: #604810; }
+  .t2 .blob .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 28px; height: 28px; border: 4px solid #b8860b; border-radius: 50%; background: #29adff; }
+
+  .t2 .cb .top   { background: #8b2500; }
+  .t2 .cb .front { background: #6b1c00; }
+  .t2 .cb .right { background: #7a2000; }
+  .t2 .cb .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 14px; height: 14px; border: 3px solid #29adff; border-radius: 50%; background: #daa520; }
+  .t2 .cb .top::after { content: ''; position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 10px; height: 10px; background: #ff004d; border-radius: 50%; }
+
+  /* ===== THEME 3: Fantasy Castle ===== */
+  .t3 { border-color: #6a5acd; }
+  .t3 .theme-header { color: #b19cd9; }
+
+  .t3 .server .top    { background: #888; }
+  .t3 .server .front  { background: #666; }
+  .t3 .server .right  { background: #777; }
+  .t3 .server .top::after { content: ''; position: absolute; top: 2px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent; border-bottom: 16px solid #6a5acd; }
+  .t3 .server .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 10px; height: 12px; background: #29adff; border-radius: 6px 6px 0 0; }
+
+  .t3 .database .top   { background: #8b7355; }
+  .t3 .database .front { background: #6b5740; }
+  .t3 .database .right { background: #7a6548; }
+  .t3 .database .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 24px; height: 18px; border: 3px solid #daa520; background: linear-gradient(#daa520 30%, #29adff 30%); border-radius: 2px; }
+
+  .t3 .cache .top   { background: #6a5acd; }
+  .t3 .cache .front { background: #483d8b; }
+  .t3 .cache .right { background: #5a4abf; }
+  .t3 .cache .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 18px; height: 18px; background: radial-gradient(circle, #29adff, #6a5acd); border-radius: 50%; }
+
+  .t3 .lb .top   { background: #8b7355; }
+  .t3 .lb .front { background: #6b5740; }
+  .t3 .lb .right { background: #7a6548; }
+  .t3 .lb .front::after { content: ''; position: absolute; top: 2px; left: 50%; transform: translateX(-50%); width: 4px; height: 18px; background: #8b7355; }
+  .t3 .lb .top::after { content: ''; position: absolute; top: 4px; left: 6px; width: 16px; height: 6px; background: #29adff; box-shadow: 20px 6px 0 #29adff; }
+
+  .t3 .cdn .top   { background: #8b7355; }
+  .t3 .cdn .front { background: #6b5740; }
+  .t3 .cdn .right { background: #7a6548; }
+  .t3 .cdn .top::after { content: ''; position: absolute; top: 10px; right: 6px; width: 12px; height: 8px; background: #888; border-radius: 0 0 6px 6px; }
+  .t3 .cdn .front::after { content: ''; position: absolute; top: 4px; left: 4px; width: 8px; height: 3px; background: #29adff; border-radius: 4px; box-shadow: 0 6px 0 #29adff; }
+
+  .t3 .apigw .top   { background: #888; }
+  .t3 .apigw .front { background: #666; }
+  .t3 .apigw .right { background: #777; }
+  .t3 .apigw .front::after { content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 18px; height: 20px; background: #555; border-radius: 8px 8px 0 0; border: 2px solid #29adff; }
+  .t3 .apigw .top::after { content: ''; position: absolute; top: 2px; left: 4px; width: 8px; height: 14px; background: #888; border-radius: 0 0 0 0; box-shadow: 28px 0 0 #888; }
+
+  .t3 .queue .top   { background: #8b7355; }
+  .t3 .queue .front { background: #6b5740; }
+  .t3 .queue .right { background: #7a6548; }
+  .t3 .queue .front::after { content: ''; position: absolute; top: 4px; left: 6px; width: 8px; height: 10px; background: #daa520; box-shadow: 12px 0 #daa520, 24px 0 rgba(218,165,32,0.5); border-radius: 1px; }
+  .t3 .queue .top::after { content: ''; position: absolute; bottom: 2px; left: 2px; right: 2px; height: 2px; background: #29adff; }
+
+  .t3 .worker .top   { background: #8b4513; }
+  .t3 .worker .front { background: #6b3410; }
+  .t3 .worker .right { background: #7a3f12; }
+  .t3 .worker .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 16px; height: 6px; background: #888; }
+  .t3 .worker .top::after { content: ''; position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 4px; height: 20px; background: #555; }
+
+  .t3 .streaming .top   { background: #8b7355; }
+  .t3 .streaming .front { background: #6b5740; }
+  .t3 .streaming .right { background: #7a6548; }
+  .t3 .streaming .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 16px; height: 18px; background: #daa520; border-radius: 8px 8px 0 0; }
+  .t3 .streaming .top::after { content: ''; position: absolute; top: 6px; left: 6px; width: 6px; height: 6px; background: #29adff; border-radius: 50%; box-shadow: 10px -2px 0 rgba(41,173,255,0.5), 18px 2px 0 rgba(41,173,255,0.3); }
+
+  .t3 .edgecache .top   { background: #888; }
+  .t3 .edgecache .front { background: #666; }
+  .t3 .edgecache .right { background: #777; }
+  .t3 .edgecache .front::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%); width: 20px; height: 14px; background: #8b7355; border: 2px solid #29adff; border-radius: 2px; }
+
+  .t3 .dnsgtm .top   { background: #8b7355; }
+  .t3 .dnsgtm .front { background: #6b5740; }
+  .t3 .dnsgtm .right { background: #7a6548; }
+  .t3 .dnsgtm .front::after { content: ''; position: absolute; top: 2px; left: 50%; transform: translate(-50%); width: 28px; height: 20px; background: #daa520; border-radius: 2px; }
+  .t3 .dnsgtm .top::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 20px; border: 2px solid #29adff; border-radius: 50%; }
+
+  .t3 .blob .top   { background: #555; }
+  .t3 .blob .front { background: #444; }
+  .t3 .blob .right { background: #4a4a4a; }
+  .t3 .blob .front::after { content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 36px; height: 10px; background: #daa520; border-radius: 2px; box-shadow: 0 -4px 8px #daa520; }
+  .t3 .blob .front::before { content: ''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 10px; height: 6px; background: #29adff; border-radius: 50%; }
+
+  .t3 .cb .top   { background: #888; }
+  .t3 .cb .front { background: #666; }
+  .t3 .cb .right { background: #777; }
+  .t3 .cb .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 12px; height: 28px; background: #888; border: 3px solid #29adff; border-radius: 4px; }
+
+  /* ===== THEME 4: Space Station ===== */
+  .t4 { border-color: #4a90d9; }
+  .t4 .theme-header { color: #7ec8e3; }
+
+  .t4 .server .top    { background: #ddd; }
+  .t4 .server .front  { background: #bbb; }
+  .t4 .server .right  { background: #ccc; }
+  .t4 .server .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 22px; height: 22px; border: 3px solid #29adff; border-radius: 50%; background: radial-gradient(circle, #29adff 3px, transparent 3px); }
+
+  .t4 .database .top   { background: #bbb; }
+  .t4 .database .front { background: #999; }
+  .t4 .database .right { background: #aaa; }
+  .t4 .database .front::after { content: ''; position: absolute; top: 2px; left: 4px; right: 4px; height: 6px; background: #29adff; box-shadow: 0 10px 0 #29adff; }
+  .t4 .database .top::after { content: ''; position: absolute; top: 4px; left: 4px; width: 12px; height: 12px; background: #ff6b35; border-radius: 2px; }
+
+  .t4 .cache .top   { background: #7ec8e3; }
+  .t4 .cache .front { background: #5aa8c3; }
+  .t4 .cache .right { background: #6bb8d3; }
+  .t4 .cache .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 16px; height: 16px; background: #29adff; clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%); }
+
+  .t4 .lb .top   { background: #ddd; }
+  .t4 .lb .front { background: #bbb; }
+  .t4 .lb .right { background: #ccc; }
+  .t4 .lb .top::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 28px; height: 28px; border: 2px solid #29adff; border-radius: 50%; }
+  .t4 .lb .front::after { content: ''; position: absolute; top: 4px; left: 8px; width: 6px; height: 4px; background: #29adff; box-shadow: 12px 0 #29adff, 24px 0 #29adff; }
+
+  .t4 .cdn .top   { background: #ccc; }
+  .t4 .cdn .front { background: #aaa; }
+  .t4 .cdn .right { background: #bbb; }
+  .t4 .cdn .top::after { content: ''; position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 24px; height: 8px; background: #4a90d9; border-radius: 0 0 12px 12px; }
+  .t4 .cdn .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 8px; height: 3px; background: #29adff; box-shadow: 0 6px 0 #29adff; border-radius: 4px; }
+
+  .t4 .apigw .top   { background: #bbb; }
+  .t4 .apigw .front { background: #999; }
+  .t4 .apigw .right { background: #aaa; }
+  .t4 .apigw .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 24px; border: 3px solid #29adff; border-radius: 10px; background: linear-gradient(transparent 60%, #ff6b35 60%); }
+
+  .t4 .queue .top   { background: #ddd; }
+  .t4 .queue .front { background: #bbb; border: 2px solid #29adff; border-radius: 4px; }
+  .t4 .queue .right { background: #ccc; }
+  .t4 .queue .front::after { content: ''; position: absolute; top: 50%; left: 6px; transform: translateY(-50%); width: 8px; height: 8px; background: #29adff; border-radius: 50%; box-shadow: 12px 0 #29adff, 24px 0 rgba(41,173,255,0.4); }
+
+  .t4 .worker .top   { background: #ccc; }
+  .t4 .worker .front { background: #aaa; }
+  .t4 .worker .right { background: #bbb; }
+  .t4 .worker .front::after { content: ''; position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 4px; height: 18px; background: #666; border-radius: 2px; }
+  .t4 .worker .top::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 8px; height: 8px; background: #29adff; border-radius: 50%; box-shadow: 0 0 6px #29adff; }
+
+  .t4 .streaming .top   { background: #ddd; }
+  .t4 .streaming .front { background: #bbb; }
+  .t4 .streaming .right { background: #ccc; }
+  .t4 .streaming .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 6px; height: 16px; background: #ff6b35; border-radius: 2px; }
+  .t4 .streaming .top::after { content: ''; position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 6px; height: 3px; background: #ff004d; border-radius: 2px; box-shadow: 0 -5px 0 #29adff; }
+
+  .t4 .edgecache .top   { background: #aaa; }
+  .t4 .edgecache .front { background: #888; }
+  .t4 .edgecache .right { background: #999; }
+  .t4 .edgecache .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 14px; border: 2px solid #29adff; border-radius: 8px 8px 0 0; }
+
+  .t4 .dnsgtm .top   { background: #ddd; }
+  .t4 .dnsgtm .front { background: #bbb; }
+  .t4 .dnsgtm .right { background: #ccc; }
+  .t4 .dnsgtm .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 24px; height: 24px; border: 2px dashed #29adff; border-radius: 50%; }
+  .t4 .dnsgtm .top::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 4px; height: 20px; background: #ff6b35; }
+
+  .t4 .blob .top   { background: #ccc; }
+  .t4 .blob .front { background: #aaa; border-left: 4px solid #ff6b35; }
+  .t4 .blob .right { background: #bbb; }
+  .t4 .blob .front::after { content: ''; position: absolute; top: 4px; left: 8px; width: 30px; height: 4px; background: #29adff; box-shadow: 0 8px 0 #29adff, 0 16px 0 #29adff; }
+
+  .t4 .cb .top   { background: #ff6b35; }
+  .t4 .cb .front { background: #cc5528; }
+  .t4 .cb .right { background: #dd5e2e; }
+  .t4 .cb .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 8px; background: #29adff; border-radius: 4px; }
+  .t4 .cb .top::after { content: ''; position: absolute; top: 4px; left: 4px; width: 8px; height: 8px; background: #ff004d; border-radius: 50%; }
+
+  /* ===== THEME 5: Undersea Lab ===== */
+  .t5 { border-color: #1a6b5a; }
+  .t5 .theme-header { color: #20b2aa; }
+
+  .t5 .server .top    { background: #2a5a6a; }
+  .t5 .server .front  { background: #1a4a5a; }
+  .t5 .server .right  { background: #225260; }
+  .t5 .server .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 18px; height: 18px; border: 3px solid #b8860b; border-radius: 50%; background: radial-gradient(circle, #29adff 4px, rgba(41,173,255,0.2) 8px, transparent 8px); }
+
+  .t5 .database .top   { background: #2a5a6a; }
+  .t5 .database .front { background: #1a4a5a; }
+  .t5 .database .right { background: #225260; }
+  .t5 .database .front::after { content: ''; position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 24px; height: 18px; border: 3px solid #b8860b; background: #daa520; border-radius: 2px; }
+  .t5 .database .top::after { content: ''; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; background: #29adff; border-radius: 50%; }
+
+  .t5 .cache .top   { background: #1a6b5a; }
+  .t5 .cache .front { background: #145a4a; }
+  .t5 .cache .right { background: #186050; }
+  .t5 .cache .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 18px; height: 18px; background: radial-gradient(circle, #29adff, #1a6b5a); border-radius: 50%; }
+
+  .t5 .lb .top   { background: #2a5a6a; }
+  .t5 .lb .front { background: #1a4a5a; }
+  .t5 .lb .right { background: #225260; }
+  .t5 .lb .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 24px; height: 20px; background: #1a4a5a; border: 2px solid #29adff; border-radius: 50%; }
+  .t5 .lb .top::after { content: ''; position: absolute; top: 4px; left: 4px; width: 12px; height: 3px; background: #29adff; box-shadow: 8px 6px #29adff, -4px 12px #29adff, 16px 12px #29adff; }
+
+  .t5 .cdn .top   { background: #225260; }
+  .t5 .cdn .front { background: #1a4a5a; }
+  .t5 .cdn .right { background: #1e4e5e; }
+  .t5 .cdn .top::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 10px; height: 20px; background: #888; border-radius: 4px; }
+  .t5 .cdn .front::after { content: ''; position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 20px; height: 3px; background: #29adff; box-shadow: 0 6px 0 rgba(41,173,255,0.6), 0 12px 0 rgba(41,173,255,0.3); border-radius: 4px; }
+
+  .t5 .apigw .top   { background: #555; }
+  .t5 .apigw .front { background: #444; }
+  .t5 .apigw .right { background: #4a4a4a; }
+  .t5 .apigw .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 22px; height: 22px; border: 4px solid #b8860b; border-radius: 50%; background: #29adff; }
+
+  .t5 .queue .top   { background: #2a5a6a; }
+  .t5 .queue .front { background: #1a4a5a; }
+  .t5 .queue .right { background: #225260; }
+  .t5 .queue .front::after { content: ''; position: absolute; top: 50%; left: 6px; transform: translateY(-50%); width: 0; height: 0; border-left: 8px solid #29adff; border-top: 5px solid transparent; border-bottom: 5px solid transparent; box-shadow: 12px 0 #29adff, 24px 0 #29adff; }
+
+  .t5 .worker .top   { background: #8b4513; }
+  .t5 .worker .front { background: #6b3410; }
+  .t5 .worker .right { background: #7a3f12; }
+  .t5 .worker .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 14px; background: #b8860b; border-radius: 10px 10px 0 0; }
+  .t5 .worker .top::after { content: ''; position: absolute; top: 4px; left: 4px; width: 6px; height: 6px; background: #29adff; border-radius: 50%; box-shadow: 12px 2px 0 #29adff; }
+
+  .t5 .streaming .top   { background: #1a6b5a; }
+  .t5 .streaming .front { background: #145a4a; }
+  .t5 .streaming .right { background: #186050; }
+  .t5 .streaming .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 24px; height: 16px; border-radius: 50%; background: #1a4a5a; border: 3px solid #29adff; }
+
+  .t5 .edgecache .top   { background: #225260; }
+  .t5 .edgecache .front { background: #1a4a5a; }
+  .t5 .edgecache .right { background: #1e4e5e; }
+  .t5 .edgecache .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 18px; height: 14px; background: #29adff; border-radius: 8px 8px 4px 4px; opacity: 0.7; }
+
+  .t5 .dnsgtm .top   { background: #2a5a6a; }
+  .t5 .dnsgtm .front { background: #1a4a5a; }
+  .t5 .dnsgtm .right { background: #225260; }
+  .t5 .dnsgtm .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 20px; border: 2px solid #daa520; border-radius: 50%; }
+  .t5 .dnsgtm .top::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(30deg); width: 2px; height: 24px; background: #29adff; }
+
+  .t5 .blob .top   { background: #444; }
+  .t5 .blob .front { background: #333; }
+  .t5 .blob .right { background: #3a3a3a; }
+  .t5 .blob .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 28px; height: 20px; background: #1a4a5a; border: 3px solid #b8860b; border-radius: 4px; }
+  .t5 .blob .top::after { content: ''; position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 8px; height: 8px; background: #29adff; border-radius: 50%; }
+
+  .t5 .cb .top   { background: #8b2500; }
+  .t5 .cb .front { background: #6b1c00; }
+  .t5 .cb .right { background: #7a2000; }
+  .t5 .cb .front::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 12px; height: 12px; background: #29adff; border-radius: 50%; box-shadow: 0 0 8px #29adff; }
+  .t5 .cb .top::after { content: ''; position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 14px; height: 6px; background: #ff004d; border-radius: 2px; }
+
+  /* Animations */
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+  .face::after { animation: pulse 2s infinite; }
+</style>
+</head>
+<body>
+
+<h1>SPRITE THEME PICKER</h1>
+<p class="subtitle">Pick a theme for all 13 infrastructure component sprites. CSS mockups — not final pixel art.</p>
+
+<section class="theme-section t1">
+  <h2 class="theme-header">THEME 1: 8-BIT OFFICE / DATA CENTER</h2>
+  <p class="theme-desc">Beige PCs, inbox trays, filing cabinets, VHS tape decks. Matches the Pico-8 landing page.</p>
+  <div class="grid">
+    <div class="component"><div class="iso-wrap"><div class="iso server"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Server</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso short database"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Database</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso cache"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Data Cache</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso short lb"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Load Balancer</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso cdn"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">CDN</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso apigw"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">API Gateway</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso queue"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Queue</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso worker"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Worker</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso streaming"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Streaming Server</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso short edgecache"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Edge Cache</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso short dnsgtm"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">DNS / GTM</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso tall blob"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Blob Storage</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso cb"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Circuit Breaker</div></div>
+  </div>
+</section>
+
+<section class="theme-section t2">
+  <h2 class="theme-header">THEME 2: STEAMPUNK / VICTORIAN</h2>
+  <p class="theme-desc">Brass gears, steam pipes, pneumatic tubes, Babbage engines. Warm copper and gold tones.</p>
+  <div class="grid">
+    <div class="component"><div class="iso-wrap"><div class="iso server"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Server</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso database"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Database</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso short cache"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Data Cache</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso short lb"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Load Balancer</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso tall cdn"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">CDN</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso tall apigw"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">API Gateway</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso queue"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Queue</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso worker"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Worker</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso streaming"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Streaming Server</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso short edgecache"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Edge Cache</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso dnsgtm"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">DNS / GTM</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso tall blob"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Blob Storage</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso cb"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Circuit Breaker</div></div>
+  </div>
+</section>
+
+<section class="theme-section t3">
+  <h2 class="theme-header">THEME 3: FANTASY / MEDIEVAL CASTLE</h2>
+  <p class="theme-desc">Wizard towers, treasure vaults, crystal balls, quest boards. Stone and magic.</p>
+  <div class="grid">
+    <div class="component"><div class="iso-wrap"><div class="iso tall server"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Server</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso database"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Database</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso cache"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Data Cache</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso tall lb"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Load Balancer</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso cdn"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">CDN</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso tall apigw"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">API Gateway</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso queue"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Queue</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso worker"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Worker</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso streaming"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Streaming Server</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso short edgecache"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Edge Cache</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso dnsgtm"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">DNS / GTM</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso tall blob"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Blob Storage</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso cb"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Circuit Breaker</div></div>
+  </div>
+</section>
+
+<section class="theme-section t4">
+  <h2 class="theme-header">THEME 4: SPACE STATION / SCI-FI</h2>
+  <p class="theme-desc">White hull pods, holographic displays, airlocks, relay satellites. Clean and modular.</p>
+  <div class="grid">
+    <div class="component"><div class="iso-wrap"><div class="iso server"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Server</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso database"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Database</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso cache"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Data Cache</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso short lb"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Load Balancer</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso cdn"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">CDN</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso apigw"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">API Gateway</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso queue"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Queue</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso worker"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Worker</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso tall streaming"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Streaming Server</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso short edgecache"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Edge Cache</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso dnsgtm"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">DNS / GTM</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso tall blob"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Blob Storage</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso cb"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Circuit Breaker</div></div>
+  </div>
+</section>
+
+<section class="theme-section t5">
+  <h2 class="theme-header">THEME 5: UNDERSEA LABORATORY</h2>
+  <p class="theme-desc">Diving bells, mechanical crabs, jellyfish relays, torpedo tubes. Deep-sea pressure and bioluminescence.</p>
+  <div class="grid">
+    <div class="component"><div class="iso-wrap"><div class="iso server"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Server</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso database"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Database</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso cache"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Data Cache</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso lb"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Load Balancer</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso tall cdn"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">CDN</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso apigw"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">API Gateway</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso queue"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Queue</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso worker"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Worker</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso streaming"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Streaming Server</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso short edgecache"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Edge Cache</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso dnsgtm"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">DNS / GTM</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso tall blob"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Blob Storage</div></div>
+    <div class="component"><div class="iso-wrap"><div class="iso cb"><div class="face top"></div><div class="face front"></div><div class="face right"></div></div></div><div class="label">Circuit Breaker</div></div>
+  </div>
+</section>
+
+</body>
+</html>

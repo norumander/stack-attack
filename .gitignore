@@ -8,3 +8,4 @@ coverage/
 .superpowers/
 .env
 .claude/settings.local.json
+.mcp.json

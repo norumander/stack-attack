@@ -576,7 +576,14 @@ body.renderer-iso .cp-palette-name {
   letter-spacing: 0.18em;
   color: var(--sc-ink-dim);
   text-transform: uppercase;
-  white-space: nowrap;
+  /*
+   * pre-line: honor explicit \n in labels (for 2-word components like
+   * "Blob Storage" and "Circuit Breaker") so they wrap inside the cell
+   * instead of overflowing horizontally. Single-word labels are unaffected.
+   */
+  white-space: pre-line;
+  text-align: center;
+  line-height: 1.15;
 }
 
 body.renderer-iso .cp-palette-cost {
