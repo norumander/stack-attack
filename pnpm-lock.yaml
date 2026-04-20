@@ -21,6 +21,9 @@ importers:
       happy-dom:
         specifier: ^15.11.7
         version: 15.11.7
+      pngjs:
+        specifier: ^7.0.0
+        version: 7.0.0
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -705,6 +708,10 @@ packages:
 
   pixi.js@8.17.1:
     resolution: {integrity: sha512-OB4TpZHrP5RYy+7FqmFrAc0IHRhfOoNIfF4sVeinvK3aG1r2pYrSMneJAKi9+WvGKC70Dj7GEpZ2OZGB6o/xdg==}
+
+  pngjs@7.0.0:
+    resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
+    engines: {node: '>=14.19.0'}
 
   postcss@8.5.9:
     resolution: {integrity: sha512-7a70Nsot+EMX9fFU3064K/kdHWZqGVY+BADLyXc8Dfv+mTLLVl6JzJpPaCZ2kQL9gIJvKXSLMHhqdRRjwQeFtw==}
@@ -1392,6 +1399,8 @@ snapshots:
       ismobilejs: 1.1.1
       parse-svg-path: 0.1.2
       tiny-lru: 11.4.7
+
+  pngjs@7.0.0: {}
 
   postcss@8.5.9:
     dependencies:
