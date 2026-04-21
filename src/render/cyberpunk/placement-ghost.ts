@@ -55,12 +55,9 @@ export function createPlacementGhost(textures: ComponentTextureMap): PlacementGh
 
     const grid = worldToGrid(screenPos.x - worldCenterX, screenPos.y - worldCenterY);
     const world = gridToWorld(grid.x, grid.y);
-    // Match the in-board component y-offset (isoHalfHeight - 5 = 15px for
-    // infra, isoHalfHeight = 20px for client) so the preview lands where
-    // the real sprite will.
-    const offsetY = type === "client"
-      ? CYBERPUNK_TOKENS.scale.isoHalfHeight
-      : CYBERPUNK_TOKENS.scale.isoHalfHeight - 5;
+    // Mirror component-layer: client nudged 5px south of visual center, infra
+    // sits at visual center (gridToWorld already returns the tile center).
+    const offsetY = type === "client" ? 5 : 0;
     currentSprite.x = world.x;
     currentSprite.y = world.y + offsetY;
   };
