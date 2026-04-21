@@ -99,6 +99,17 @@
       opacity: 0.75;
       letter-spacing: 0.04em;
     }
+    .credits-link {
+      font-family: var(--pi-font-display);
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      color: var(--pi-cream);
+      opacity: 0.75;
+      text-decoration: none;
+      margin-left: 6px;
+    }
+    .credits-link:hover { color: var(--pi-yellow); opacity: 1; }
+    .credits-link:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
 
     .ground {
       position: absolute;
@@ -184,6 +195,7 @@
     <div class="cta-row">
       <a class="cta" href="./levels.html">▶ INSERT COIN</a>
       <span class="cta-hint">— press play to begin —</span>
+      <a class="credits-link" href="./credits.html">CREDITS</a>
     </div>
 
     <div class="ground" aria-hidden="true"></div>

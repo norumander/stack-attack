@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stack Attack — Credits</title>
+  <link rel="stylesheet" href="./auth/auth.css" />
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: var(--pi-bg-2);
+      color: var(--pi-cream);
+      font-family: var(--pi-font-display);
+    }
+    .page {
+      position: relative;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 40px 28px 56px;
+    }
+
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-family: var(--pi-font-display);
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      color: var(--pi-pink);
+    }
+    .top .back {
+      color: var(--pi-cream);
+      text-decoration: none;
+    }
+    .top .back:hover { color: var(--pi-yellow); }
+    .top .back:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
+
+    h1.title {
+      font-family: var(--pi-font-display);
+      font-size: clamp(22px, 4.2vw, 36px);
+      color: var(--pi-yellow);
+      margin: 32px 0 32px;
+      text-shadow:
+        3px 3px 0 var(--pi-magenta),
+        5px 5px 0 var(--pi-ink);
+      letter-spacing: 0.06em;
+    }
+
+    .tagline {
+      font-family: var(--pi-font-display);
+      font-size: 11px;
+      letter-spacing: 0.28em;
+      color: var(--pi-pink);
+      text-transform: uppercase;
+      margin: 0 0 28px;
+    }
+    .tagline::before { content: "▸ "; color: var(--pi-orange); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 36px;
+    }
+
+    @media (max-width: 720px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 28px 22px 22px;
+      background: var(--pi-navy);
+      border: 3px solid var(--pi-ink);
+      box-shadow: 8px 8px 0 var(--pi-magenta);
+    }
+
+    .portrait {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background: var(--pi-bg-3);
+      border: 3px solid var(--pi-ink);
+      overflow: hidden;
+    }
+    .portrait img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .portrait img[data-scale="0.85"] { transform: scale(0.85); transform-origin: center center; }
+    .portrait img[data-scale="1.1"] { transform: scale(1.1); transform-origin: center center; }
+
+    .name-plate {
+      margin-top: 22px;
+      padding: 10px 18px;
+      font-family: var(--pi-font-display);
+      font-size: 18px;
+      color: var(--pi-navy);
+      background: var(--pi-peach);
+      border: 3px solid var(--pi-ink);
+      box-shadow: 4px 4px 0 var(--pi-magenta);
+      letter-spacing: 0.08em;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="top">
+      <a class="back" href="./index.html">◂ BACK</a>
+      <span>STAFF ROLL</span>
+    </div>
+
+    <h1 class="title">CREDITS</h1>
+    <p class="tagline">THE STACK ATTACK TEAM</p>
+
+    <section class="grid" aria-label="Team">
+      <figure class="card">
+        <div class="portrait">
+          <img src="./assets/team/megha.png" alt="Pixel art portrait of Megha" data-scale="1.1" />
+        </div>
+        <figcaption class="name-plate">MEGHA</figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="portrait">
+          <img src="./assets/team/norm.png" alt="Pixel art portrait of Norm" data-scale="0.85" />
+        </div>
+        <figcaption class="name-plate">NORM</figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="portrait">
+          <img src="./assets/team/rj.png" alt="Pixel art portrait of RJ" />
+        </div>
+        <figcaption class="name-plate">RJ</figcaption>
+      </figure>
+    </section>
+  </div>
+  <script type="module" src="./crt-overlay.ts"></script>
+</body>
+</html>
