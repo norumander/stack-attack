@@ -156,6 +156,60 @@ body.renderer-iso .cp-wave-pill {
   min-width: 240px;
 }
 
+body.renderer-iso .cp-back-btn {
+  position: absolute;
+  top: 180px;
+  left: 28px;
+  padding: 6px 14px;
+  font-family: "Press Start 2P", monospace;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--sc-ink-dim);
+  background: transparent;
+  border: 1px solid var(--sc-border);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+body.renderer-iso .cp-back-btn:hover {
+  color: var(--sc-ink);
+  border-color: var(--sc-border-bright);
+}
+
+.cp-back-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cp-back-modal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 300px;
+  text-align: center;
+}
+.cp-back-title {
+  font-family: "Press Start 2P", monospace;
+  font-size: 14px;
+  color: #FFEC27;
+  text-shadow: 2px 2px 0 #FF77A8, 3px 3px 0 #000;
+}
+.cp-back-msg {
+  font-family: "Silkscreen", "VT323", monospace;
+  font-size: 16px;
+  color: #FFF1E8;
+}
+.cp-back-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
 body.renderer-iso .cp-wave-value {
   font-family: "Press Start 2P", monospace;
   font-size: 20px;

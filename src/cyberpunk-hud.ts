@@ -67,6 +67,7 @@ function buildHud(): void {
   document.body.appendChild(root);
 
   buildWavePill(root);
+  buildBackButton(root);
 
   // Right-side column: resources → viability → briefing stacked vertically.
   // Without a shared container these panels overlap because each is
@@ -153,6 +154,61 @@ function buildWavePill(root: HTMLElement): void {
       progressFill.style.width = "0%";
       progressFill.classList.remove("cp-wave-progress-fill--drain");
     }
+  });
+}
+
+// ─── Back to levels button (top-left, under wave pill) ───────────────
+
+function buildBackButton(root: HTMLElement): void {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "cp-back-btn";
+  btn.textContent = "◂ LEVELS";
+  root.append(btn);
+
+  btn.addEventListener("click", () => {
+    // Remove any existing dialog first.
+    document.querySelector(".cp-back-overlay")?.remove();
+
+    const overlay = document.createElement("div");
+    overlay.className = "cp-back-overlay";
+
+    const modal = document.createElement("div");
+    modal.className = "cp-back-modal cp-panel";
+
+    const title = document.createElement("h2");
+    title.className = "cp-back-title";
+    title.textContent = "LEAVE CAMPAIGN?";
+    modal.appendChild(title);
+
+    const msg = document.createElement("div");
+    msg.className = "cp-back-msg";
+    msg.textContent = "Your progress on the current run will be lost.";
+    modal.appendChild(msg);
+
+    const buttons = document.createElement("div");
+    buttons.className = "cp-back-buttons";
+
+    const leaveBtn = document.createElement("button");
+    leaveBtn.type = "button";
+    leaveBtn.className = "cp-win-cta";
+    leaveBtn.textContent = "LEAVE";
+    leaveBtn.addEventListener("click", () => {
+      window.location.href = "./levels.html";
+    });
+
+    const stayBtn = document.createElement("button");
+    stayBtn.type = "button";
+    stayBtn.className = "cp-win-cta cp-win-cta--secondary";
+    stayBtn.textContent = "STAY";
+    stayBtn.addEventListener("click", () => overlay.remove());
+
+    buttons.appendChild(leaveBtn);
+    buttons.appendChild(stayBtn);
+    modal.appendChild(buttons);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    stayBtn.focus();
   });
 }
 
