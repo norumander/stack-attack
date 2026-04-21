@@ -212,11 +212,14 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
         return;
       }
 
-      // Connection click — emit immediately.
-      const connId = this.hitTestConnection(sx, sy);
-      if (connId !== null) {
-        for (const cb of this.connectionPointerDownCallbacks) cb(connId);
-        return;
+      // Connection left-click — emit to toggle routing. Skip right-click
+      // so the contextmenu handler can delete instead.
+      if (ev.button === 0) {
+        const connId = this.hitTestConnection(sx, sy);
+        if (connId !== null) {
+          for (const cb of this.connectionPointerDownCallbacks) cb(connId);
+          return;
+        }
       }
 
       // Empty space while placing — emit immediately (component plant).

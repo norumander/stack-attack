@@ -243,7 +243,7 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
       strokePath(core, s.path, CYBERPUNK_TOKENS.cable.coreWidth, coreColor, alpha);
       // Subtle chevrons along the wire showing flow direction.
       const chevronColor = s.direction === "forward" ? 0xFFF1E8 : 0x1D2B53;
-      drawChevrons(highlight, s.path, chevronColor, alpha * 0.7);
+      drawChevrons(highlight, s.path, chevronColor, alpha * 0.35);
     }
   };
 
