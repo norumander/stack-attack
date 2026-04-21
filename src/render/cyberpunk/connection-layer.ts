@@ -19,6 +19,8 @@ interface ConnectionRenderState {
   loadUtilization: number;
   /** L-routed waypoints in world coords (already offset per `direction`): [start, corner, end]. */
   path: Point[];
+  /** Routing variant: false = X-first-then-Y (default), true = Y-first-then-X. */
+  yFirst: boolean;
 }
 
 export interface ConnectionLayer {
@@ -43,6 +45,10 @@ export interface ConnectionLayer {
   entries(): IterableIterator<[ConnectionId, ConnectionRenderState]>;
   /** Redraw everything from current component positions. */
   redraw(): void;
+  /** Highlight connections touching this component (null = reset all to normal). */
+  highlightComponent(id: ComponentId | null): void;
+  /** Toggle a connection's L-routing between X-first and Y-first. */
+  toggleRoute(id: ConnectionId): void;
 }
 
 /** Perpendicular offset applied to each lane — total separation is 2× this. */
@@ -98,10 +104,12 @@ function insetPathEnds(path: Point[], inset: number): Point[] {
  * when source and target share a grid row or column the corner coincides
  * with an endpoint and the path degenerates to a straight line.
  */
-function routePath(fromGX: number, fromGY: number, toGX: number, toGY: number): Point[] {
+function routePath(fromGX: number, fromGY: number, toGX: number, toGY: number, yFirst = false): Point[] {
   const s = gridToWorld(fromGX, fromGY);
-  const c = gridToWorld(toGX, fromGY);
   const e = gridToWorld(toGX, toGY);
+  const c = yFirst
+    ? gridToWorld(fromGX, toGY)
+    : gridToWorld(toGX, fromGY);
   return [s, c, e];
 }
 
@@ -114,6 +122,8 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
   container.addChild(outer);
   container.addChild(core);
   container.addChild(highlight);
+
+  let highlightedComponentId: ComponentId | null = null;
 
   const recomputePath = (s: ConnectionRenderState): void => {
     const from = components.get(s.sourceId);
@@ -132,7 +142,7 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
       (from.gridX === to.gridX && from.gridY <= to.gridY);
     const canonFrom = aFirst ? from : to;
     const canonTo = aFirst ? to : from;
-    const rawCanon = routePath(canonFrom.gridX, canonFrom.gridY, canonTo.gridX, canonTo.gridY);
+    const rawCanon = routePath(canonFrom.gridX, canonFrom.gridY, canonTo.gridX, canonTo.gridY, s.yFirst);
     const raw = aFirst ? rawCanon : [...rawCanon].reverse();
     // Fixed screen-space lane offset — blue (forward) shifts right by
     // LANE_OFFSET_PX, orange (back) shifts left by the same amount. Using a
@@ -170,6 +180,49 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
     gfx.stroke({ color, width, alpha, cap: "butt", join: "miter" });
   };
 
+  /** Spacing between chevrons along a wire segment. */
+  const CHEVRON_SPACING = 40;
+  /** Half-width of each chevron (perpendicular to wire direction). */
+  const CHEVRON_HALF_W = 4;
+  /** How far the chevron tip extends forward along the wire. */
+  const CHEVRON_DEPTH = 6;
+
+  /** Draw small chevrons (>>>) along each segment of the path,
+   *  pointing in the direction of flow. */
+  const drawChevrons = (gfx: Graphics, path: Point[], color: number, alpha: number): void => {
+    for (let seg = 0; seg < path.length - 1; seg++) {
+      const p0 = path[seg]!;
+      const p1 = path[seg + 1]!;
+      const dx = p1.x - p0.x;
+      const dy = p1.y - p0.y;
+      const segLen = Math.hypot(dx, dy);
+      if (segLen < CHEVRON_SPACING) continue;
+      const ux = dx / segLen;
+      const uy = dy / segLen;
+      const px = -uy; // perpendicular
+      const py = ux;
+      // Place chevrons evenly along the segment, skipping the endpoints.
+      const count = Math.floor(segLen / CHEVRON_SPACING);
+      const startOffset = (segLen - (count - 1) * CHEVRON_SPACING) / 2;
+      for (let i = 0; i < count; i++) {
+        const t = startOffset + i * CHEVRON_SPACING;
+        const cx = p0.x + ux * t;
+        const cy = p0.y + uy * t;
+        // Chevron: two short lines forming a ">" pointing forward.
+        const tipX = cx + ux * CHEVRON_DEPTH;
+        const tipY = cy + uy * CHEVRON_DEPTH;
+        const leftX = cx - ux * CHEVRON_DEPTH * 0.3 + px * CHEVRON_HALF_W;
+        const leftY = cy - uy * CHEVRON_DEPTH * 0.3 + py * CHEVRON_HALF_W;
+        const rightX = cx - ux * CHEVRON_DEPTH * 0.3 - px * CHEVRON_HALF_W;
+        const rightY = cy - uy * CHEVRON_DEPTH * 0.3 - py * CHEVRON_HALF_W;
+        gfx.moveTo(leftX, leftY);
+        gfx.lineTo(tipX, tipY);
+        gfx.lineTo(rightX, rightY);
+        gfx.stroke({ color, width: 1.5, alpha, cap: "round", join: "round" });
+      }
+    }
+  };
+
   const redraw = (): void => {
     outer.clear();
     core.clear();
@@ -180,24 +233,23 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
       const coreColor = s.direction === "forward"
         ? CYBERPUNK_TOKENS.palette.connection
         : CONNECTION_BACK_CORE;
-      const highlightColor = s.direction === "forward"
-        ? CYBERPUNK_TOKENS.palette.packet
-        : CONNECTION_BACK_HIGHLIGHT;
-      // Pico-8 cable: thick outline wrapping a solid-colored core.
-      // Each leg's edge is only slightly darker than its core, echoing
-      // the yellow→orange subtle-step transition:
-      //   forward: pi-blue core, mid-blue edge (one tone down)
-      //   back:    pi-yellow core, pi-orange edge
-      // Widths come from the shared cable tokens so both directions
-      // render identically — the perceived thickness match depends on
-      // the edge/core contrast being similar.
       const outerColor = s.direction === "forward" ? 0x1D75D0 : 0xFFA300;
-      strokePath(outer, s.path, CYBERPUNK_TOKENS.cable.outerWidth, outerColor, 1);
-      strokePath(core, s.path, CYBERPUNK_TOKENS.cable.coreWidth, coreColor, 1);
-      void highlightColor; // preserved to avoid removing the param path
-      highlight.clear();
+      // When a component is highlighted, dim connections that don't touch it.
+      const touches = highlightedComponentId === null
+        || s.sourceId === highlightedComponentId
+        || s.targetId === highlightedComponentId;
+      const alpha = highlightedComponentId === null ? 1 : (touches ? 1 : 0.15);
+      strokePath(outer, s.path, CYBERPUNK_TOKENS.cable.outerWidth, outerColor, alpha);
+      strokePath(core, s.path, CYBERPUNK_TOKENS.cable.coreWidth, coreColor, alpha);
+      // Subtle chevrons along the wire showing flow direction.
+      const chevronColor = s.direction === "forward" ? 0xFFF1E8 : 0x1D2B53;
+      drawChevrons(highlight, s.path, chevronColor, alpha * 0.7);
     }
   };
+
+  // Alternating counter for Y-first routing. Each NEW forward connection
+  // toggles so adjacent wires take different L-paths and overlap less.
+  let routeCounter = 0;
 
   const add = (
     id: ConnectionId,
@@ -205,7 +257,21 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
     targetId: ComponentId,
     direction: "forward" | "back" = "forward",
   ): void => {
-    states.set(id, { sourceId, targetId, direction, loadUtilization: 0, path: [] });
+    // Only forward connections get their own yFirst assignment; the back
+    // twin mirrors whatever its forward sibling chose (twin lookup happens
+    // in recomputePath via canonicalization).
+    const yFirst = direction === "forward" ? (routeCounter++ % 2 === 1) : false;
+    // If this is a back connection, find its forward twin and match yFirst.
+    let resolvedYFirst = yFirst;
+    if (direction === "back") {
+      for (const [, s] of states) {
+        if (s.sourceId === targetId && s.targetId === sourceId && s.direction === "forward") {
+          resolvedYFirst = s.yFirst;
+          break;
+        }
+      }
+    }
+    states.set(id, { sourceId, targetId, direction, loadUtilization: 0, path: [], yFirst: resolvedYFirst });
     redraw();
   };
   const remove = (id: ConnectionId): void => {
@@ -244,6 +310,28 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
     return { sx: start.x, sy: start.y, tx: end.x, ty: end.y };
   };
 
+  /** Toggle a connection's L-routing between X-first and Y-first.
+   *  Also toggles its twin (back connection) to match. */
+  const toggleRoute = (id: ConnectionId): void => {
+    const s = states.get(id);
+    if (!s) return;
+    s.yFirst = !s.yFirst;
+    // Find and match the twin (opposite direction, same endpoints).
+    for (const [twinId, twin] of states) {
+      if (twinId === id) continue;
+      if (twin.sourceId === s.targetId && twin.targetId === s.sourceId) {
+        twin.yFirst = s.yFirst;
+      }
+    }
+    redraw();
+  };
+
+  const highlightComponent = (id: ComponentId | null): void => {
+    if (highlightedComponentId === id) return;
+    highlightedComponentId = id;
+    redraw();
+  };
+
   return {
     container,
     add,
@@ -254,5 +342,7 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
     getEndpoints,
     entries: () => states.entries(),
     redraw,
+    highlightComponent,
+    toggleRoute,
   };
 }

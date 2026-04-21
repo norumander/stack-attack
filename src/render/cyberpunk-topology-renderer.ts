@@ -289,6 +289,12 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
 
       // Cursor follows what's under the pointer (or grabbing while panning/dragging).
       this.updateCursor(sx, sy);
+
+      // Hover-to-highlight: dim connections not touching the hovered component.
+      if (!this.isPanning && !this.isDraggingComponent) {
+        const hover = this.hitTest(sx, sy);
+        this.connectionLayer?.highlightComponent(hover?.componentId ?? null);
+      }
     });
 
     const endInteraction = (ev: { global: { x: number; y: number } }): void => {
@@ -418,7 +424,7 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
       return;
     }
     if (this.hitTestConnection(screenX, screenY) !== null) {
-      canvas.style.cursor = CyberpunkTopologyRenderer.ERASER_CURSOR;
+      canvas.style.cursor = "pointer";
       return;
     }
     canvas.style.cursor = "grab";
@@ -513,6 +519,10 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
    * Nuke all transient visuals — packets, snakes, flash FX. Used by retry-wave
    * to reset the board without tearing down the component/connection layers.
    */
+  toggleConnectionRoute(id: ConnectionId): void {
+    this.connectionLayer?.toggleRoute(id);
+  }
+
   resetTransientVisuals(): void {
     // Remove all packet sprites.
     if (this.packetLayer) {

@@ -357,6 +357,12 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     });
   }
 
+  // ─── Left-click on connection to toggle L-routing ───────────────────
+  renderer.onConnectionPointerDown((connId) => {
+    if (controller.phase !== "build") return;
+    renderer.toggleConnectionRoute(connId);
+  });
+
   // ─── Right-click to delete (component or connection) ────────────────
   // Bind contextmenu to BOTH the host and the canvas itself — Pixi's canvas
   // can intercept events depending on stacking; binding both + preventDefault
