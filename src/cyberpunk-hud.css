@@ -25,7 +25,7 @@ body.renderer-iso {
   --sc-text-shadow: 0 0 12px rgba(41, 173, 255, 0.55);
   --sc-danger: #FF004D;          /* pi-red */
   --font-display: "Press Start 2P", "Courier New", monospace;
-  --font-mono: "VT323", "Courier New", monospace;
+  --font-mono: "Silkscreen", "VT323", "Courier New", monospace;
 
   margin: 0;
   padding: 0;
@@ -1415,7 +1415,7 @@ body.renderer-iso .cp-dossier-row-key,
 body.renderer-iso .cp-dossier-row-val,
 body.renderer-iso .cp-info-caps,
 body.renderer-iso .cp-info-stats {
-  font-family: "VT323", "Courier New", monospace !important;
+  font-family: "Silkscreen", "VT323", "Courier New", monospace !important;
   font-size: 16px !important;
   color: #FFF1E8 !important;
 }
@@ -1560,9 +1560,10 @@ body.renderer-iso .cp-palette-cell:hover {
 }
 body.renderer-iso .cp-palette-cell.cp-placing,
 body.renderer-iso .cp-palette-cell.cp-palette-cell--placing {
-  background: #FFEC27 !important;
-  color: #1D2B53 !important;
-  box-shadow: inset 2px 2px 0 #7E2553 !important;
+  background: rgba(41, 173, 255, 0.25) !important;
+  border-color: #29ADFF !important;
+  color: #FFF1E8 !important;
+  box-shadow: 0 0 10px rgba(41, 173, 255, 0.35) !important;
 }
 body.renderer-iso .cp-palette-cell:disabled {
   background: #1D2B53 !important;

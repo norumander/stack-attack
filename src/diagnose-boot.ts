@@ -637,6 +637,7 @@ async function main(): Promise<void> {
   // ─── Chatbot tutor drawer — now serializes real sim state ───────────
   mountChatbotDrawer({
     host: document.body,
+    ...(!isAuthConfigured && { endpoint: "/api/chat", skipAuth: true }),
     getContext: (): ChatRequest | null => {
       const avgLatency =
         metrics.latencyCount > 0 ? metrics.latencySum / metrics.latencyCount : 0;

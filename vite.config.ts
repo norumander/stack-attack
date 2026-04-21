@@ -6,6 +6,15 @@ const srcDir = fileURLToPath(new URL("./src", import.meta.url));
 
 export default defineConfig({
   root: "src",
+  server: {
+    proxy: {
+      "/api/chat": {
+        target: "http://localhost:3099",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/chat/, ""),
+      },
+    },
+  },
   resolve: {
     alias: {
       "@core": fileURLToPath(new URL("./src/core", import.meta.url)),

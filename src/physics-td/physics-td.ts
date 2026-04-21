@@ -299,6 +299,11 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
 
   refs.placement = new PlacementUX(sim, renderer, controller);
   refs.placement.setZoneResolver(() => hudCtrl.getSelectedZone());
+  refs.placement.setOnPlacingChange((type) => {
+    for (const [t, btn] of livePaletteButtons) {
+      btn.classList.toggle("cp-placing", t === type);
+    }
+  });
   refs.connect = new ConnectUX(
     sim,
     renderer,
@@ -312,11 +317,13 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
   // hop the HUD does by default. Cheaper, and more reliable because the
   // palette cells exist for sure (we just got the controller).
   const paletteButtons = hudCtrl.getPaletteButtons();
+  const livePaletteButtons = new Map<string, HTMLButtonElement>();
   for (const [type, btn] of paletteButtons) {
     // Replace the default forwarding click handler with a direct one. Easiest
     // way: clone the node so any prior listeners are dropped, then re-bind.
     const fresh = btn.cloneNode(true) as HTMLButtonElement;
     btn.replaceWith(fresh);
+    livePaletteButtons.set(type, fresh);
     fresh.addEventListener("click", async (e) => {
       e.preventDefault();
       if (!dossierStore.hasSeen(type)) {
@@ -864,6 +871,11 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     // operate on the new instance.
     refs.placement = new PlacementUX(sim, renderer, controller);
     refs.placement.setZoneResolver(() => hudCtrl.getSelectedZone());
+    refs.placement.setOnPlacingChange((type) => {
+      for (const [t, btn] of hudCtrl.getPaletteButtons()) {
+        btn.classList.toggle("cp-placing", t === type);
+      }
+    });
     refs.connect = new ConnectUX(
       sim,
       renderer,
@@ -880,6 +892,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
       .__stackAttackLevelId ?? undefined;
   mountChatbotDrawer({
     host: document.body,
+    ...(!isAuthConfigured && { endpoint: "/api/chat", skipAuth: true }),
     getContext: (): ChatRequest | null => {
       const waveEntry = waves[controller.currentWaveIndex];
       if (!waveEntry) return null;

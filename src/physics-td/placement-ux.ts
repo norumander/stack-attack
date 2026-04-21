@@ -43,6 +43,7 @@ function isOnBoard(grid: { x: number; y: number }): boolean {
 export class PlacementUX {
   private placingType: string | null = null;
   private zoneResolver: (() => Zone | undefined) | null = null;
+  private onPlacingChange: ((type: string | null) => void) | null = null;
 
   constructor(
     private readonly sim: Sim,
@@ -55,6 +56,11 @@ export class PlacementUX {
         x: ev.screenX,
         y: ev.screenY,
       });
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && this.placingType) {
+        this.exitPlacingMode();
+      }
     });
     this.renderer.onPointerDown((ev) => {
       if (!this.placingType) return;
@@ -74,7 +80,10 @@ export class PlacementUX {
         setStatus(`Cannot place: ${result.reason}`);
         return;
       }
-      this.exitPlacingMode();
+      // Stay in placing mode so the player can place multiple instances.
+      // The ghost follows the cursor for the next placement. Exit via
+      // clicking the same palette button again or pressing Escape.
+      setStatus(`Placing ${this.placingType} — click to place more, ESC or palette button to cancel`);
     });
   }
 
@@ -89,11 +98,13 @@ export class PlacementUX {
       return;
     }
     this.placingType = type;
-    setStatus(`Placing ${type} — click grid to place, palette button again to cancel`);
+    this.onPlacingChange?.(type);
+    setStatus(`Placing ${type} — click to place, ESC or palette button to cancel`);
   }
 
   exitPlacingMode(): void {
     this.placingType = null;
+    this.onPlacingChange?.(null);
     this.renderer.setPlacementGhost(null, null);
     setStatus("Build phase — place components and click READY");
   }
@@ -101,6 +112,11 @@ export class PlacementUX {
   /** Provide a callback that returns the currently selected zone. */
   setZoneResolver(resolver: () => Zone | undefined): void {
     this.zoneResolver = resolver;
+  }
+
+  /** Called when placing mode changes — type is the component being placed, or null on exit. */
+  setOnPlacingChange(cb: (type: string | null) => void): void {
+    this.onPlacingChange = cb;
   }
 
   /**

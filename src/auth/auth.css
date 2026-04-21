@@ -4,7 +4,7 @@
    component sprites are styled separately (cyberpunk-hud.css, Pixi).
    ══════════════════════════════════════════════════════════════════════ */
 
-@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen&family=VT323&display=swap");
 @import url("../styles/palette.css");
 
 /* Crisp pixel rendering for every sprite on every page */

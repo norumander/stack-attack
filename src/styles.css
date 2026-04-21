@@ -14,7 +14,7 @@
   --yellow:       #FFEC27;
   --orange:       #FFA300;
   --blue:         #29ADFF;
-  font-family: "VT323", "Press Start 2P", "Courier New", monospace;
+  font-family: "Silkscreen", "VT323", "Press Start 2P", "Courier New", monospace;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

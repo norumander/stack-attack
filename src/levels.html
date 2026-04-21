@@ -59,6 +59,20 @@
       gap: 20px;
     }
 
+    .grid--diagnose {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(5, auto);
+      grid-auto-flow: column;
+    }
+
+    @media (max-width: 720px) {
+      .grid--diagnose {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        grid-auto-flow: row;
+      }
+    }
+
     .card {
       position: relative;
       display: grid;
@@ -260,7 +274,7 @@
           <div class="desc">bit.ly-style redirects. 95%+ reads, viral hot keys. 4 waves: launch → Reddit front page → analytics → global. Edge Cache is the star.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag">GO ▸</span>
+        <span class="tag">GO</span>
       </a>
 
       <a class="card" href="./game.html?level=netflix" data-level="netflix">
@@ -273,12 +287,12 @@
           <div class="desc">Peak-hour streaming. Writes, reads, and viewers all want the same hot titles. Scale before the SLA drops.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag">GO ▸</span>
+        <span class="tag">GO</span>
       </a>
     </nav>
 
     <p class="section-header">Diagnose Mode · Inherit &amp; Fix</p>
-    <nav class="grid" aria-label="Diagnose levels">
+    <nav class="grid grid--diagnose" aria-label="Diagnose levels">
       <a class="card card--diagnose" href="./diagnose.html?level=instagram-1">
         <div class="portrait portrait--brand" aria-label="Instagram">
           <span class="brand">IG</span>
@@ -289,7 +303,7 @@
           <div class="desc">A celebrity just posted. Hot traffic is hammering one profile. Find the bottleneck, fix it before the SLA breaks.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag">FIX ▸</span>
+        <span class="tag">FIX</span>
       </a>
 
       <a class="card card--diagnose" href="./diagnose.html?level=instagram-2">
@@ -302,7 +316,7 @@
           <div class="desc">Golden hour = mass uploads. Your Streaming Server is idle while API Servers drown. What's the rewire?</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag">FIX ▸</span>
+        <span class="tag">FIX</span>
       </a>
 
       <a class="card card--diagnose" href="./diagnose.html?level=instagram-3">
@@ -315,7 +329,7 @@
           <div class="desc">Breaking news event → likes + notifications flood. Queues backing up. Workers can't keep up.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag">FIX ▸</span>
+        <span class="tag">FIX</span>
       </a>
 
       <a class="card card--diagnose" href="./diagnose.html?level=instagram-4">
@@ -328,7 +342,7 @@
           <div class="desc">Growing in Asia. Pings from Tokyo take 800ms. Stand up an APAC replica and route with DNS/GTM.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag">FIX ▸</span>
+        <span class="tag">FIX</span>
       </a>
 
       <a class="card card--diagnose" href="./diagnose.html?level=instagram-5">
@@ -341,7 +355,7 @@
           <div class="desc">Major event viral moment. Infrastructure stressed, chaos events incoming. This is what you've been training for.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag">FIX ▸</span>
+        <span class="tag">FIX</span>
       </a>
 
       <a class="card card--diagnose card--diagnose-netflix" href="./diagnose.html?level=netflix-1">
@@ -354,7 +368,7 @@
           <div class="desc">Netflix members loading their personalized home page. Millions of concurrent sessions. One database is drowning.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag">FIX ▸</span>
+        <span class="tag">FIX</span>
       </a>
 
       <a class="card card--diagnose card--diagnose-netflix" href="./diagnose.html?level=netflix-2">
@@ -367,7 +381,7 @@
           <div class="desc">A new series just dropped and it's trending. Your CDN has never seen this content before. Every miss slams your origin.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag">FIX ▸</span>
+        <span class="tag">FIX</span>
       </a>
 
       <a class="card card--diagnose card--diagnose-netflix" href="./diagnose.html?level=netflix-3">
@@ -380,7 +394,7 @@
           <div class="desc">Live-streamed boxing match starts in 60 seconds. Your streaming pipeline was sized for lazy VOD traffic.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag">FIX ▸</span>
+        <span class="tag">FIX</span>
       </a>
 
       <a class="card card--diagnose card--diagnose-netflix" href="./diagnose.html?level=netflix-4">
@@ -393,7 +407,7 @@
           <div class="desc">Netflix launched in Singapore. 150 million subscribers 12,000 miles from your US servers. Speed of light is a hard limit.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag">FIX ▸</span>
+        <span class="tag">FIX</span>
       </a>
 
       <a class="card card--diagnose card--diagnose-netflix" href="./diagnose.html?level=netflix-5">
@@ -406,7 +420,7 @@
           <div class="desc">Squid Game drops globally. Viewers 10x normal. Chaos events incoming. The next 15 seconds decide whether Netflix survives the night.</div>
           <div class="record">⭐ no record · target 99.5%</div>
         </div>
-        <span class="tag">FIX ▸</span>
+        <span class="tag">FIX</span>
       </a>
     </nav>
   </div>
@@ -426,7 +440,7 @@
           record.textContent = "CLEARED · viability " + (data.viabilityRemaining ?? "?") + "% · " + (data.waves ?? "?") + " waves";
         }
         var tag = card.querySelector(".tag");
-        if (tag) tag.textContent = "REPLAY \u25B8";
+        if (tag) tag.textContent = "REPLAY";
       } catch (e) { /* ignore bad data */ }
     });
   </script>
