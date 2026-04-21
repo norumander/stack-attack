@@ -120,6 +120,8 @@ export interface ComponentUpdate {
   pendingCount?: number;  // displayed in the component label
   gridPosition?: { x: number; y: number };
   cacheKeys?: ReadonlyArray<string>;
+  /** Update the short-identifier badge text (e.g. zone reassignment). */
+  label?: string;
   /**
    * Diagnose-mode "at-a-glance" stress indicator for per-component live
    * metrics. `stressed` tints the sprite orange; `dropping` adds a

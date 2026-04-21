@@ -413,6 +413,21 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
       }
     }
 
+    if (u.label !== undefined) {
+      state.nameBadgeText.text = u.label;
+      state.nameBadge.visible = Boolean(u.label);
+      // Redraw the backing rectangle to fit the new text.
+      state.nameBadgeBg.clear();
+      if (u.label) {
+        const b = state.nameBadgeText.getLocalBounds();
+        const padX = 5, padY = 2;
+        state.nameBadgeBg
+          .roundRect(b.x - padX, b.y - padY, b.width + padX * 2, b.height + padY * 2, 3)
+          .fill({ color: 0x0a1420, alpha: 0.92 })
+          .stroke({ color: 0x5ef0ff, alpha: 0.6, width: 1 });
+      }
+    }
+
     if (u.cacheKeys !== undefined) {
       applyCacheKeysImpl(state, u.cacheKeys);
     }

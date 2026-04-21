@@ -14,6 +14,8 @@ export interface CyberpunkHudController {
   setZones(zones: ReadonlyArray<string>): void;
   /** Returns the currently selected zone, or undefined for "no zone". */
   getSelectedZone(): string | undefined;
+  /** Called whenever a zone button is clicked. Use for zone reassignment of selected components. */
+  onZoneClick(cb: (zone: string | undefined) => void): void;
 }
 
 interface PaletteEntry {
@@ -91,6 +93,7 @@ function buildHud(): void {
     getPaletteButtons: () => paletteButtons,
     setZones: setZonesImpl,
     getSelectedZone: () => selectedZone,
+    onZoneClick: (cb) => { zoneClickCallbacks.push(cb); },
   };
 }
 
@@ -414,6 +417,7 @@ const ZONE_LABELS: Record<string, string> = {
 let zoneBar: HTMLElement | null = null;
 let selectedZone: string | undefined;
 let zoneButtons: HTMLButtonElement[] = [];
+let zoneClickCallbacks: Array<(zone: string | undefined) => void> = [];
 
 function buildZoneBar(root: HTMLElement): void {
   zoneBar = div("cp-zone-bar cp-hidden");
@@ -471,6 +475,7 @@ function selectZone(zone: string | undefined): void {
     const isActive = btn.dataset.zone === zone || (!btn.dataset.zone && zone === undefined);
     btn.classList.toggle("cp-zone-btn--active", isActive);
   }
+  for (const cb of zoneClickCallbacks) cb(zone);
 }
 
 // ─── Palette strip (bottom-center) ────────────────────────────────────

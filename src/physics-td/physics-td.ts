@@ -11,7 +11,7 @@ import { makeSimRng } from "@sim/rng";
 import { BrowserDriver } from "../sim-demo/browser-driver";
 import { SimToRendererAdapter } from "../sim-demo/sim-to-renderer";
 import { PhysicsCampaignController, type Phase } from "./campaign-controller";
-import { COMPONENT_COSTS } from "./component-factory";
+import { COMPONENT_COSTS, buildSimComponent } from "./component-factory";
 import { CAMPAIGN_WAVES, computeBriefingForCampaignWave, type CampaignWave } from "./waves";
 import { BITLY_WAVES } from "./bitly-waves";
 import { PlacementUX } from "./placement-ux";
@@ -251,6 +251,27 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     getDrops: () => perComponentDrops,
     getProcessed: () => perComponentProcessed,
     getMetrics: (id) => metricsAggregator.getMetricsFor(id),
+  });
+
+  // ─── Zone reassignment: click zone button while component selected ──
+  hudCtrl.onZoneClick((zone) => {
+    if (controller.phase !== "build") return;
+    const selectedId = infoPanel.openId();
+    if (!selectedId) return;
+    const comp = sim.components.get(selectedId);
+    if (!comp) return;
+    comp.zone = zone ?? null;
+    // Update the renderer label badge with zone tag
+    const baseLabel = componentLabels.get(selectedId);
+    if (baseLabel) {
+      const stripped = baseLabel.replace(/\s*\[(?:NA|EU|AP)\]$/, "");
+      const zoneBadge = zone ? ` [${zone.replace("zone_", "").toUpperCase()}]` : "";
+      const newLabel = `${stripped}${zoneBadge}`;
+      componentLabels.set(selectedId, newLabel);
+      renderer.updateComponent(selectedId, { label: newLabel });
+    }
+    const zoneName = zone ? zone.replace("zone_", "").toUpperCase() : "none";
+    hudCtrl.showToast(`Zone → ${zoneName}`);
   });
 
   // ─── Dev +$100 button (testing aid; remove before ship) ────────────
@@ -531,7 +552,8 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
           driver = null;
           adapter = null;
           showDeathModal();
-          return;
+          // Don't return — let requestAnimationFrame(frame) at the bottom
+          // keep the loop alive so retry can resume ticking.
         }
       }
 
@@ -789,16 +811,59 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     // Kill any active driver/adapter so the render loop stops.
     driver = null;
     adapter = null;
-    // Detach SimClient + flush in-flight packets so build phase is clean.
-    sim.clients.delete(CLIENT_ID);
-    sim.activePackets.length = 0;
-    // Clear crashed components from the sim so they accept traffic on retry.
-    sim.crashedComponents.clear();
+
+    // Clear all transient visuals: packets, snakes, flash FX.
+    renderer.resetTransientVisuals();
+
+    // Clear visual artefacts on components: stress rings, util bars, pending counts.
+    for (const id of sim.components.keys()) {
+      renderer.updateComponent(id, {
+        utilization: 0,
+        pendingCount: 0,
+        stress: { stressed: false, dropping: false },
+      });
+    }
+
+    // Create a fresh sim with rebuilt components. Old SimComponent objects
+    // carry stale state (depleted buckets, filled queues, autoscale tiers)
+    // that would prevent traffic from flowing on retry.
+    const retryConnections = [...sim.connections.values()];
+    const retryWave = waves[controller.currentWaveIndex];
+    const retryRevenue = retryWave?.wave.revenue ?? { perRead: 1, perWrite: 2, perAuth: 0, perStream: 0, perAsync: 1 };
+    // Snapshot zone info from old components before discarding them.
+    const oldZones = new Map<ComponentId, string | null>();
+    for (const [id, comp] of sim.components) oldZones.set(id, comp.zone);
+    sim = new Sim({ seed: 1 });
+    for (const [id, type] of componentTypes) {
+      const zone = oldZones.get(id) ?? undefined;
+      const label = componentLabels.get(id);
+      const freshComp = buildSimComponent(type, id, retryRevenue, zone ?? undefined, label);
+      if (freshComp) sim.addComponent(freshComp);
+    }
+    for (const c of retryConnections) sim.addConnection(c);
+    wireWorkers(sim);
+
+    // Rebuild PlacementUX/ConnectUX so they reference the new sim.
+    refs.placement = new PlacementUX(sim, renderer, controller);
+    refs.placement.setZoneResolver(() => hudCtrl.getSelectedZone());
+    refs.placement.setOnPlacingChange((type) => {
+      for (const [t, btn] of livePaletteButtons) {
+        btn.classList.toggle("cp-placing", t === type);
+      }
+    });
+    refs.connect = new ConnectUX(
+      sim,
+      renderer,
+      controller,
+      () => refs.placement?.isPlacing() ?? false,
+    );
+
     // Re-enter build phase for the same wave.
     controller.phase = "build" as Phase;
     hud.setPhase("build");
     hud.setReadyDisabled(false);
     hud.setTopologyErrors([]);
+    infoPanel.hide();
     const wave = waves[controller.currentWaveIndex];
     if (wave) {
       hudCtrl.updateBriefing(computeBriefingForCampaignWave(wave));

@@ -502,6 +502,24 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     this.flashFx?.flashResponded(id);
   }
 
+  /**
+   * Nuke all transient visuals — packets, snakes, flash FX. Used by retry-wave
+   * to reset the board without tearing down the component/connection layers.
+   */
+  resetTransientVisuals(): void {
+    // Remove all packet sprites.
+    if (this.packetLayer) {
+      this.packetLayer.container.removeChildren();
+      this.packetLayer.cleanup();
+    }
+    // Remove all snake trails.
+    this.snakeLayer?.cleanup();
+    // Clear flash FX queue.
+    if (this.flashFx) {
+      this.flashFx.container.removeChildren();
+    }
+  }
+
   setSelected(id: ComponentId | null): void {
     this.selectionRing?.set(id);
   }

@@ -25,7 +25,7 @@ export class SimComponent {
   /** Base (tier-1) capacity. Effective capacity is base × tier. */
   readonly capacityPerSecond: number | null;
   readonly state: Map<string, unknown> = new Map();
-  readonly zone: Zone | null;
+  zone: Zone | null;
   readonly label: string | undefined;
   tier: number;
 
