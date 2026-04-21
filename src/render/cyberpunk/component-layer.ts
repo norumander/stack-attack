@@ -63,6 +63,28 @@ export interface ComponentSplitTextures {
 
 export type ComponentTextureMap = Record<string, ComponentSplitTextures>;
 
+/**
+ * Per-frame base/highlight textures for the client typing animation, baked
+ * from client-typing.gif into a horizontal PNG strip via
+ * scripts/bake-client-typing-strip.mjs. Each frame is run through the same
+ * splitBitmap() treatment as static component sprites so the highlight tint
+ * stays consistent with the rest of the scene.
+ */
+export interface ClientTypingTextures {
+  readonly base: Texture[];
+  readonly highlight: Texture[];
+  readonly frameDurationsMs: number[];
+}
+
+const CLIENT_TYPING_STRIP_URL = new URL(
+  "../../assets/stack-attack/client-typing.png",
+  import.meta.url,
+).href;
+const CLIENT_TYPING_JSON_URL = new URL(
+  "../../assets/stack-attack/client-typing.json",
+  import.meta.url,
+).href;
+
 async function loadAndSplit(url: string): Promise<ComponentSplitTextures> {
   const response = await fetch(url);
   const blob = await response.blob();
@@ -140,6 +162,37 @@ export async function loadComponentTextures(): Promise<ComponentTextureMap> {
   return Object.fromEntries(entries) as ComponentTextureMap;
 }
 
+export async function loadClientTypingTextures(): Promise<ClientTypingTextures> {
+  const [stripResp, metaResp] = await Promise.all([
+    fetch(CLIENT_TYPING_STRIP_URL),
+    fetch(CLIENT_TYPING_JSON_URL),
+  ]);
+  const meta = (await metaResp.json()) as {
+    frameWidth: number;
+    frameHeight: number;
+    frameCount: number;
+    frameDurationsMs: number[];
+  };
+  const blob = await stripResp.blob();
+  const bitmap = await createImageBitmap(blob);
+
+  const base: Texture[] = [];
+  const highlight: Texture[] = [];
+  for (let i = 0; i < meta.frameCount; i += 1) {
+    const frameBitmap = await createImageBitmap(
+      bitmap,
+      i * meta.frameWidth,
+      0,
+      meta.frameWidth,
+      meta.frameHeight,
+    );
+    const split = splitBitmap(frameBitmap);
+    base.push(split.base);
+    highlight.push(split.highlight);
+  }
+  return { base, highlight, frameDurationsMs: meta.frameDurationsMs };
+}
+
 function shortKey(k: string): string {
   return k.length <= 3 ? k : k.slice(-3);
 }
@@ -177,6 +230,14 @@ export interface ComponentRenderState {
   stressRing?: Graphics;
   stressPhase?: number;
   stressState?: { stressed: boolean; dropping: boolean };
+  /** Static base/highlight textures (the non-typing "idle" frame). */
+  idleBaseTexture?: Texture;
+  idleHighlightTexture?: Texture;
+  /** Per-frame textures for the client typing animation, if loaded. */
+  typingFrames?: ClientTypingTextures;
+  typingActive?: boolean;
+  typingFrameIndex?: number;
+  typingFrameElapsedMs?: number;
 }
 
 export interface ComponentLayer {
@@ -186,11 +247,20 @@ export interface ComponentLayer {
   update(id: ComponentId, update: ComponentUpdate): void;
   get(id: ComponentId): ComponentRenderState | undefined;
   all(): IterableIterator<[ComponentId, ComponentRenderState]>;
-  /** Per-frame tick for stress-indicator pulse animation. */
+  /** Per-frame tick for stress-indicator pulse + client typing animation. */
   tick(deltaMs: number): void;
+  /**
+   * Toggle the client's typing animation. When true, the client sprite cycles
+   * through the baked gif frames; when false, it reverts to the static frame.
+   * No-op if no client render state exists or typing frames were not loaded.
+   */
+  setClientTyping(active: boolean): void;
 }
 
-export function createComponentLayer(textures: ComponentTextureMap): ComponentLayer {
+export function createComponentLayer(
+  textures: ComponentTextureMap,
+  clientTypingTextures?: ClientTypingTextures,
+): ComponentLayer {
   const container = new Container();
   container.sortableChildren = true;
   const states = new Map<ComponentId, ComponentRenderState>();
@@ -325,7 +395,7 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
 
     container.addChild(inner);
 
-    states.set(id, {
+    const state: ComponentRenderState = {
       container: inner,
       baseSprite,
       highlightSprite,
@@ -337,7 +407,21 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
       type: visual.type,
       gridX: visual.gridPosition.x,
       gridY: visual.gridPosition.y,
-    });
+    };
+
+    // Attach typing-animation state for the client. The static textures stay
+    // as the "idle" frame; tick() swaps in baked gif frames when typing is
+    // active and restores these on toggle-off.
+    if (isClient && clientTypingTextures) {
+      state.idleBaseTexture = tex.base;
+      state.idleHighlightTexture = tex.highlight;
+      state.typingFrames = clientTypingTextures;
+      state.typingActive = false;
+      state.typingFrameIndex = 0;
+      state.typingFrameElapsedMs = 0;
+    }
+
+    states.set(id, state);
   };
 
   const remove = (id: ComponentId): void => {
@@ -476,14 +560,51 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
   };
 
   const tick = (deltaMs: number): void => {
-    // Advance the pulse phase for all stressed components. Only redraw
-    // ones currently dropping (the stressed-only ring is static).
     const dt = deltaMs / 1000;
     for (const state of states.values()) {
-      if (!state.stressState || !state.stressRing) continue;
-      if (!state.stressState.dropping) continue;
-      state.stressPhase = (state.stressPhase ?? 0) + dt * 6; // ~1 Hz × 2π≈6.28
-      redrawStressRing(state);
+      // Stress-indicator pulse.
+      if (state.stressState && state.stressRing && state.stressState.dropping) {
+        state.stressPhase = (state.stressPhase ?? 0) + dt * 6; // ~1 Hz × 2π≈6.28
+        redrawStressRing(state);
+      }
+
+      // Client typing animation — advance frame per baked durations.
+      if (state.typingActive && state.typingFrames) {
+        const frames = state.typingFrames;
+        let elapsed = (state.typingFrameElapsedMs ?? 0) + deltaMs;
+        let idx = state.typingFrameIndex ?? 0;
+        let dur = frames.frameDurationsMs[idx] ?? 100;
+        while (elapsed >= dur) {
+          elapsed -= dur;
+          idx = (idx + 1) % frames.base.length;
+          dur = frames.frameDurationsMs[idx] ?? 100;
+        }
+        if (idx !== state.typingFrameIndex) {
+          state.baseSprite.texture = frames.base[idx]!;
+          state.highlightSprite.texture = frames.highlight[idx]!;
+        }
+        state.typingFrameIndex = idx;
+        state.typingFrameElapsedMs = elapsed;
+      }
+    }
+  };
+
+  const setClientTyping = (active: boolean): void => {
+    for (const state of states.values()) {
+      if (!state.typingFrames) continue;
+      if (state.typingActive === active) continue;
+      state.typingActive = active;
+      state.typingFrameElapsedMs = 0;
+      if (active) {
+        state.typingFrameIndex = 0;
+        state.baseSprite.texture = state.typingFrames.base[0]!;
+        state.highlightSprite.texture = state.typingFrames.highlight[0]!;
+      } else {
+        if (state.idleBaseTexture) state.baseSprite.texture = state.idleBaseTexture;
+        if (state.idleHighlightTexture) {
+          state.highlightSprite.texture = state.idleHighlightTexture;
+        }
+      }
     }
   };
 
@@ -495,5 +616,6 @@ export function createComponentLayer(textures: ComponentTextureMap): ComponentLa
     get: (id) => states.get(id),
     all: () => states.entries(),
     tick,
+    setClientTyping,
   };
 }

@@ -211,6 +211,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
         const wave = waves[waveIndex];
         hud.setPhase(phase);
         hud.setWavePill(waveIndex + 1, waves.length);
+        renderer.setClientTyping?.(phase === "simulate");
         if (phase === "build" && wave) {
           hudCtrl.updateBriefing(computeBriefingForCampaignWave(wave));
           hud.setStatus("Build phase — place components, READY when done");

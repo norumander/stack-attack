@@ -20,7 +20,9 @@ import { CYBERPUNK_TOKENS } from "./cyberpunk/tokens.js";
 import { createBoard, loadBoardTextures, type BoardTextures } from "./cyberpunk/board.js";
 import {
   createComponentLayer,
+  loadClientTypingTextures,
   loadComponentTextures,
+  type ClientTypingTextures,
   type ComponentLayer,
   type ComponentTextureMap,
 } from "./cyberpunk/component-layer.js";
@@ -59,6 +61,7 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
 
   private componentLayer: ComponentLayer | null = null;
   private componentTextures: ComponentTextureMap | null = null;
+  private clientTypingTextures: ClientTypingTextures | null = null;
   private connectionLayer: ConnectionLayer | null = null;
   private packetLayer: PacketLayer | null = null;
   private packetTextures: PacketTextureMap | null = null;
@@ -123,6 +126,7 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     // Load all textures before constructing layers.
     this.boardTextures = await loadBoardTextures();
     this.componentTextures = await loadComponentTextures();
+    this.clientTypingTextures = await loadClientTypingTextures();
     this.packetTextures = await loadPacketTextures();
 
     // Board
@@ -135,7 +139,10 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     // Components + connections + packets + flash FX + selection + ghost.
     // Insert order = paint order: connections behind components behind
     // packets behind flash effects behind selection behind ghost.
-    this.componentLayer = createComponentLayer(this.componentTextures);
+    this.componentLayer = createComponentLayer(
+      this.componentTextures,
+      this.clientTypingTextures,
+    );
     this.connectionLayer = createConnectionLayer(this.componentLayer);
     world.addChild(this.connectionLayer.container);
     world.addChild(this.componentLayer.container);
@@ -535,6 +542,9 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
   }
   setConnectionMode(active: boolean): void {
     this.connectingActive = active;
+  }
+  setClientTyping(active: boolean): void {
+    this.componentLayer?.setClientTyping(active);
   }
 
   hitTest(screenX: number, screenY: number): { componentId: ComponentId } | null {

@@ -72,6 +72,12 @@ export interface TopologyRenderer {
    * Classic renderer may implement as a noop.
    */
   setConnectionMode(active: boolean): void;
+  /**
+   * Toggle the client's "typing" animation. Called by the campaign controller
+   * when the simulate phase starts/ends. Optional — renderers that lack an
+   * animated client sprite can omit this method.
+   */
+  setClientTyping?(active: boolean): void;
 
   // ─ Input queries (screen-space ↔ world-space) ─────────────────────────
   hitTest(screenX: number, screenY: number): { componentId: ComponentId } | null;
