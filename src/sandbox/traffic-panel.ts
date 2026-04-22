@@ -29,9 +29,12 @@ export interface TrafficPanelHandle {
   onSeverConnection(cb: () => void): void;
   onExport(cb: () => void): void;
   onImport(cb: () => void): void;
+  onClear(cb: () => void): void;
+  onReset(cb: () => void): void;
   onChange(cb: () => void): void;
   applySettings(s: Partial<TrafficSettings>): void;
   setRunning(running: boolean): void;
+  enableReset(enabled: boolean): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,11 +62,13 @@ export function buildTrafficPanel(container: HTMLElement): TrafficPanelHandle {
   const severConnectionCbs: Array<() => void> = [];
   const exportCbs: Array<() => void> = [];
   const importCbs: Array<() => void> = [];
+  const clearCbs: Array<() => void> = [];
+  const resetCbs: Array<() => void> = [];
   const changeCbs: Array<() => void> = [];
 
-  function fireChange(): void {
+  let fireChange = (): void => {
     for (const cb of changeCbs) cb();
-  }
+  };
 
   // ---------------------------------------------------------------------------
   // Root panel
@@ -170,6 +175,46 @@ export function buildTrafficPanel(container: HTMLElement): TrafficPanelHandle {
     (v) => { settings.intensity = v; },
   );
   panel.appendChild(intensitySlider.row);
+
+  // Read-only READS % display — shows the remainder after other composition sliders.
+  const readsRow = document.createElement("div");
+  readsRow.className = "cp-traffic-row";
+  const readsLabel = document.createElement("label");
+  readsLabel.className = "cp-traffic-label";
+  readsLabel.appendChild(document.createTextNode("READS "));
+  const readsVal = document.createElement("span");
+  readsVal.className = "cp-traffic-val";
+  readsVal.textContent = "100%";
+  readsLabel.appendChild(readsVal);
+  const readsSlider = document.createElement("input");
+  readsSlider.type = "range";
+  readsSlider.className = "cp-traffic-slider";
+  readsSlider.min = "0";
+  readsSlider.max = "100";
+  readsSlider.step = "1";
+  readsSlider.value = "100";
+  readsSlider.disabled = true;
+  readsSlider.style.opacity = "0.5";
+  readsRow.appendChild(readsLabel);
+  readsRow.appendChild(readsSlider);
+  panel.appendChild(readsRow);
+
+  function updateReadsDisplay(): void {
+    const used = Math.round(
+      (settings.writeRatio + settings.authRatio + settings.streamRatio +
+       settings.largeRatio + settings.asyncRatio) * 100
+    );
+    const reads = Math.max(0, 100 - used);
+    readsVal.textContent = `${reads}%`;
+    readsSlider.value = String(reads);
+  }
+
+  // Patch fireChange to also update the reads display.
+  const origFireChange = fireChange;
+  fireChange = (): void => {
+    updateReadsDisplay();
+    origFireChange();
+  };
 
   const writeSlider = makeSliderRow(
     "WRITE %", 0, 100, 1, Math.round(settings.writeRatio * 100),
@@ -293,8 +338,25 @@ export function buildTrafficPanel(container: HTMLElement): TrafficPanelHandle {
     for (const cb of importCbs) cb();
   });
 
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "cp-win-cta cp-win-cta--secondary";
+  clearBtn.textContent = "CLEAR";
+  clearBtn.addEventListener("click", () => {
+    for (const cb of clearCbs) cb();
+  });
+
+  const resetBtn = document.createElement("button");
+  resetBtn.className = "cp-win-cta cp-win-cta--secondary";
+  resetBtn.textContent = "RESET";
+  resetBtn.disabled = true;
+  resetBtn.addEventListener("click", () => {
+    for (const cb of resetCbs) cb();
+  });
+
   ioSection.appendChild(exportBtn);
   ioSection.appendChild(importBtn);
+  ioSection.appendChild(clearBtn);
+  ioSection.appendChild(resetBtn);
   panel.appendChild(ioSection);
 
   // ---------------------------------------------------------------------------
@@ -370,6 +432,10 @@ export function buildTrafficPanel(container: HTMLElement): TrafficPanelHandle {
     }
   }
 
+  function enableReset(enabled: boolean): void {
+    resetBtn.disabled = !enabled;
+  }
+
   return {
     get settings() { return settings; },
     onStart(cb) { startCbs.push(cb); },
@@ -378,8 +444,11 @@ export function buildTrafficPanel(container: HTMLElement): TrafficPanelHandle {
     onSeverConnection(cb) { severConnectionCbs.push(cb); },
     onExport(cb) { exportCbs.push(cb); },
     onImport(cb) { importCbs.push(cb); },
+    onClear(cb) { clearCbs.push(cb); },
+    onReset(cb) { resetCbs.push(cb); },
     onChange(cb) { changeCbs.push(cb); },
     applySettings,
     setRunning,
+    enableReset,
   };
 }

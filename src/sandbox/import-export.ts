@@ -136,6 +136,19 @@ export function showExportModal(json: string): Promise<void> {
       });
     });
 
+    const saveFileBtn = document.createElement("button");
+    saveFileBtn.className = "cp-win-cta cp-win-cta--secondary";
+    saveFileBtn.textContent = "SAVE FILE";
+    saveFileBtn.addEventListener("click", () => {
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "stack-attack-topology.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
     const closeBtn = document.createElement("button");
     closeBtn.className = "cp-win-cta cp-win-cta--secondary";
     closeBtn.textContent = "CLOSE";
@@ -145,6 +158,7 @@ export function showExportModal(json: string): Promise<void> {
     });
 
     buttons.appendChild(copyBtn);
+    buttons.appendChild(saveFileBtn);
     buttons.appendChild(closeBtn);
     modal.appendChild(buttons);
 
@@ -195,6 +209,35 @@ export function showImportModal(): Promise<SandboxImportResult | null> {
       resolve(result);
     });
 
+    const loadFileBtn = document.createElement("button");
+    loadFileBtn.className = "cp-win-cta cp-win-cta--secondary";
+    loadFileBtn.textContent = "LOAD FILE";
+    loadFileBtn.addEventListener("click", () => {
+      const fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.accept = ".json";
+      fileInput.addEventListener("change", () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const text = reader.result as string;
+          textarea.value = text;
+          errorEl.style.display = "none";
+          const result = importTopology(text);
+          if (result === null) {
+            errorEl.textContent = "Invalid topology JSON — check the format and try again.";
+            errorEl.style.display = "";
+            return;
+          }
+          document.body.removeChild(overlay);
+          resolve(result);
+        };
+        reader.readAsText(file);
+      });
+      fileInput.click();
+    });
+
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "cp-win-cta cp-win-cta--secondary";
     cancelBtn.textContent = "CANCEL";
@@ -204,6 +247,7 @@ export function showImportModal(): Promise<SandboxImportResult | null> {
     });
 
     buttons.appendChild(loadBtn);
+    buttons.appendChild(loadFileBtn);
     buttons.appendChild(cancelBtn);
     modal.appendChild(buttons);
 

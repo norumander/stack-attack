@@ -25,6 +25,7 @@ import {
 import { PlacementUX } from "./physics-td/placement-ux";
 import { ConnectUX } from "./physics-td/connect-ux";
 import { wireWorkers } from "./physics-td/wire-workers";
+import { wireContentRouters } from "./physics-td/wire-content-routers";
 import { bindInfoPanel, type InfoPanelHandle } from "./physics-td/component-info-panel";
 import { ComponentDossierStore } from "./physics-td/dossier-store";
 import { ComponentMetricsAggregator } from "./physics-td/component-metrics";
@@ -34,6 +35,7 @@ import { SandboxController } from "./sandbox/sandbox-controller";
 import { buildTrafficPanel, type TrafficSettings } from "./sandbox/traffic-panel";
 import {
   exportTopology,
+  importTopology,
   showExportModal,
   showImportModal,
   type SandboxTrafficSettings,
@@ -112,6 +114,7 @@ async function main(): Promise<void> {
   // Wave-runtime state
   let driver: BrowserDriver | null = null;
   let adapter: SimToRendererAdapter | null = null;
+  let lastImportedJson: string | null = null;
   let perComponentDrops = new Map<ComponentId, { total: number; byReason: Map<string, number> }>();
   let perComponentProcessed = new Map<ComponentId, number>();
   const metricsAggregator = new ComponentMetricsAggregator();
@@ -325,6 +328,7 @@ async function main(): Promise<void> {
     });
     sim.addClient(client);
     wireWorkers(sim);
+    wireContentRouters(sim, componentTypes);
 
     perComponentDrops = new Map();
     perComponentProcessed = new Map();
@@ -371,6 +375,7 @@ async function main(): Promise<void> {
     }
     for (const c of oldConnections) sim.addConnection(c);
     wireWorkers(sim);
+    wireContentRouters(sim, componentTypes);
     rebuildUX();
 
     perComponentDrops = new Map();
@@ -631,6 +636,7 @@ async function main(): Promise<void> {
       }
 
       wireWorkers(sim);
+      wireContentRouters(sim, componentTypes);
       rebuildUX();
 
       // Apply traffic settings to sliders
@@ -653,8 +659,182 @@ async function main(): Promise<void> {
       perComponentProcessed = new Map();
       metricsAggregator.reset();
 
+      lastImportedJson = JSON.stringify(result);
+      trafficPanel.enableReset(true);
+
       hudCtrl.showToast("Topology imported");
     });
+  });
+
+  // ─── Clear board helper ─────────────────────────────────────────────
+  function clearBoard(): void {
+    if (controller.phase === "simulate") stopTraffic();
+
+    for (const id of [...componentTypes.keys()]) {
+      if ((id as unknown as string) === (CLIENT_ID as unknown as string)) continue;
+      controller.tryDeleteComponent(id);
+    }
+  }
+
+  // ─── Clear button ───────────────────────────────────────────────────
+  trafficPanel.onClear(() => {
+    clearBoard();
+    trafficPanel.enableReset(lastImportedJson !== null);
+    hudCtrl.showToast("Board cleared");
+  });
+
+  // ─── Reset button ───────────────────────────────────────────────────
+  trafficPanel.onReset(() => {
+    if (!lastImportedJson) return;
+    clearBoard();
+
+    const parsed = importTopology(lastImportedJson!);
+    if (!parsed) return;
+
+    {
+      // Clear the board (sim-level)
+      const compIds = Array.from(sim.components.keys());
+      const connIds = Array.from(sim.connections.keys());
+      for (const id of connIds) {
+        sim.connections.delete(id);
+        renderer.removeConnection(id);
+      }
+      for (const id of compIds) {
+        sim.components.delete(id);
+        renderer.removeComponent(id);
+      }
+      sim.clients.clear();
+      sim.activePackets.length = 0;
+      positions.clear();
+      componentTypes.clear();
+      componentLabels.clear();
+      renderer.removeComponent(CLIENT_ID);
+
+      sim = new Sim({ seed: 1 });
+
+      const topo = parsed.topology;
+      const COL_SPACING = 3;
+      const ROW_SPACING = 4;
+      const compsPerRow = Math.max(1, Math.ceil(Math.sqrt(topo.components.length)));
+
+      for (let i = 0; i < topo.components.length; i++) {
+        const c = topo.components[i]!;
+        const col = i % compsPerRow;
+        const row = Math.floor(i / compsPerRow);
+        const gridPos = {
+          x: col * COL_SPACING,
+          y: (row - Math.floor(topo.components.length / compsPerRow) / 2) * ROW_SPACING,
+        };
+        const id = c.id as unknown as ComponentId;
+        positions.set(id, gridPos);
+        componentTypes.set(id, c.type);
+        componentLabels.set(id, c.label);
+
+        const zone = c.zone as "zone_na" | "zone_eu" | "zone_ap" | undefined;
+        const comp = buildSimComponent(c.type, id, controller.currentWaveRevenue(), zone, c.label);
+        if (comp) sim.addComponent(comp);
+
+        const sprite = COMPONENT_SPRITE_TYPE.get(c.type) ?? c.type;
+        renderer.addComponent(id, {
+          type: sprite,
+          displayName: c.label ?? c.type,
+          gridPosition: gridPos,
+          ...(c.label ? { label: c.label } : {}),
+        });
+      }
+
+      let connCounter = 0;
+      for (const edge of topo.connections) {
+        const sourceId = edge.from as unknown as ComponentId;
+        const targetId = edge.to as unknown as ComponentId;
+        const forwardId = `conn_import_${connCounter}_fwd` as unknown as ConnectionId;
+        const backId = `conn_import_${connCounter}_back` as unknown as ConnectionId;
+        connCounter++;
+
+        const forward = new SimConnection({
+          id: forwardId,
+          from: { componentId: sourceId, portId: "p" as PortId },
+          to: { componentId: targetId, portId: "p" as PortId },
+          bandwidth: 500,
+          latencySeconds: 0.1,
+          twinId: backId,
+          direction: "forward",
+        });
+        const back = new SimConnection({
+          id: backId,
+          from: { componentId: targetId, portId: "p" as PortId },
+          to: { componentId: sourceId, portId: "p" as PortId },
+          bandwidth: 500,
+          latencySeconds: 0.1,
+          twinId: forwardId,
+          direction: "back",
+        });
+        sim.addConnection(forward);
+        sim.addConnection(back);
+        renderer.addConnection(forwardId, sourceId, targetId, { direction: "forward" });
+        renderer.addConnection(backId, targetId, sourceId, { direction: "back" });
+      }
+
+      positions.set(CLIENT_ID, CLIENT_POS);
+      renderer.addComponent(CLIENT_ID, {
+        type: "client",
+        displayName: "client",
+        gridPosition: CLIENT_POS,
+      });
+
+      if (topo.entryTargetId) {
+        const entryId = topo.entryTargetId as unknown as ComponentId;
+        const fwdId = `conn_client_fwd` as unknown as ConnectionId;
+        const bkId = `conn_client_back` as unknown as ConnectionId;
+        const forward = new SimConnection({
+          id: fwdId,
+          from: { componentId: CLIENT_ID, portId: "p" as PortId },
+          to: { componentId: entryId, portId: "p" as PortId },
+          bandwidth: 500,
+          latencySeconds: 0.1,
+          twinId: bkId,
+          direction: "forward",
+        });
+        const back = new SimConnection({
+          id: bkId,
+          from: { componentId: entryId, portId: "p" as PortId },
+          to: { componentId: CLIENT_ID, portId: "p" as PortId },
+          bandwidth: 500,
+          latencySeconds: 0.1,
+          twinId: fwdId,
+          direction: "back",
+        });
+        sim.addConnection(forward);
+        sim.addConnection(back);
+        renderer.addConnection(fwdId, CLIENT_ID, entryId, { direction: "forward" });
+        renderer.addConnection(bkId, entryId, CLIENT_ID, { direction: "back" });
+      }
+
+      wireWorkers(sim);
+      wireContentRouters(sim, componentTypes);
+      rebuildUX();
+
+      if (parsed.traffic) {
+        const t = parsed.traffic;
+        trafficPanel.applySettings({
+          intensity: t.intensity,
+          writeRatio: t.composition.writeRatio,
+          authRatio: t.composition.authRatio,
+          streamRatio: t.composition.streamRatio,
+          largeRatio: t.composition.largeRatio,
+          asyncRatio: t.composition.asyncRatio,
+          keyKind: t.keyDistribution.kind,
+          zipfAlpha: t.keyDistribution.kind === "zipf" ? t.keyDistribution.alpha : 1.0,
+          spaceSize: t.keyDistribution.spaceSize,
+        });
+      }
+
+      perComponentDrops = new Map();
+      perComponentProcessed = new Map();
+      metricsAggregator.reset();
+
+      hudCtrl.showToast("Board reset to imported state");
+    }
   });
 
   // ─── Frame loop ─────────────────────────────────────────────────────
