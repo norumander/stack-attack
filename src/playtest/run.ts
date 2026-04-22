@@ -9,6 +9,7 @@ import type { WaveDef } from "@sim/wave";
 import type { SLAThresholds } from "@sim/sla";
 import { buildSimComponent, COMPONENT_COSTS } from "../physics-td/component-factory";
 import { wireWorkers } from "../physics-td/wire-workers";
+import { wireContentRouters } from "../physics-td/wire-content-routers";
 import { validateTopology, type TopologyError } from "../physics-td/validate-topology";
 import { applyChaosEvent, type ChaosEvent } from "../physics-td/chaos";
 import { enableAutoScale } from "@sim/capabilities/auto-scale";
@@ -144,6 +145,7 @@ function buildSimFromTopology(
   }
 
   wireWorkers(sim);
+  wireContentRouters(sim, componentTypes);
   return { sim, totalCost, componentTypes };
 }
 

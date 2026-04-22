@@ -42,6 +42,7 @@ const PALETTE: readonly PaletteEntry[] = [
   { type: "blob_storage", label: "Blob\nStorage" },
   { type: "dns_gtm", label: "DNS\n/ GTM" },
   { type: "circuit_breaker", label: "Circuit\nBreaker" },
+  { type: "edge_router", label: "Edge\nRouter" },
 ];
 
 let hudController: CyberpunkHudController | null = null;

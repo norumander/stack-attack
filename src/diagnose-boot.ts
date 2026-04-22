@@ -27,6 +27,7 @@ import {
 import { PlacementUX } from "./physics-td/placement-ux";
 import { ConnectUX } from "./physics-td/connect-ux";
 import { wireWorkers } from "./physics-td/wire-workers";
+import { wireContentRouters } from "./physics-td/wire-content-routers";
 import { bindInfoPanel, type InfoPanelHandle } from "./physics-td/component-info-panel";
 import { ComponentDossierStore } from "./physics-td/dossier-store";
 import * as hud from "./physics-td/hud-bridge";
@@ -317,6 +318,7 @@ async function main(): Promise<void> {
   const layout = buildLayout(level);
   controller.preplace(layout);
   wireWorkers(sim);
+  wireContentRouters(sim, componentTypes);
 
   // ─── Place a visible client at the left end of the topology ─────────
   // With the architecture centered (ingress tier at x ≈ -8.75), the client
@@ -462,6 +464,7 @@ async function main(): Promise<void> {
     });
     sim.addClient(client);
     wireWorkers(sim);
+    wireContentRouters(sim, componentTypes);
 
     metrics = {
       responded: 0,

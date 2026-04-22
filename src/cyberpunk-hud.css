@@ -604,6 +604,9 @@ body.renderer-iso .cp-palette-icon[data-type="dns_gtm"] {
 body.renderer-iso .cp-palette-icon[data-type="circuit_breaker"] {
   background-image: url("./assets/circuit_breaker.png");
 }
+body.renderer-iso .cp-palette-icon[data-type="edge_router"] {
+  background-image: url("./assets/api_gateway.png");
+}
 
 body.renderer-iso .cp-palette-name {
   font-size: 9px;

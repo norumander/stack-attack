@@ -197,4 +197,20 @@ export const COMPONENT_META: Readonly<Record<string, ComponentMeta>> = {
       tip: "When a wave is heavy on images, video, or streams, Blob Storage is the destination. Its high capacity soaks up traffic that would crush a normal Server.",
     },
   },
+  edge_router: {
+    displayName: "Edge Router",
+    description: "Content-aware router that directs traffic to specialized downstream components based on request type.",
+    capabilitiesHuman: [
+      "Routes stream requests to Streaming Server",
+      "Routes large-asset requests to CDN",
+      "Routes auth-required requests to API Gateway",
+      "Forwards all other traffic to the default downstream path",
+    ],
+    dossier: {
+      body: "An Edge Router sits at the front of your stack and inspects each request to decide where it should go. Streams go to the Streaming Server, large assets go to the CDN, auth traffic goes to the API Gateway, and everything else flows to the default server path.",
+      wire: "Client -> Edge Router -> [Streaming Server, CDN, API Gateway, Server]",
+      handles: "All request types -- routes each to the appropriate downstream component",
+      tip: "Use an Edge Router when a wave mixes multiple traffic types. It splits traffic so each downstream component only handles what it specializes in.",
+    },
+  },
 };

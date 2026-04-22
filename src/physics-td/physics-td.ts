@@ -17,6 +17,7 @@ import { BITLY_WAVES } from "./bitly-waves";
 import { PlacementUX } from "./placement-ux";
 import { ConnectUX } from "./connect-ux";
 import { wireWorkers } from "./wire-workers";
+import { wireContentRouters } from "./wire-content-routers";
 import * as hud from "./hud-bridge";
 import { Viability, DAMAGE_PER_FAILURE } from "./viability";
 import { validateTopology } from "./validate-topology";
@@ -451,6 +452,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     });
     sim.addClient(client);
     wireWorkers(sim);
+    wireContentRouters(sim, componentTypes);
 
     // Reset metric accumulators
     metrics = {
@@ -851,6 +853,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     }
     for (const c of retryConnections) sim.addConnection(c);
     wireWorkers(sim);
+    wireContentRouters(sim, componentTypes);
 
     // Rebuild PlacementUX/ConnectUX so they reference the new sim.
     refs.placement = new PlacementUX(sim, renderer, controller);

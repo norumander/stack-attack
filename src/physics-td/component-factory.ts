@@ -11,6 +11,7 @@ import { StreamingCapability } from "@sim/capabilities/streaming";
 import { GeoRoutingCapability } from "@sim/capabilities/geo-routing";
 import { BlobStorageCapability } from "@sim/capabilities/blob-storage";
 import { CircuitBreakerCapability } from "@sim/capabilities/circuit-breaker";
+import { ContentRouterCapability } from "@sim/capabilities/content-router";
 import type { WaveRevenue } from "@sim/wave";
 import type { Zone } from "@sim/types";
 
@@ -28,6 +29,7 @@ export const COMPONENT_COSTS: ReadonlyMap<string, number> = new Map([
   ["dns_gtm", 200],
   ["blob_storage", 200],
   ["circuit_breaker", 150],
+  ["edge_router", 200],
 ]);
 
 /** Sprite type used by the renderer to pick the iso tile graphic. */
@@ -45,6 +47,7 @@ export const COMPONENT_SPRITE_TYPE: ReadonlyMap<string, string> = new Map([
   ["dns_gtm", "dns_gtm"],
   ["blob_storage", "blob_storage"],
   ["circuit_breaker", "circuit_breaker"],
+  ["edge_router", "api_gateway"],
 ]);
 
 export const CLIENT_FACING_COMPONENT_TYPES: ReadonlySet<string> = new Set([
@@ -55,6 +58,7 @@ export const CLIENT_FACING_COMPONENT_TYPES: ReadonlySet<string> = new Set([
   "load_balancer",
   "streaming_server",
   "dns_gtm",
+  "edge_router",
 ]);
 
 export function isClientFacing(type: string): boolean {
@@ -63,7 +67,7 @@ export function isClientFacing(type: string): boolean {
 
 export const COMPONENT_FACTORY: ReadonlyArray<string> = [
   "server", "database", "data_cache", "load_balancer", "cdn", "edge_cache", "api_gateway",
-  "queue", "worker", "streaming_server", "dns_gtm", "blob_storage", "circuit_breaker",
+  "queue", "worker", "streaming_server", "dns_gtm", "blob_storage", "circuit_breaker", "edge_router",
 ];
 
 export function buildSimComponent(
@@ -177,6 +181,13 @@ export function buildSimComponent(
       return new SimComponent({
         id,
         capabilities: [new CircuitBreakerCapability({ failureThreshold: 5, cooldownSeconds: 2 })],
+        ...z,
+        ...l,
+      });
+    case "edge_router":
+      return new SimComponent({
+        id,
+        capabilities: [new ContentRouterCapability()],
         ...z,
         ...l,
       });
