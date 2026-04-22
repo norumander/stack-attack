@@ -257,13 +257,15 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
     targetId: ComponentId,
     direction: "forward" | "back" = "forward",
   ): void => {
-    // Only forward connections get their own yFirst assignment; the back
-    // twin mirrors whatever its forward sibling chose (twin lookup happens
-    // in recomputePath via canonicalization).
-    const yFirst = direction === "forward" ? (routeCounter++ % 2 === 1) : false;
-    // If this is a back connection, find its forward twin and match yFirst.
-    let resolvedYFirst = yFirst;
-    if (direction === "back") {
+    // Seed yFirst based on source component's grid row so components at
+    // different vertical positions route differently, reducing overlap.
+    // Forward connections use the source row; back connections mirror their
+    // forward twin.
+    let resolvedYFirst = false;
+    if (direction === "forward") {
+      const srcState = components.get(sourceId);
+      resolvedYFirst = srcState ? (srcState.gridY % 2 !== 0) : (routeCounter++ % 2 === 1);
+    } else {
       for (const [, s] of states) {
         if (s.sourceId === targetId && s.targetId === sourceId && s.direction === "forward") {
           resolvedYFirst = s.yFirst;

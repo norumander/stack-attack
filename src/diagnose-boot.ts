@@ -27,6 +27,8 @@ import {
 import { PlacementUX } from "./physics-td/placement-ux";
 import { ConnectUX } from "./physics-td/connect-ux";
 import { wireWorkers } from "./physics-td/wire-workers";
+import { bindInfoPanel, type InfoPanelHandle } from "./physics-td/component-info-panel";
+import { ComponentDossierStore } from "./physics-td/dossier-store";
 import * as hud from "./physics-td/hud-bridge";
 import { applyChaosEvent, type ChaosEvent } from "./physics-td/chaos";
 import { ComponentMetricsAggregator } from "./physics-td/component-metrics";
@@ -48,91 +50,70 @@ const CLIENT_ID = "client" as ComponentId;
 const DRAIN_SECONDS = 4;
 
 /**
- * Tier-based grid layout for a pre-placed topology. Components are grouped
- * by role into columns (ingress → gateway → servers → caches → data), then
- * stacked vertically within each column. The client lives at x=-3 and
- * connects to the entry target via a client edge created on READY.
- *
- * Content authors can still override by baking positions via a custom hook
- * (PhysicsDiagnoseController.preplace accepts a positionFor callback).
- */
-function tierColumnFor(type: string): number {
-  // Columns read left-to-right: edge → gateway → LB → compute/buffers →
-  // workers → caches/CB → storage. Related types share a column so the
-  // topology stays compact horizontally, and wider COL_SPACING + ROW_SPACING
-  // give each tile room to breathe.
-  switch (type) {
-    case "dns_gtm":
-    case "cdn":
-      return 0;
-    case "api_gateway":
-      return 1;
-    case "load_balancer":
-      return 2;
-    case "server":
-      return 3;
-    case "streaming_server":
-    case "queue":
-      return 4;
-    case "worker":
-      return 5;
-    case "circuit_breaker":
-    case "data_cache":
-    case "edge_cache":
-      return 6;
-    case "database":
-    case "blob_storage":
-      return 7;
-    default:
-      return 4;
-  }
-}
-
-/**
- * Build a deterministic positionFor hook for a topology: assign each
- * component to a column based on its type, stack by arrival order within
- * the column. Each column is centered vertically around y=0 so dense
- * tiers don't crowd sparse ones, and column spacing is x*2 so labels
- * don't collide. Returns a closure ready to hand to `controller.preplace()`.
+ * Topology-aware layout for diagnose levels. Uses BFS from the entry
+ * point to assign depth (x-axis) and spreads siblings vertically (y-axis)
+ * so parallel paths fan out visually. Much clearer than the old tier-based
+ * column approach which ignored actual wiring and stacked unrelated
+ * components on top of each other.
  */
 function buildLayout(
   level: DiagnoseLevel,
 ): (topologyId: string, index: number) => { x: number; y: number } {
-  // First pass: count components per column so we can center the stacks.
-  const columnTotals = new Map<number, number>();
-  for (const c of level.startingTopology.components) {
-    const col = tierColumnFor(c.type);
-    columnTotals.set(col, (columnTotals.get(col) ?? 0) + 1);
+  const topo = level.startingTopology;
+  const COL_SPACING = 3;
+  const ROW_SPACING = 4;
+
+  // Build adjacency list from forward connections.
+  const children = new Map<string, string[]>();
+  for (const c of topo.components) children.set(c.id, []);
+  for (const e of topo.connections) {
+    children.get(e.from)?.push(e.to);
   }
 
-  // Row spacing (y) = 3 units — dense stacks (4 servers) span y=-4.5..+4.5.
-  // Column spacing (x) = 2.5 units — wider than rows would overflow the
-  // visible iso board at 8 columns. Gives each column ~2.5 tiles of
-  // breathing room horizontally, plenty for labels + edges.
-  const COL_SPACING = 2.5;
-  const ROW_SPACING = 3;
+  // BFS from entry to assign depth (column). Components not reachable
+  // from entry get a fallback depth at the end.
+  const depth = new Map<string, number>();
+  const queue: string[] = [topo.entryTargetId];
+  depth.set(topo.entryTargetId, 0);
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    const d = depth.get(id)!;
+    for (const child of children.get(id) ?? []) {
+      if (!depth.has(child)) {
+        depth.set(child, d + 1);
+        queue.push(child);
+      }
+    }
+  }
+  // Assign unreachable components to a column past the deepest.
+  const maxDepth = Math.max(0, ...depth.values());
+  for (const c of topo.components) {
+    if (!depth.has(c.id)) depth.set(c.id, maxDepth + 1);
+  }
 
-  // Center the whole architecture on the board. With 8 tier columns
-  // (0..7) the geometric mid is 3.5; shifting by that amount places the
-  // topology symmetrically around x=0 so no quadrant of the board wastes
-  // space.
-  const MID_COL = 3.5;
+  // Group components by depth column, preserving definition order
+  // (which tends to follow a logical grouping by the content author).
+  const byCol = new Map<number, string[]>();
+  for (const c of topo.components) {
+    const col = depth.get(c.id)!;
+    if (!byCol.has(col)) byCol.set(col, []);
+    byCol.get(col)!.push(c.id);
+  }
 
-  // Second pass: assign each component a grid position. Within a column,
-  // rows are centered around y=0; e.g. three components get y=-2, 0, +2.
-  const colIndex = new Map<number, number>();
+  // Assign positions: center each column's stack around y=0.
+  const maxCol = Math.max(0, ...byCol.keys());
+  const midCol = maxCol / 2;
   const assigned = new Map<string, { x: number; y: number }>();
-  for (const c of level.startingTopology.components) {
-    const col = tierColumnFor(c.type);
-    const total = columnTotals.get(col) ?? 1;
-    const row = colIndex.get(col) ?? 0;
-    colIndex.set(col, row + 1);
-    const centeredRow = row - (total - 1) / 2;
-    assigned.set(c.id, {
-      x: (col - MID_COL) * COL_SPACING,
-      y: Math.round(centeredRow * ROW_SPACING),
-    });
+  for (const [col, ids] of byCol) {
+    for (let i = 0; i < ids.length; i++) {
+      const centeredRow = i - (ids.length - 1) / 2;
+      assigned.set(ids[i]!, {
+        x: Math.round((col - midCol) * COL_SPACING),
+        y: Math.round(centeredRow * ROW_SPACING),
+      });
+    }
   }
+
   return (topologyId: string) => assigned.get(topologyId) ?? { x: 4, y: 0 };
 }
 
@@ -192,12 +173,10 @@ async function main(): Promise<void> {
   // Wave-runtime state (assigned on READY).
   let driver: BrowserDriver | null = null;
   let adapter: SimToRendererAdapter | null = null;
-  let waveDeadline = 0;
-  let drainDeadline = 0;
-  let waveStartMs = 0;
-  let waveDurationMs = 0;
+  let waveSimStart = 0;
+  let waveSimEnd = 0;
+  let drainSimEnd = 0;
   const firedChaosIndices = new Set<number>();
-  let waveElapsedSeconds = 0;
   let metrics = {
     responded: 0,
     terminated: 0,
@@ -208,6 +187,8 @@ async function main(): Promise<void> {
     totalRequests: 0,
   };
   const seenPacketIds = new Set<string>();
+  let perComponentDrops = new Map<ComponentId, { total: number; byReason: Map<string, number> }>();
+  let perComponentProcessed = new Map<ComponentId, number>();
   const metricsAggregator = new ComponentMetricsAggregator();
 
   const controller = new PhysicsDiagnoseController({
@@ -365,6 +346,23 @@ async function main(): Promise<void> {
     () => refs.placement?.isPlacing() ?? false,
   );
 
+  // ─── Component info panel ────────────────────────────────────────────
+  const dossierStore = new ComponentDossierStore();
+  const infoPanel: InfoPanelHandle = bindInfoPanel({
+    renderer: { onPointerDown: (cb) => renderer.onPointerDown((ev) => cb({ hit: ev.hit })) },
+    getSim: () => sim,
+    controller: uxController,
+    dossierStore,
+    hudCtrl,
+    componentTypes,
+    getDrops: () => perComponentDrops,
+    getProcessed: () => perComponentProcessed,
+    getMetrics: (id) => metricsAggregator.getMetricsFor(id),
+  });
+  // Suppress unused-variable lint — infoPanel is used implicitly via its
+  // pointerDown listener and live-stats updates during simulate phase.
+  void infoPanel;
+
   // ─── Palette wiring ─────────────────────────────────────────────────
   const paletteButtons = hudCtrl.getPaletteButtons();
   for (const [type, btn] of paletteButtons) {
@@ -474,10 +472,11 @@ async function main(): Promise<void> {
       latencyCount: 0,
       totalRequests: 0,
     };
+    perComponentDrops = new Map();
+    perComponentProcessed = new Map();
     seenPacketIds.clear();
     metricsAggregator.reset();
     firedChaosIndices.clear();
-    waveElapsedSeconds = 0;
 
     // ── Dev diagnostics ──
     const compLines = [...sim.components.values()].map((c) => {
@@ -501,10 +500,9 @@ async function main(): Promise<void> {
 
     adapter = new SimToRendererAdapter(sim, renderer, positions);
     driver = new BrowserDriver(sim, { stepSeconds: 1 / 60 });
-    waveStartMs = performance.now();
-    waveDurationMs = level.wave.duration * 1000;
-    waveDeadline = waveStartMs + waveDurationMs;
-    drainDeadline = waveDeadline + DRAIN_SECONDS * 1000;
+    waveSimStart = sim.simTime;
+    waveSimEnd = sim.simTime + level.wave.duration;
+    drainSimEnd = waveSimEnd + DRAIN_SECONDS;
 
     controller.ready();
   });
@@ -515,16 +513,17 @@ async function main(): Promise<void> {
     const delta = now - lastFrame;
     lastFrame = now;
     if (driver && adapter) {
-      driver.tick(delta);
-      waveElapsedSeconds += delta / 1000;
+      const scaledDelta = delta * hudCtrl.getSimSpeed();
+      driver.tick(scaledDelta);
 
       // Chaos schedule (optional per level).
+      const chaosElapsed = sim.simTime - waveSimStart;
       const chaos: ReadonlyArray<ChaosEvent> | undefined = level.chaosSchedule;
       if (chaos) {
         for (let i = 0; i < chaos.length; i += 1) {
           if (firedChaosIndices.has(i)) continue;
           const ev = chaos[i]!;
-          if (ev.atSeconds <= waveElapsedSeconds) {
+          if (ev.atSeconds <= chaosElapsed) {
             applyChaosEvent(ev, sim);
             firedChaosIndices.add(i);
           }
@@ -544,16 +543,25 @@ async function main(): Promise<void> {
           if (ev.count > 0) {
             console.warn("[drop]", ev.reason, "×" + ev.count, "at", ev.componentId, `(type=${componentTypes.get(ev.componentId as ComponentId) ?? "?"})`);
           }
+          const compId = ev.componentId as ComponentId;
+          let tally = perComponentDrops.get(compId);
+          if (!tally) { tally = { total: 0, byReason: new Map() }; perComponentDrops.set(compId, tally); }
+          tally.total += ev.count;
+          tally.byReason.set(ev.reason, (tally.byReason.get(ev.reason) ?? 0) + ev.count);
         } else if (ev.kind === "terminate") {
           metrics.terminated += ev.count;
           metrics.revenue += ev.revenue;
           metrics.latencySum += ev.latencySeconds;
           metrics.latencyCount += 1;
+          const compId = ev.componentId as ComponentId;
+          perComponentProcessed.set(compId, (perComponentProcessed.get(compId) ?? 0) + ev.count);
         } else if (ev.kind === "respond-delivered") {
           metrics.responded += ev.count;
           metrics.revenue += ev.revenue;
           metrics.latencySum += ev.latencySeconds;
           metrics.latencyCount += 1;
+          const compId = ev.componentId as ComponentId;
+          perComponentProcessed.set(compId, (perComponentProcessed.get(compId) ?? 0) + ev.count);
         }
       }
       adapter.syncFrame(driver.tickEvents);
@@ -564,16 +572,22 @@ async function main(): Promise<void> {
         renderer.updateComponent(id, { stress: { stressed: m.stressed, dropping: m.dropping } });
       }
 
-      if (now < waveDeadline) {
-        const elapsedMs = Math.max(0, now - waveStartMs);
-        const tick = Math.floor((elapsedMs / 1000) * 60);
-        const total = Math.floor((waveDurationMs / 1000) * 60);
+      // Refresh the info panel live stats every frame.
+      if (infoPanel.isOpen() && controller.phase === "simulate") {
+        infoPanel.updateLiveStats();
+      }
+
+      const simElapsed = sim.simTime - waveSimStart;
+      const waveDuration = waveSimEnd - waveSimStart;
+      if (sim.simTime < waveSimEnd) {
+        const tick = Math.floor(simElapsed * 60);
+        const total = Math.floor(waveDuration * 60);
         hud.setStatus(`Wave running — tick ${tick}/${total}`);
-      } else if (now < drainDeadline) {
+      } else if (sim.simTime < drainSimEnd) {
         hud.setStatus("Wave running — draining queue");
       }
 
-      if (now >= drainDeadline) {
+      if (sim.simTime >= drainSimEnd) {
         const avgLatency =
           metrics.latencyCount > 0 ? metrics.latencySum / metrics.latencyCount : 0;
         driver = null;
@@ -654,7 +668,7 @@ async function main(): Promise<void> {
         metrics.totalRequests > 0 ? delivered / metrics.totalRequests : 1;
       const currentTick =
         controller.phase === "simulate"
-          ? Math.max(0, (performance.now() - waveStartMs) / 1000)
+          ? Math.max(0, sim.simTime - waveSimStart)
           : 0;
       return serializeContextForChat({
         sim,

@@ -16,6 +16,8 @@ export interface CyberpunkHudController {
   getSelectedZone(): string | undefined;
   /** Called whenever a zone button is clicked. Use for zone reassignment of selected components. */
   onZoneClick(cb: (zone: string | undefined) => void): void;
+  /** Current sim speed multiplier (0.25, 0.5, 1, 2). */
+  getSimSpeed(): number;
 }
 
 interface PaletteEntry {
@@ -83,6 +85,7 @@ function buildHud(): void {
   buildInfoPanel(root);
   buildPaletteStrip(root);
   buildReadyButton(root);
+  buildSpeedControl(root);
   buildToast(root);
 
   hudController = {
@@ -95,6 +98,7 @@ function buildHud(): void {
     setZones: setZonesImpl,
     getSelectedZone: () => selectedZone,
     onZoneClick: (cb) => { zoneClickCallbacks.push(cb); },
+    getSimSpeed: () => simSpeed,
   };
 }
 
@@ -623,6 +627,46 @@ function buildReadyButton(root: HTMLElement): void {
     btn.disabled = disabled;
     btn.classList.toggle("cp-disabled", disabled);
   });
+}
+
+// ─── Speed control (bottom-right, above READY) ───────────────────────
+
+const SPEED_OPTIONS: ReadonlyArray<{ label: string; multiplier: number }> = [
+  { label: "1x", multiplier: 0.125 },
+  { label: "2x", multiplier: 0.5 },
+  { label: "4x", multiplier: 2 },
+];
+let simSpeed = 0.125;
+
+function buildSpeedControl(root: HTMLElement): void {
+  const bar = div("cp-speed-bar");
+
+  const label = div("cp-speed-label");
+  label.textContent = "SPEED";
+  bar.append(label);
+
+  const btnGroup = div("cp-speed-btn-group");
+  bar.append(btnGroup);
+
+  const buttons: HTMLButtonElement[] = [];
+  for (const opt of SPEED_OPTIONS) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cp-speed-btn";
+    if (opt.multiplier === simSpeed) btn.classList.add("cp-speed-btn--active");
+    btn.textContent = opt.label;
+    btn.dataset.speed = String(opt.multiplier);
+    btn.addEventListener("click", () => {
+      simSpeed = opt.multiplier;
+      for (const b of buttons) {
+        b.classList.toggle("cp-speed-btn--active", b.dataset.speed === String(opt.multiplier));
+      }
+    });
+    btnGroup.append(btn);
+    buttons.push(btn);
+  }
+
+  root.append(bar);
 }
 
 // ─── Toast (bottom-center, above palette) ─────────────────────────────

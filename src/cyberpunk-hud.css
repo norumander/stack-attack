@@ -679,6 +679,49 @@ body.renderer-iso .cp-zone-btn--active {
 }
 
 /* ================================================================
+   Speed control — bottom-right, above READY
+   ================================================================ */
+
+body.renderer-iso .cp-speed-bar {
+  position: absolute;
+  bottom: 100px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+body.renderer-iso .cp-speed-label {
+  font-family: "Press Start 2P", monospace;
+  font-size: 8px;
+  letter-spacing: 0.15em;
+  color: var(--sc-ink-dim);
+}
+body.renderer-iso .cp-speed-btn-group {
+  display: flex;
+  gap: 3px;
+}
+body.renderer-iso .cp-speed-btn {
+  padding: 4px 8px;
+  font-family: "Press Start 2P", monospace;
+  font-size: 9px;
+  color: var(--sc-ink-dim);
+  background: transparent;
+  border: 1px solid var(--sc-border);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+body.renderer-iso .cp-speed-btn:hover {
+  color: var(--sc-ink);
+  border-color: var(--sc-border-bright);
+}
+body.renderer-iso .cp-speed-btn--active {
+  background: rgba(41, 173, 255, 0.2);
+  border-color: var(--sc-border-bright);
+  color: var(--sc-ink);
+}
+
+/* ================================================================
    READY button — bottom-right
    ================================================================ */
 

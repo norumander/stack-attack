@@ -94,10 +94,12 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
   // Wave-runtime state (set when READY fires).
   let driver: BrowserDriver | null = null;
   let adapter: SimToRendererAdapter | null = null;
-  let waveDeadline = 0; // performance.now ms — cutoff for sim ticks
-  let drainDeadline = 0; // performance.now ms — cutoff for drain phase
+  /** Sim-time boundaries for the current wave. */
+  let waveSimStart = 0;
+  let waveSimEnd = 0;
+  let drainSimEnd = 0;
+  /** Wall-clock start for progress bar display only. */
   let waveStartMs = 0;
-  let waveDurationMs = 0;
   let metrics = {
     responded: 0,
     terminated: 0,
@@ -488,10 +490,10 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
 
     adapter = new SimToRendererAdapter(sim, renderer, positions);
     driver = new BrowserDriver(sim, { stepSeconds: 1 / 60 });
+    waveSimStart = sim.simTime;
+    waveSimEnd = sim.simTime + wave.wave.duration;
+    drainSimEnd = waveSimEnd + DRAIN_SECONDS;
     waveStartMs = performance.now();
-    waveDurationMs = wave.wave.duration * 1000;
-    waveDeadline = waveStartMs + waveDurationMs;
-    drainDeadline = waveDeadline + DRAIN_SECONDS * 1000;
 
     controller.ready();
   });
@@ -503,7 +505,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     const delta = now - lastFrame;
     lastFrame = now;
     if (driver && adapter) {
-      driver.tick(delta);
+      driver.tick(delta * hudCtrl.getSimSpeed());
       // Count requests in fresh top-level packets (parentId === null) as denominator.
       for (const p of sim.activePackets) {
         const id = p.id as unknown as string;
@@ -564,16 +566,16 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
         }
       }
 
-      // Wave progress bar: HUD observes #td-status for "tick X/Y".
-      // Throttle to 4Hz to keep MutationObserver cheap.
+      // Wave progress bar based on sim time, throttled to 4Hz wall clock.
       if (now - lastProgressUpdate > 250) {
         lastProgressUpdate = now;
-        if (now < waveDeadline) {
-          const elapsedMs = Math.max(0, now - waveStartMs);
-          const tick = Math.floor((elapsedMs / 1000) * 60);
-          const total = Math.floor((waveDurationMs / 1000) * 60);
+        const simElapsed = sim.simTime - waveSimStart;
+        const waveDuration = waveSimEnd - waveSimStart;
+        if (sim.simTime < waveSimEnd) {
+          const tick = Math.floor(simElapsed * 60);
+          const total = Math.floor(waveDuration * 60);
           hud.setStatus(`Wave running — tick ${tick}/${total}`);
-        } else if (now < drainDeadline) {
+        } else if (sim.simTime < drainSimEnd) {
           hud.setStatus("Wave running — draining queue");
         }
         if (infoPanel.isOpen() && controller.phase === "simulate") {
@@ -581,7 +583,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
         }
       }
 
-      if (now >= drainDeadline) {
+      if (sim.simTime >= drainSimEnd) {
         // Wave done — evaluate SLA.
         const wave = waves[controller.currentWaveIndex]!;
         const avgLatency =
