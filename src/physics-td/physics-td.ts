@@ -16,6 +16,7 @@ import { CAMPAIGN_WAVES, computeBriefingForCampaignWave, type CampaignWave } fro
 import { BITLY_WAVES } from "./bitly-waves";
 import { PlacementUX } from "./placement-ux";
 import { ConnectUX } from "./connect-ux";
+import { saveCampaignProgress, loadCampaignProgress, clearCampaignProgress, type CampaignSave } from "./progress-save";
 import { wireWorkers } from "./wire-workers";
 import { wireContentRouters } from "./wire-content-routers";
 import * as hud from "./hud-bridge";
@@ -734,6 +735,15 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
       sim.clients.delete(CLIENT_ID);
       sim.activePackets.length = 0;
       controller.nextWave();
+      // Save progress after advancing to the next wave.
+      const lvlId = (window as unknown as { __stackAttackLevelId?: StackAttackLevelId | null })
+        .__stackAttackLevelId;
+      if (lvlId) {
+        saveCampaignProgress(
+          lvlId, controller.currentWaveIndex, controller.budget, viability.value,
+          componentTypes, componentLabels, positions, sim, CLIENT_ID,
+        );
+      }
     });
     cta.focus();
   }
@@ -909,16 +919,33 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     retryBtn.textContent = "RETRY WAVE";
     modal.appendChild(retryBtn);
 
-    const restartBtn = document.createElement("button");
-    restartBtn.type = "button";
-    restartBtn.className = "cp-win-cta cp-win-cta--secondary";
-    restartBtn.textContent = "RESTART CAMPAIGN";
-    modal.appendChild(restartBtn);
+    // "Reset Wave" restores the topology from the start of this wave
+    // (= the save from winning the previous wave).
+    const deathLvl = (window as unknown as { __stackAttackLevelId?: StackAttackLevelId | null })
+      .__stackAttackLevelId;
+    const waveStartSave = deathLvl ? loadCampaignProgress(deathLvl) : null;
+    if (waveStartSave) {
+      const resetWaveBtn = document.createElement("button");
+      resetWaveBtn.type = "button";
+      resetWaveBtn.className = "cp-win-cta cp-win-cta--secondary";
+      resetWaveBtn.textContent = "RESET WAVE";
+      modal.appendChild(resetWaveBtn);
+      resetWaveBtn.addEventListener("click", () => {
+        overlay.remove();
+        retryCurrentWave();
+        restoreFromSave(waveStartSave);
+        const wave = waves[controller.currentWaveIndex];
+        if (wave) {
+          hudCtrl.updateBriefing(computeBriefingForCampaignWave(wave));
+          hudCtrl.setZones(wave.wave.zoneDistribution ? [...wave.wave.zoneDistribution.keys()] : []);
+        }
+        hud.setWavePill(controller.currentWaveIndex + 1, waves.length);
+      });
+    }
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
     retryBtn.addEventListener("click", () => retryCurrentWave());
-    restartBtn.addEventListener("click", () => window.location.reload());
     retryBtn.focus();
   }
 
@@ -1011,6 +1038,109 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
       // TODO: wire component flash when renderer exposes a highlight API.
     },
   });
+
+  // ─── Restore from save ──────────────────────────────────────────────
+  function restoreFromSave(save: CampaignSave): void {
+    console.log("[restore]", JSON.stringify(save, null, 2));
+    // Jump to the saved wave.
+    controller.jumpToWave(save.waveIndex);
+    // Override budget with the saved value.
+    controller.budget = save.budget;
+    hud.setBudget(controller.budget);
+    // Restore viability.
+    viability.reset();
+    if (save.viability !== undefined && save.viability < viability.max) {
+      viability.damage(viability.max - save.viability);
+    }
+    hudCtrl.updateViability({ value: viability.value, fraction: viability.fraction });
+
+    // Place saved components.
+    const mintedIds: ComponentId[] = [];
+    for (const c of save.components) {
+      const result = controller.tryPlace(c.type, c.gridPos);
+      console.log("[restore] tryPlace", c.type, c.gridPos, result.ok ? "OK → " + (result as { componentId: ComponentId }).componentId : "FAIL → " + (result as { reason: string }).reason, "budget now:", controller.budget);
+      if (result.ok) {
+        mintedIds.push(result.componentId);
+        if (c.zone) {
+          const comp = sim.components.get(result.componentId);
+          if (comp) comp.zone = c.zone;
+        }
+        // Update label if the save had one.
+        if (c.label) {
+          componentLabels.set(result.componentId, c.label);
+          renderer.updateComponent(result.componentId, { label: c.label });
+        }
+      }
+    }
+
+    // Wire saved connections.
+    console.log("[restore] mintedIds:", mintedIds, "connections:", save.connections);
+    for (const conn of save.connections) {
+      const fromId = mintedIds[conn.fromIndex];
+      const toId = mintedIds[conn.toIndex];
+      if (fromId && toId) {
+        const cr = controller.tryConnect(fromId, toId);
+        console.log("[restore] connect", conn.fromIndex, "→", conn.toIndex, fromId, "→", toId, cr.ok ? "OK" : "FAIL");
+      } else {
+        console.warn("[restore] connect SKIP — missing id", conn.fromIndex, conn.toIndex);
+      }
+    }
+
+    wireWorkers(sim);
+    wireContentRouters(sim, componentTypes);
+  }
+
+  // ─── Check for saved progress ──────────────────────────────────────
+  const savedLevelId = (window as unknown as { __stackAttackLevelId?: StackAttackLevelId | null })
+    .__stackAttackLevelId;
+  const savedProgress = savedLevelId ? loadCampaignProgress(savedLevelId) : null;
+
+  if (savedProgress && savedProgress.waveIndex > 0 && savedProgress.waveIndex < waves.length) {
+    // Show resume modal.
+    const overlay = document.createElement("div");
+    overlay.className = "cp-back-overlay";
+    const modal = document.createElement("div");
+    modal.className = "cp-back-modal cp-panel";
+    const title = document.createElement("h2");
+    title.className = "cp-back-title";
+    title.textContent = "RESUME CAMPAIGN?";
+    modal.appendChild(title);
+    const msg = document.createElement("div");
+    msg.className = "cp-back-msg";
+    msg.textContent = `You have saved progress at Wave ${savedProgress.waveIndex + 1} of ${waves.length}. Resume or start fresh?`;
+    modal.appendChild(msg);
+    const btnRow = document.createElement("div");
+    btnRow.className = "cp-back-buttons";
+    const resumeBtn = document.createElement("button");
+    resumeBtn.type = "button";
+    resumeBtn.className = "cp-win-cta";
+    resumeBtn.textContent = "RESUME";
+    resumeBtn.addEventListener("click", () => {
+      overlay.remove();
+      restoreFromSave(savedProgress);
+      const wave = waves[controller.currentWaveIndex];
+      if (wave) {
+        hudCtrl.updateBriefing(computeBriefingForCampaignWave(wave));
+        hudCtrl.setZones(wave.wave.zoneDistribution ? [...wave.wave.zoneDistribution.keys()] : []);
+      }
+      hud.setWavePill(controller.currentWaveIndex + 1, waves.length);
+      hud.setStatus("Build phase — place components and click READY");
+    });
+    const freshBtn = document.createElement("button");
+    freshBtn.type = "button";
+    freshBtn.className = "cp-win-cta cp-win-cta--secondary";
+    freshBtn.textContent = "NEW GAME";
+    freshBtn.addEventListener("click", () => {
+      overlay.remove();
+      if (savedLevelId) clearCampaignProgress(savedLevelId);
+    });
+    btnRow.appendChild(resumeBtn);
+    btnRow.appendChild(freshBtn);
+    modal.appendChild(btnRow);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    resumeBtn.focus();
+  }
 
   // ─── Initial paint ──────────────────────────────────────────────────
   hud.setWavePill(1, waves.length);

@@ -1,0 +1,118 @@
+{
+  "label": "Sandbox Export",
+  "entryTargetId": "router1",
+  "components": [
+    {
+      "type": "edge_router",
+      "id": "router1",
+      "label": "Edge Router"
+    },
+    {
+      "type": "cdn",
+      "id": "cdn1",
+      "label": "CDN"
+    },
+    {
+      "type": "streaming_server",
+      "id": "ss1",
+      "label": "Streaming Server"
+    },
+    {
+      "type": "api_gateway",
+      "id": "ag1",
+      "label": "API Gateway"
+    },
+    {
+      "type": "blob_storage",
+      "id": "blob1",
+      "label": "Blob Storage"
+    },
+    {
+      "type": "load_balancer",
+      "id": "lb1",
+      "label": "Load Balancer"
+    },
+    {
+      "type": "server",
+      "id": "srv1",
+      "label": "Server 1"
+    },
+    {
+      "type": "server",
+      "id": "srv2",
+      "label": "Server 2"
+    },
+    {
+      "type": "data_cache",
+      "id": "dc1",
+      "label": "Data Cache"
+    },
+    {
+      "type": "database",
+      "id": "db1",
+      "label": "Database"
+    }
+  ],
+  "connections": [
+    {
+      "from": "router1",
+      "to": "cdn1"
+    },
+    {
+      "from": "router1",
+      "to": "ss1"
+    },
+    {
+      "from": "router1",
+      "to": "ag1"
+    },
+    {
+      "from": "cdn1",
+      "to": "lb1"
+    },
+    {
+      "from": "ag1",
+      "to": "lb1"
+    },
+    {
+      "from": "lb1",
+      "to": "srv1"
+    },
+    {
+      "from": "lb1",
+      "to": "srv2"
+    },
+    {
+      "from": "srv1",
+      "to": "dc1"
+    },
+    {
+      "from": "srv2",
+      "to": "dc1"
+    },
+    {
+      "from": "dc1",
+      "to": "db1"
+    },
+    {
+      "from": "ss1",
+      "to": "blob1"
+    }
+  ],
+  "autoScaleIds": [],
+  "traffic": {
+    "intensity": 80,
+    "composition": {
+      "writeRatio": 0.1,
+      "authRatio": 0.15,
+      "streamRatio": 0.2,
+      "largeRatio": 0.25,
+      "asyncRatio": 0
+    },
+    "keyDistribution": {
+      "kind": "zipf",
+      "alpha": 1.3,
+      "spaceSize": 200
+    }
+  }
+}

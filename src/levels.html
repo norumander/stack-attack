@@ -190,6 +190,24 @@
     .meta .record--cleared {
       color: var(--pi-lime);
     }
+    .meta .record--progress {
+      color: var(--pi-cyan);
+    }
+    .meta .reset-btn {
+      margin-top: 6px;
+      padding: 4px 10px;
+      font-family: var(--pi-font-display);
+      font-size: 8px;
+      letter-spacing: 0.15em;
+      color: var(--pi-red);
+      background: transparent;
+      border: 1px solid var(--pi-red);
+      cursor: pointer;
+    }
+    .meta .reset-btn:hover {
+      background: var(--pi-red);
+      color: var(--pi-cream);
+    }
 
     .tag {
       font-family: var(--pi-font-display);
@@ -427,21 +445,87 @@
   <script type="module" src="./crt-overlay.ts"></script>
   <script type="module" src="./levels-boot.ts"></script>
   <script>
-    // Show completion state for campaign levels
+    // Show completion and in-progress state for campaign levels
     document.querySelectorAll("[data-level]").forEach(function(card) {
       var levelId = card.getAttribute("data-level");
-      var raw = localStorage.getItem("stackattack:completed:" + levelId);
-      if (!raw) return;
-      try {
-        var data = JSON.parse(raw);
-        var record = card.querySelector(".record");
-        if (record) {
-          record.className = "record record--cleared";
-          record.textContent = "CLEARED · viability " + (data.viabilityRemaining ?? "?") + "% · " + (data.waves ?? "?") + " waves";
-        }
-        var tag = card.querySelector(".tag");
-        if (tag) tag.textContent = "REPLAY";
-      } catch (e) { /* ignore bad data */ }
+
+      // Check for completed campaign
+      var completedRaw = localStorage.getItem("stackattack:completed:" + levelId);
+      if (completedRaw) {
+        try {
+          var data = JSON.parse(completedRaw);
+          var record = card.querySelector(".record");
+          if (record) {
+            record.className = "record record--cleared";
+            record.textContent = "CLEARED · viability " + (data.viabilityRemaining ?? "?") + "% · " + (data.waves ?? "?") + " waves";
+          }
+          var tag = card.querySelector(".tag");
+          if (tag) tag.textContent = "REPLAY";
+        } catch (e) { /* ignore bad data */ }
+      }
+
+      // Check for in-progress campaign save
+      var saveRaw = localStorage.getItem("stackattack:campaign:" + levelId);
+      if (saveRaw) {
+        try {
+          var save = JSON.parse(saveRaw);
+          var record = card.querySelector(".record");
+          if (record && !completedRaw) {
+            record.className = "record record--progress";
+            record.textContent = "IN PROGRESS · Wave " + (save.waveIndex + 1);
+          }
+          var tag = card.querySelector(".tag");
+          if (tag && !completedRaw) tag.textContent = "CONTINUE";
+
+          // Add reset button
+          var meta = card.querySelector(".meta");
+          if (meta && !meta.querySelector(".reset-btn")) {
+            var resetBtn = document.createElement("button");
+            resetBtn.type = "button";
+            resetBtn.className = "reset-btn";
+            resetBtn.textContent = "RESET PROGRESS";
+            resetBtn.addEventListener("click", function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              // Show confirmation modal
+              var overlay = document.createElement("div");
+              overlay.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;";
+              var modal = document.createElement("div");
+              modal.style.cssText = "background:#1D2B53;border:3px solid #000;box-shadow:5px 5px 0 #7E2553;padding:24px;display:flex;flex-direction:column;align-items:center;gap:12px;min-width:300px;text-align:center;";
+              var title = document.createElement("h2");
+              title.style.cssText = "font-family:'Press Start 2P',monospace;font-size:14px;color:#FFEC27;text-shadow:2px 2px 0 #FF77A8,3px 3px 0 #000;margin:0;";
+              title.textContent = "RESET PROGRESS?";
+              var msg = document.createElement("div");
+              msg.style.cssText = "font-family:'Silkscreen','VT323',monospace;font-size:16px;color:#FFF1E8;";
+              msg.textContent = "This will erase all saved progress for this campaign. You will start from Wave 1.";
+              var btnRow = document.createElement("div");
+              btnRow.style.cssText = "display:flex;gap:10px;margin-top:8px;";
+              var yesBtn = document.createElement("button");
+              yesBtn.style.cssText = "padding:10px 20px;background:#FF004D;color:#FFF1E8;border:3px solid #000;font-family:'Press Start 2P',monospace;font-size:12px;cursor:pointer;";
+              yesBtn.textContent = "RESET";
+              yesBtn.addEventListener("click", function() {
+                localStorage.removeItem("stackattack:campaign:" + levelId);
+                localStorage.removeItem("stackattack:completed:" + levelId);
+                overlay.remove();
+                window.location.reload();
+              });
+              var noBtn = document.createElement("button");
+              noBtn.style.cssText = "padding:10px 20px;background:transparent;color:#83769C;border:1px solid #83769C;font-family:'Press Start 2P',monospace;font-size:12px;cursor:pointer;";
+              noBtn.textContent = "CANCEL";
+              noBtn.addEventListener("click", function() { overlay.remove(); });
+              btnRow.appendChild(yesBtn);
+              btnRow.appendChild(noBtn);
+              modal.appendChild(title);
+              modal.appendChild(msg);
+              modal.appendChild(btnRow);
+              overlay.appendChild(modal);
+              document.body.appendChild(overlay);
+              noBtn.focus();
+            });
+            meta.appendChild(resetBtn);
+          }
+        } catch (e) { /* ignore bad data */ }
+      }
     });
   </script>
 </body>
