@@ -1714,3 +1714,144 @@ body.renderer-iso .cp-ready-btn:disabled {
   transform: none !important;
 }
 
+/* ================================================================
+   Sandbox traffic panel
+   ================================================================ */
+
+body.renderer-iso .cp-traffic-panel {
+  position: relative !important;
+  top: auto !important;
+  margin-bottom: 12px;
+}
+
+body.renderer-iso .cp-traffic-title {
+  font-family: "Press Start 2P", monospace;
+  font-size: 11px;
+  color: #FFEC27;
+  text-shadow: 2px 2px 0 #FF77A8, 3px 3px 0 #000;
+  margin-bottom: 10px;
+}
+
+body.renderer-iso .cp-traffic-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+}
+
+body.renderer-iso .cp-traffic-label {
+  font-family: "Press Start 2P", monospace;
+  font-size: 8px;
+  letter-spacing: 0.15em;
+  color: var(--sc-ink-dim);
+  display: flex;
+  justify-content: space-between;
+}
+
+body.renderer-iso .cp-traffic-val {
+  color: var(--sc-ink);
+}
+
+body.renderer-iso .cp-traffic-slider {
+  width: 100%;
+  accent-color: #29ADFF;
+  cursor: pointer;
+}
+
+body.renderer-iso .cp-traffic-select {
+  font-family: "Press Start 2P", monospace;
+  font-size: 9px;
+  background: #1D2B53;
+  color: #29ADFF;
+  border: 1px solid rgba(41, 173, 255, 0.4);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+body.renderer-iso .cp-traffic-toggle {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+body.renderer-iso .cp-traffic-toggle--running {
+  background: #FF004D !important;
+  color: #FFF1E8 !important;
+}
+
+body.renderer-iso .cp-traffic-chaos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--sc-border);
+}
+
+body.renderer-iso .cp-traffic-chaos-btn {
+  font-size: 8px !important;
+  padding: 4px 8px !important;
+}
+
+body.renderer-iso .cp-traffic-io {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--sc-border);
+}
+
+body.renderer-iso .cp-traffic-io .cp-win-cta--secondary {
+  flex: 1;
+  font-size: 9px !important;
+  padding: 6px 8px !important;
+}
+
+/* Import/export modals */
+.cp-sandbox-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cp-sandbox-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 420px;
+  max-width: 600px;
+}
+
+.cp-sandbox-modal-title {
+  font-family: "Press Start 2P", monospace;
+  font-size: 14px;
+  color: #FFEC27;
+  text-shadow: 2px 2px 0 #FF77A8, 3px 3px 0 #000;
+}
+
+.cp-sandbox-modal-textarea {
+  width: 100%;
+  height: 200px;
+  font-family: "VT323", monospace;
+  font-size: 14px;
+  color: #FFF1E8;
+  background: #000;
+  border: 1px solid rgba(41, 173, 255, 0.4);
+  padding: 8px;
+  resize: vertical;
+}
+
+.cp-sandbox-modal-error {
+  font-family: "Press Start 2P", monospace;
+  font-size: 9px;
+  color: #FF004D;
+}
+
+.cp-sandbox-modal-buttons {
+  display: flex;
+  gap: 8px;
+}
+

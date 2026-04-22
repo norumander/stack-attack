@@ -30,6 +30,7 @@ export default defineConfig({
         levels: resolve(srcDir, "levels.html"),
         game: resolve(srcDir, "game.html"),
         diagnose: resolve(srcDir, "diagnose.html"),
+        sandbox: resolve(srcDir, "sandbox.html"),
       },
     },
   },

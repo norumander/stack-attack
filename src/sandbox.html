@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stack Attack — Sandbox</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./cyberpunk-hud.css" />
+  <link rel="stylesheet" href="./chatbot/chatbot-drawer.css" />
+  <link rel="stylesheet" href="./auth/auth.css" />
+  <style>
+    html, body { margin: 0; padding: 0; background: #0a1420; color: #ccddee; font-family: monospace; overflow: hidden; }
+    #canvas-host { position: absolute; inset: 0; }
+    /* Hidden mirror divs that cyberpunk-hud.ts observes — sandbox-boot.ts writes
+       to these, the HUD reflects them to its visible cyberpunk-styled DOM. */
+    .td-hud-mirror { display: none; }
+  </style>
+</head>
+<body>
+  <div id="canvas-host"></div>
+
+  <!-- Mirror divs observed by cyberpunk-hud.ts. Writing to these updates the
+       visible HUD without us needing to touch the HUD's internal DOM. -->
+  <div class="td-hud-mirror">
+    <div id="td-hud-wave">SANDBOX</div>
+    <div id="td-hud-phase">build</div>
+    <div id="td-hud-budget">∞</div>
+    <div id="td-status">Sandbox — place components, then START traffic</div>
+
+    <!-- Topology validator errors (live-updated during build phase) -->
+    <div id="td-topology-errors"></div>
+
+    <!-- Briefing card -->
+    <div id="td-briefing-title"></div>
+    <div id="td-briefing-traffic"></div>
+    <div id="td-briefing-budget"></div>
+    <div id="td-briefing-threshold"></div>
+    <div id="td-briefing-components"></div>
+
+    <!-- Info panel -->
+    <div id="td-info-panel" hidden>
+      <button id="td-info-panel-close">×</button>
+      <div id="td-info-panel-header"></div>
+      <div id="td-info-panel-description"></div>
+      <ul id="td-info-panel-caps"></ul>
+      <div id="td-info-panel-stats"></div>
+      <button id="td-info-panel-details">DETAILS</button>
+    </div>
+
+    <!-- Dev wave selector + READY button (hidden in sandbox — sandbox uses its own START/STOP) -->
+    <select id="td-dev-wave-select"></select>
+    <button id="td-ready-btn" style="display:none">READY</button>
+
+    <!-- Palette buttons (HUD reads classic buttons to extract cost text +
+         forwards palette-cell clicks to these). -->
+    <button class="td-palette-btn" data-type="server">+ Server $100</button>
+    <button class="td-palette-btn" data-type="database">+ Database $200</button>
+    <button class="td-palette-btn" data-type="data_cache">+ Data Cache $150</button>
+    <button class="td-palette-btn" data-type="edge_cache">+ Edge Cache $175</button>
+    <button class="td-palette-btn" data-type="load_balancer">+ Load Balancer $175</button>
+    <button class="td-palette-btn" data-type="cdn">+ CDN $200</button>
+    <button class="td-palette-btn" data-type="api_gateway">+ API Gateway $250</button>
+    <button class="td-palette-btn" data-type="queue">+ Queue $125</button>
+    <button class="td-palette-btn" data-type="worker">+ Worker $150</button>
+    <button class="td-palette-btn" data-type="streaming_server">+ Streaming $250</button>
+    <button class="td-palette-btn" data-type="blob_storage">+ Blob Storage $200</button>
+    <button class="td-palette-btn" data-type="dns_gtm">+ DNS / GTM $200</button>
+    <button class="td-palette-btn" data-type="circuit_breaker">+ Circuit Breaker $150</button>
+  </div>
+
+  <script type="module" src="./crt-overlay.ts"></script>
+  <script type="module" src="./sandbox-boot.ts"></script>
+</body>
+</html>
