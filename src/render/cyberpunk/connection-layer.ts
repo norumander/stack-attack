@@ -66,7 +66,7 @@ const CONNECTION_BACK_HIGHLIGHT = 0xffec27; // same — no neon inner glow
  * endpoint clean of the component sprite. The other lane already falls short
  * and is left full-length.
  */
-const LANE_END_INSET_PX = 30;
+const LANE_END_INSET_PX = 0;
 
 /**
  * Returns a copy of `path` with its two end segments shortened by `inset`
