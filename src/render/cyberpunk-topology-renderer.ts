@@ -530,6 +530,10 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     this.connectionLayer?.setYFirst(id, yFirst);
   }
 
+  getConnectionYFirst(id: ConnectionId): boolean | undefined {
+    return this.connectionLayer?.getYFirst(id);
+  }
+
   resetTransientVisuals(): void {
     // Remove all packet sprites.
     if (this.packetLayer) {

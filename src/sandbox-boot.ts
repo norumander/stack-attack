@@ -268,6 +268,11 @@ async function main(): Promise<void> {
     });
   }
 
+  // ─── Component drag — update positions map ───────────────────────────
+  renderer.onComponentDragEnd(({ componentId, gridPosition }) => {
+    positions.set(componentId, gridPosition);
+  });
+
   // ─── Left-click on connection to toggle L-routing ───────────────────
   renderer.onConnectionPointerDown((connId) => {
     if (controller.phase !== "build") return;

@@ -361,6 +361,11 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     });
   }
 
+  // ─── Component drag — update positions map so save captures new pos ──
+  renderer.onComponentDragEnd(({ componentId, gridPosition }) => {
+    positions.set(componentId, gridPosition);
+  });
+
   // ─── Left-click on connection to toggle L-routing ───────────────────
   renderer.onConnectionPointerDown((connId) => {
     if (controller.phase !== "build") return;
@@ -742,6 +747,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
         saveCampaignProgress(
           lvlId, controller.currentWaveIndex, controller.budget, viability.value,
           componentTypes, componentLabels, positions, sim, CLIENT_ID,
+          (connId) => renderer.getConnectionYFirst(connId as import("@core/types/ids").ConnectionId),
         );
       }
     });
@@ -1042,11 +1048,10 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
   // ─── Restore from save ──────────────────────────────────────────────
   function restoreFromSave(save: CampaignSave): void {
     console.log("[restore]", JSON.stringify(save, null, 2));
-    // Jump to the saved wave.
+    // Jump to the saved wave. Set budget to infinity so tryPlace doesn't
+    // deduct costs — the saved budget already accounts for placed components.
     controller.jumpToWave(save.waveIndex);
-    // Override budget with the saved value.
-    controller.budget = save.budget;
-    hud.setBudget(controller.budget);
+    controller.budget = 999_999;
     // Restore viability.
     viability.reset();
     if (save.viability !== undefined && save.viability < viability.max) {
@@ -1073,21 +1078,50 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
       }
     }
 
-    // Wire saved connections.
-    console.log("[restore] mintedIds:", mintedIds, "connections:", save.connections);
+    // Wire saved connections and restore yFirst routing.
+    const connIdMap: Array<{ forwardId: import("@core/types/ids").ConnectionId | null; yFirst: boolean | undefined }> = [];
     for (const conn of save.connections) {
       const fromId = mintedIds[conn.fromIndex];
       const toId = mintedIds[conn.toIndex];
       if (fromId && toId) {
         const cr = controller.tryConnect(fromId, toId);
-        console.log("[restore] connect", conn.fromIndex, "→", conn.toIndex, fromId, "→", toId, cr.ok ? "OK" : "FAIL");
-      } else {
-        console.warn("[restore] connect SKIP — missing id", conn.fromIndex, conn.toIndex);
+        if (cr.ok) {
+          // Find the forward connection ID that was just created.
+          const key = `${fromId as unknown as string}:${toId as unknown as string}`;
+          const fwdId = controller.placedConnections.get(key) ?? null;
+          connIdMap.push({ forwardId: fwdId, yFirst: conn.yFirst });
+        }
+      }
+    }
+    // Apply saved yFirst routing after all connections exist.
+    for (const entry of connIdMap) {
+      if (entry.forwardId && entry.yFirst !== undefined) {
+        renderer.setConnectionYFirst(entry.forwardId, entry.yFirst);
+      }
+    }
+
+    // Restore client position if saved.
+    if (save.clientPos) {
+      const clientPos = save.clientPos;
+      positions.set(CLIENT_ID, clientPos);
+      renderer.updateComponent(CLIENT_ID, { gridPosition: clientPos });
+    }
+
+    // Wire client to its saved entry component.
+    if (save.clientEntryIndex !== undefined && save.clientEntryIndex >= 0) {
+      const entryId = mintedIds[save.clientEntryIndex];
+      if (entryId) {
+        controller.tryConnect(CLIENT_ID, entryId);
       }
     }
 
     wireWorkers(sim);
     wireContentRouters(sim, componentTypes);
+
+    // Set the real budget now that all components are placed (tryPlace
+    // deducted costs from the temp infinite budget — override with saved).
+    controller.budget = save.budget;
+    hud.setBudget(controller.budget);
   }
 
   // ─── Check for saved progress ──────────────────────────────────────

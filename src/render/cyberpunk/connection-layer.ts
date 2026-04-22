@@ -51,6 +51,8 @@ export interface ConnectionLayer {
   toggleRoute(id: ConnectionId): void;
   /** Set a connection's yFirst routing directly (also updates twin). */
   setYFirst(id: ConnectionId, yFirst: boolean): void;
+  /** Get a connection's current yFirst routing. */
+  getYFirst(id: ConnectionId): boolean | undefined;
 }
 
 /** Perpendicular offset applied to each lane — total separation is 2× this. */
@@ -359,6 +361,9 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
         }
       }
       redraw();
+    },
+    getYFirst: (id: ConnectionId): boolean | undefined => {
+      return states.get(id)?.yFirst;
     },
   };
 }

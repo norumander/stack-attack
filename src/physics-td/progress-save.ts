@@ -17,6 +17,7 @@ export interface SavedTopologyComponent {
 export interface SavedConnection {
   fromIndex: number; // index into components array
   toIndex: number;
+  yFirst?: boolean; // wire L-routing (true = Y-first, false = X-first)
 }
 
 export interface CampaignSave {
@@ -26,6 +27,9 @@ export interface CampaignSave {
   viability: number;
   components: SavedTopologyComponent[];
   connections: SavedConnection[];
+  clientPos?: { x: number; y: number };
+  /** Index into components array that the client connects to, or -1 if none. */
+  clientEntryIndex?: number;
 }
 
 function storageKey(levelId: string): string {
@@ -40,8 +44,9 @@ export function saveCampaignProgress(
   componentTypes: ReadonlyMap<ComponentId, string>,
   componentLabels: ReadonlyMap<ComponentId, string | undefined>,
   positions: ReadonlyMap<ComponentId, { x: number; y: number }>,
-  sim: { components: ReadonlyMap<ComponentId, { zone: string | null }>; connections: ReadonlyMap<unknown, { from: { componentId: ComponentId }; to: { componentId: ComponentId }; direction: string }> },
+  sim: { components: ReadonlyMap<ComponentId, { zone: string | null }>; connections: ReadonlyMap<unknown, { from: { componentId: ComponentId }; to: { componentId: ComponentId }; direction: string; id: unknown }> },
   clientId: ComponentId,
+  getConnectionYFirst?: (connId: unknown) => boolean | undefined,
 ): void {
   // Build ordered component list (excluding client).
   const compIds: ComponentId[] = [];
@@ -65,18 +70,30 @@ export function saveCampaignProgress(
   }
 
   const connList: SavedConnection[] = [];
+  let clientEntryIndex = -1;
   for (const conn of sim.connections.values()) {
     if (conn.direction !== "forward") continue;
     const fromStr = conn.from.componentId as unknown as string;
     const toStr = conn.to.componentId as unknown as string;
-    // Skip client connections — they'll be re-created on restore.
-    if (fromStr === (clientId as unknown as string)) continue;
+    if (fromStr === (clientId as unknown as string)) {
+      // Save which component the client connects to.
+      const toIdx = idToIndex.get(toStr);
+      if (toIdx !== undefined) clientEntryIndex = toIdx;
+      continue;
+    }
     const fromIdx = idToIndex.get(fromStr);
     const toIdx = idToIndex.get(toStr);
     if (fromIdx !== undefined && toIdx !== undefined) {
-      connList.push({ fromIndex: fromIdx, toIndex: toIdx });
+      const entry: SavedConnection = { fromIndex: fromIdx, toIndex: toIdx };
+      if (getConnectionYFirst) {
+        const yf = getConnectionYFirst(conn.id);
+        if (yf !== undefined) entry.yFirst = yf;
+      }
+      connList.push(entry);
     }
   }
+
+  const clientPos = positions.get(clientId) ?? { x: -3, y: 0 };
 
   const save: CampaignSave = {
     levelId,
@@ -85,6 +102,8 @@ export function saveCampaignProgress(
     viability,
     components: compList,
     connections: connList,
+    clientPos,
+    clientEntryIndex,
   };
 
   localStorage.setItem(storageKey(levelId), JSON.stringify(save));
