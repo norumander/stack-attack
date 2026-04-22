@@ -44,6 +44,7 @@ import type { ComponentId, ConnectionId, PortId } from "@core/types/ids";
 import type { WaveDef } from "@sim/wave";
 import type { PhysicsCampaignController } from "./physics-td/campaign-controller";
 import type { TopologyDef } from "./playtest/topology-builder";
+import { computeTopologyLayout, computeWireRouting } from "./layout/topology-layout";
 
 const CLIENT_ID = "client" as ComponentId;
 const CLIENT_POS = { x: -10, y: 0 };
@@ -78,6 +79,7 @@ function buildWaveDef(settings: TrafficSettings): WaveDef {
       ? { kind: "zipf", alpha: settings.zipfAlpha, spaceSize: settings.spaceSize }
       : { kind: "uniform", spaceSize: settings.spaceSize },
     revenue: { perRead: 1, perWrite: 2, perAuth: 2, perStream: 3, perAsync: 3 },
+    ...(settings.streamRatio > 0 && { streamConfig: { duration: 1.5, bandwidth: 20 } }),
     entryClients: [CLIENT_ID],
   };
 }
@@ -502,166 +504,99 @@ async function main(): Promise<void> {
     void showExportModal(json);
   });
 
+  // ─── Shared import logic (used by both Import and Reset) ─────────────
+  function applyImport(result: import("./sandbox/import-export").SandboxImportResult): void {
+    const topo = result.topology;
+
+    // Compute tree-aware layout positions.
+    const layout = computeTopologyLayout({
+      entryId: topo.entryTargetId,
+      components: topo.components,
+      connections: topo.connections,
+    });
+
+    // Place components via controller so they're tracked for deletion.
+    const idMap = new Map<string, ComponentId>();
+    for (const c of topo.components) {
+      const gridPos = layout.positions.get(c.id) ?? { x: 0, y: 0 };
+      const placeResult = controller.tryPlace(c.type, gridPos);
+      if (placeResult.ok) {
+        idMap.set(c.id, placeResult.componentId);
+        if (c.zone) {
+          const comp = sim.components.get(placeResult.componentId);
+          if (comp) comp.zone = (c.zone as string) ?? null;
+        }
+      }
+    }
+
+    // Wire connections via controller so they're tracked for deletion.
+    for (const edge of topo.connections) {
+      const sourceId = idMap.get(edge.from);
+      const targetId = idMap.get(edge.to);
+      if (sourceId && targetId) {
+        controller.tryConnect(sourceId, targetId);
+      }
+    }
+
+    // Wire client to entry target.
+    if (topo.entryTargetId) {
+      const entryId = idMap.get(topo.entryTargetId);
+      if (entryId) {
+        controller.tryConnect(CLIENT_ID, entryId);
+      }
+    }
+
+    wireWorkers(sim);
+    wireContentRouters(sim, componentTypes);
+    rebuildUX();
+
+    // Optimize wire routing to minimize overlaps.
+    const wireRouting = computeWireRouting(layout.positions, topo.connections);
+    for (const conn of sim.connections.values()) {
+      if (conn.direction !== "forward") continue;
+      const fromOrig = [...idMap.entries()].find(([, v]) => v === conn.from.componentId)?.[0];
+      const toOrig = [...idMap.entries()].find(([, v]) => v === conn.to.componentId)?.[0];
+      if (!fromOrig || !toOrig) continue;
+      const key = `${fromOrig}:${toOrig}`;
+      const yFirst = wireRouting.get(key);
+      if (yFirst !== undefined) {
+        // Set yFirst on the connection's render state by toggling if needed.
+        // The connection layer's current yFirst might differ, so toggle to match.
+        renderer.setConnectionYFirst?.(conn.id, yFirst);
+      }
+    }
+
+    // Apply traffic settings to sliders.
+    if (result.traffic) {
+      const t = result.traffic;
+      trafficPanel.applySettings({
+        intensity: t.intensity,
+        writeRatio: t.composition.writeRatio,
+        authRatio: t.composition.authRatio,
+        streamRatio: t.composition.streamRatio,
+        largeRatio: t.composition.largeRatio,
+        asyncRatio: t.composition.asyncRatio,
+        keyKind: t.keyDistribution.kind,
+        zipfAlpha: t.keyDistribution.kind === "zipf" ? t.keyDistribution.alpha : 1.0,
+        spaceSize: t.keyDistribution.spaceSize,
+      });
+    }
+
+    perComponentDrops = new Map();
+    perComponentProcessed = new Map();
+    metricsAggregator.reset();
+  }
+
   // ─── Import ─────────────────────────────────────────────────────────
   trafficPanel.onImport(() => {
-    // Stop if running
     if (controller.phase === "simulate") stopTraffic();
 
     void showImportModal().then((result) => {
       if (!result) return;
-
-      // Clear the board
-      const compIds = Array.from(sim.components.keys());
-      const connIds = Array.from(sim.connections.keys());
-      for (const id of connIds) {
-        sim.connections.delete(id);
-        renderer.removeConnection(id);
-      }
-      for (const id of compIds) {
-        sim.components.delete(id);
-        renderer.removeComponent(id);
-      }
-      sim.clients.clear();
-      sim.activePackets.length = 0;
-      positions.clear();
-      componentTypes.clear();
-      componentLabels.clear();
-
-      // Also remove the client visual — will re-add below
-      renderer.removeComponent(CLIENT_ID);
-
-      // Fresh sim
-      sim = new Sim({ seed: 1 });
-
-      // Place components in a grid layout
-      const topo = result.topology;
-      const COL_SPACING = 3;
-      const ROW_SPACING = 4;
-      const compsPerRow = Math.max(1, Math.ceil(Math.sqrt(topo.components.length)));
-
-      for (let i = 0; i < topo.components.length; i++) {
-        const c = topo.components[i]!;
-        const col = i % compsPerRow;
-        const row = Math.floor(i / compsPerRow);
-        const gridPos = {
-          x: col * COL_SPACING,
-          y: (row - Math.floor(topo.components.length / compsPerRow) / 2) * ROW_SPACING,
-        };
-        const id = c.id as unknown as ComponentId;
-        positions.set(id, gridPos);
-        componentTypes.set(id, c.type);
-        componentLabels.set(id, c.label);
-
-        const zone = c.zone as "zone_na" | "zone_eu" | "zone_ap" | undefined;
-        const comp = buildSimComponent(c.type, id, controller.currentWaveRevenue(), zone, c.label);
-        if (comp) sim.addComponent(comp);
-
-        const sprite = COMPONENT_SPRITE_TYPE.get(c.type) ?? c.type;
-        renderer.addComponent(id, {
-          type: sprite,
-          displayName: c.label ?? c.type,
-          gridPosition: gridPos,
-          ...(c.label ? { label: c.label } : {}),
-        });
-      }
-
-      // Wire connections
-      let connCounter = 0;
-      for (const edge of topo.connections) {
-        const sourceId = edge.from as unknown as ComponentId;
-        const targetId = edge.to as unknown as ComponentId;
-        const forwardId = `conn_import_${connCounter}_fwd` as unknown as ConnectionId;
-        const backId = `conn_import_${connCounter}_back` as unknown as ConnectionId;
-        connCounter++;
-
-        const forward = new SimConnection({
-          id: forwardId,
-          from: { componentId: sourceId, portId: "p" as PortId },
-          to: { componentId: targetId, portId: "p" as PortId },
-          bandwidth: 500,
-          latencySeconds: 0.1,
-          twinId: backId,
-          direction: "forward",
-        });
-        const back = new SimConnection({
-          id: backId,
-          from: { componentId: targetId, portId: "p" as PortId },
-          to: { componentId: sourceId, portId: "p" as PortId },
-          bandwidth: 500,
-          latencySeconds: 0.1,
-          twinId: forwardId,
-          direction: "back",
-        });
-        sim.addConnection(forward);
-        sim.addConnection(back);
-        renderer.addConnection(forwardId, sourceId, targetId, { direction: "forward" });
-        renderer.addConnection(backId, targetId, sourceId, { direction: "back" });
-      }
-
-      // Re-add client
-      positions.set(CLIENT_ID, CLIENT_POS);
-      renderer.addComponent(CLIENT_ID, {
-        type: "client",
-        displayName: "client",
-        gridPosition: CLIENT_POS,
-      });
-
-      // Wire client to entry target
-      if (topo.entryTargetId) {
-        const entryId = topo.entryTargetId as unknown as ComponentId;
-        const fwdId = `conn_client_fwd` as unknown as ConnectionId;
-        const bkId = `conn_client_back` as unknown as ConnectionId;
-        const forward = new SimConnection({
-          id: fwdId,
-          from: { componentId: CLIENT_ID, portId: "p" as PortId },
-          to: { componentId: entryId, portId: "p" as PortId },
-          bandwidth: 500,
-          latencySeconds: 0.1,
-          twinId: bkId,
-          direction: "forward",
-        });
-        const back = new SimConnection({
-          id: bkId,
-          from: { componentId: entryId, portId: "p" as PortId },
-          to: { componentId: CLIENT_ID, portId: "p" as PortId },
-          bandwidth: 500,
-          latencySeconds: 0.1,
-          twinId: fwdId,
-          direction: "back",
-        });
-        sim.addConnection(forward);
-        sim.addConnection(back);
-        renderer.addConnection(fwdId, CLIENT_ID, entryId, { direction: "forward" });
-        renderer.addConnection(bkId, entryId, CLIENT_ID, { direction: "back" });
-      }
-
-      wireWorkers(sim);
-      wireContentRouters(sim, componentTypes);
-      rebuildUX();
-
-      // Apply traffic settings to sliders
-      if (result.traffic) {
-        const t = result.traffic;
-        trafficPanel.applySettings({
-          intensity: t.intensity,
-          writeRatio: t.composition.writeRatio,
-          authRatio: t.composition.authRatio,
-          streamRatio: t.composition.streamRatio,
-          largeRatio: t.composition.largeRatio,
-          asyncRatio: t.composition.asyncRatio,
-          keyKind: t.keyDistribution.kind,
-          zipfAlpha: t.keyDistribution.kind === "zipf" ? t.keyDistribution.alpha : 1.0,
-          spaceSize: t.keyDistribution.spaceSize,
-        });
-      }
-
-      perComponentDrops = new Map();
-      perComponentProcessed = new Map();
-      metricsAggregator.reset();
-
-      lastImportedJson = JSON.stringify(result);
+      clearBoard();
+      applyImport(result);
+      lastImportedJson = exportTopology(result.topology, result.traffic);
       trafficPanel.enableReset(true);
-
       hudCtrl.showToast("Topology imported");
     });
   });
@@ -676,165 +611,62 @@ async function main(): Promise<void> {
     }
   }
 
+  // ─── Confirmation dialog helper ──────────────────────────────────────
+  function showConfirm(message: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      document.querySelector(".cp-sandbox-modal-overlay")?.remove();
+      const overlay = document.createElement("div");
+      overlay.className = "cp-sandbox-modal-overlay";
+      const modal = document.createElement("div");
+      modal.className = "cp-sandbox-modal cp-panel";
+      const title = document.createElement("h2");
+      title.className = "cp-sandbox-modal-title";
+      title.textContent = "CONFIRM";
+      modal.appendChild(title);
+      const msg = document.createElement("div");
+      msg.className = "cp-back-msg";
+      msg.textContent = message;
+      modal.appendChild(msg);
+      const btnRow = document.createElement("div");
+      btnRow.className = "cp-sandbox-modal-buttons";
+      const yesBtn = document.createElement("button");
+      yesBtn.type = "button";
+      yesBtn.className = "cp-win-cta";
+      yesBtn.textContent = "YES";
+      yesBtn.addEventListener("click", () => { overlay.remove(); resolve(true); });
+      const noBtn = document.createElement("button");
+      noBtn.type = "button";
+      noBtn.className = "cp-win-cta cp-win-cta--secondary";
+      noBtn.textContent = "CANCEL";
+      noBtn.addEventListener("click", () => { overlay.remove(); resolve(false); });
+      btnRow.appendChild(yesBtn);
+      btnRow.appendChild(noBtn);
+      modal.appendChild(btnRow);
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      noBtn.focus();
+    });
+  }
+
   // ─── Clear button ───────────────────────────────────────────────────
-  trafficPanel.onClear(() => {
+  trafficPanel.onClear(async () => {
+    const ok = await showConfirm("Clear the entire board? This cannot be undone.");
+    if (!ok) return;
     clearBoard();
     trafficPanel.enableReset(lastImportedJson !== null);
     hudCtrl.showToast("Board cleared");
   });
 
-  // ─── Reset button ───────────────────────────────────────────────────
-  trafficPanel.onReset(() => {
+  // ─── Reset button — re-import the last imported JSON ─────────────────
+  trafficPanel.onReset(async () => {
     if (!lastImportedJson) return;
+    const ok = await showConfirm("Reset board to the last imported state? Current changes will be lost.");
+    if (!ok) return;
     clearBoard();
-
-    const parsed = importTopology(lastImportedJson!);
+    const parsed = importTopology(lastImportedJson);
     if (!parsed) return;
-
-    {
-      // Clear the board (sim-level)
-      const compIds = Array.from(sim.components.keys());
-      const connIds = Array.from(sim.connections.keys());
-      for (const id of connIds) {
-        sim.connections.delete(id);
-        renderer.removeConnection(id);
-      }
-      for (const id of compIds) {
-        sim.components.delete(id);
-        renderer.removeComponent(id);
-      }
-      sim.clients.clear();
-      sim.activePackets.length = 0;
-      positions.clear();
-      componentTypes.clear();
-      componentLabels.clear();
-      renderer.removeComponent(CLIENT_ID);
-
-      sim = new Sim({ seed: 1 });
-
-      const topo = parsed.topology;
-      const COL_SPACING = 3;
-      const ROW_SPACING = 4;
-      const compsPerRow = Math.max(1, Math.ceil(Math.sqrt(topo.components.length)));
-
-      for (let i = 0; i < topo.components.length; i++) {
-        const c = topo.components[i]!;
-        const col = i % compsPerRow;
-        const row = Math.floor(i / compsPerRow);
-        const gridPos = {
-          x: col * COL_SPACING,
-          y: (row - Math.floor(topo.components.length / compsPerRow) / 2) * ROW_SPACING,
-        };
-        const id = c.id as unknown as ComponentId;
-        positions.set(id, gridPos);
-        componentTypes.set(id, c.type);
-        componentLabels.set(id, c.label);
-
-        const zone = c.zone as "zone_na" | "zone_eu" | "zone_ap" | undefined;
-        const comp = buildSimComponent(c.type, id, controller.currentWaveRevenue(), zone, c.label);
-        if (comp) sim.addComponent(comp);
-
-        const sprite = COMPONENT_SPRITE_TYPE.get(c.type) ?? c.type;
-        renderer.addComponent(id, {
-          type: sprite,
-          displayName: c.label ?? c.type,
-          gridPosition: gridPos,
-          ...(c.label ? { label: c.label } : {}),
-        });
-      }
-
-      let connCounter = 0;
-      for (const edge of topo.connections) {
-        const sourceId = edge.from as unknown as ComponentId;
-        const targetId = edge.to as unknown as ComponentId;
-        const forwardId = `conn_import_${connCounter}_fwd` as unknown as ConnectionId;
-        const backId = `conn_import_${connCounter}_back` as unknown as ConnectionId;
-        connCounter++;
-
-        const forward = new SimConnection({
-          id: forwardId,
-          from: { componentId: sourceId, portId: "p" as PortId },
-          to: { componentId: targetId, portId: "p" as PortId },
-          bandwidth: 500,
-          latencySeconds: 0.1,
-          twinId: backId,
-          direction: "forward",
-        });
-        const back = new SimConnection({
-          id: backId,
-          from: { componentId: targetId, portId: "p" as PortId },
-          to: { componentId: sourceId, portId: "p" as PortId },
-          bandwidth: 500,
-          latencySeconds: 0.1,
-          twinId: forwardId,
-          direction: "back",
-        });
-        sim.addConnection(forward);
-        sim.addConnection(back);
-        renderer.addConnection(forwardId, sourceId, targetId, { direction: "forward" });
-        renderer.addConnection(backId, targetId, sourceId, { direction: "back" });
-      }
-
-      positions.set(CLIENT_ID, CLIENT_POS);
-      renderer.addComponent(CLIENT_ID, {
-        type: "client",
-        displayName: "client",
-        gridPosition: CLIENT_POS,
-      });
-
-      if (topo.entryTargetId) {
-        const entryId = topo.entryTargetId as unknown as ComponentId;
-        const fwdId = `conn_client_fwd` as unknown as ConnectionId;
-        const bkId = `conn_client_back` as unknown as ConnectionId;
-        const forward = new SimConnection({
-          id: fwdId,
-          from: { componentId: CLIENT_ID, portId: "p" as PortId },
-          to: { componentId: entryId, portId: "p" as PortId },
-          bandwidth: 500,
-          latencySeconds: 0.1,
-          twinId: bkId,
-          direction: "forward",
-        });
-        const back = new SimConnection({
-          id: bkId,
-          from: { componentId: entryId, portId: "p" as PortId },
-          to: { componentId: CLIENT_ID, portId: "p" as PortId },
-          bandwidth: 500,
-          latencySeconds: 0.1,
-          twinId: fwdId,
-          direction: "back",
-        });
-        sim.addConnection(forward);
-        sim.addConnection(back);
-        renderer.addConnection(fwdId, CLIENT_ID, entryId, { direction: "forward" });
-        renderer.addConnection(bkId, entryId, CLIENT_ID, { direction: "back" });
-      }
-
-      wireWorkers(sim);
-      wireContentRouters(sim, componentTypes);
-      rebuildUX();
-
-      if (parsed.traffic) {
-        const t = parsed.traffic;
-        trafficPanel.applySettings({
-          intensity: t.intensity,
-          writeRatio: t.composition.writeRatio,
-          authRatio: t.composition.authRatio,
-          streamRatio: t.composition.streamRatio,
-          largeRatio: t.composition.largeRatio,
-          asyncRatio: t.composition.asyncRatio,
-          keyKind: t.keyDistribution.kind,
-          zipfAlpha: t.keyDistribution.kind === "zipf" ? t.keyDistribution.alpha : 1.0,
-          spaceSize: t.keyDistribution.spaceSize,
-        });
-      }
-
-      perComponentDrops = new Map();
-      perComponentProcessed = new Map();
-      metricsAggregator.reset();
-
-      hudCtrl.showToast("Board reset to imported state");
-    }
+    applyImport(parsed);
+    hudCtrl.showToast("Board reset to imported state");
   });
 
   // ─── Frame loop ─────────────────────────────────────────────────────

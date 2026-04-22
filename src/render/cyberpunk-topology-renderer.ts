@@ -526,6 +526,10 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     this.connectionLayer?.toggleRoute(id);
   }
 
+  setConnectionYFirst(id: ConnectionId, yFirst: boolean): void {
+    this.connectionLayer?.setYFirst(id, yFirst);
+  }
+
   resetTransientVisuals(): void {
     // Remove all packet sprites.
     if (this.packetLayer) {

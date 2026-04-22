@@ -1,0 +1,35 @@
+{
+  "label": "Async Pipeline",
+  "entryTargetId": "ag1",
+  "components": [
+    { "type": "api_gateway", "id": "ag1", "label": "API Gateway" },
+    { "type": "queue", "id": "q1", "label": "Ingest Queue" },
+    { "type": "worker", "id": "wk1", "label": "Worker 1" },
+    { "type": "worker", "id": "wk2", "label": "Worker 2" },
+    { "type": "server", "id": "srv1", "label": "API Server" },
+    { "type": "data_cache", "id": "dc1", "label": "Read Cache" },
+    { "type": "database", "id": "db1", "label": "Primary DB" }
+  ],
+  "connections": [
+    { "from": "ag1", "to": "q1" },
+    { "from": "ag1", "to": "srv1" },
+    { "from": "q1", "to": "wk1" },
+    { "from": "q1", "to": "wk2" },
+    { "from": "wk1", "to": "db1" },
+    { "from": "wk2", "to": "db1" },
+    { "from": "srv1", "to": "dc1" },
+    { "from": "dc1", "to": "db1" }
+  ],
+  "autoScaleIds": [],
+  "traffic": {
+    "intensity": 80,
+    "composition": {
+      "writeRatio": 0.1,
+      "authRatio": 0.15,
+      "streamRatio": 0,
+      "largeRatio": 0,
+      "asyncRatio": 0.3
+    },
+    "keyDistribution": { "kind": "zipf", "alpha": 1.1, "spaceSize": 200 }
+  }
+}

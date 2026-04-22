@@ -49,6 +49,8 @@ export interface ConnectionLayer {
   highlightComponent(id: ComponentId | null): void;
   /** Toggle a connection's L-routing between X-first and Y-first. */
   toggleRoute(id: ConnectionId): void;
+  /** Set a connection's yFirst routing directly (also updates twin). */
+  setYFirst(id: ConnectionId, yFirst: boolean): void;
 }
 
 /** Perpendicular offset applied to each lane — total separation is 2× this. */
@@ -346,5 +348,17 @@ export function createConnectionLayer(components: ComponentLayer): ConnectionLay
     redraw,
     highlightComponent,
     toggleRoute,
+    setYFirst: (id: ConnectionId, yFirst: boolean): void => {
+      const s = states.get(id);
+      if (!s || s.yFirst === yFirst) return;
+      s.yFirst = yFirst;
+      for (const [twinId, twin] of states) {
+        if (twinId === id) continue;
+        if (twin.sourceId === s.targetId && twin.targetId === s.sourceId) {
+          twin.yFirst = yFirst;
+        }
+      }
+      redraw();
+    },
   };
 }

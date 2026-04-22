@@ -355,9 +355,13 @@ export function buildTrafficPanel(container: HTMLElement): TrafficPanelHandle {
 
   ioSection.appendChild(exportBtn);
   ioSection.appendChild(importBtn);
-  ioSection.appendChild(clearBtn);
-  ioSection.appendChild(resetBtn);
   panel.appendChild(ioSection);
+
+  const boardSection = document.createElement("div");
+  boardSection.className = "cp-traffic-io";
+  boardSection.appendChild(clearBtn);
+  boardSection.appendChild(resetBtn);
+  panel.appendChild(boardSection);
 
   // ---------------------------------------------------------------------------
   // Mount
@@ -430,6 +434,7 @@ export function buildTrafficPanel(container: HTMLElement): TrafficPanelHandle {
     if (s.spaceSize !== undefined) {
       settings.spaceSize = 200;
     }
+    updateReadsDisplay();
   }
 
   function enableReset(enabled: boolean): void {

@@ -1,0 +1,33 @@
+{
+  "label": "Simple Cache Tier",
+  "entryTargetId": "lb1",
+  "components": [
+    { "type": "load_balancer", "id": "lb1", "label": "Load Balancer" },
+    { "type": "server", "id": "srv1", "label": "Server 1" },
+    { "type": "server", "id": "srv2", "label": "Server 2" },
+    { "type": "server", "id": "srv3", "label": "Server 3" },
+    { "type": "data_cache", "id": "dc1", "label": "Data Cache" },
+    { "type": "database", "id": "db1", "label": "Database" }
+  ],
+  "connections": [
+    { "from": "lb1", "to": "srv1" },
+    { "from": "lb1", "to": "srv2" },
+    { "from": "lb1", "to": "srv3" },
+    { "from": "srv1", "to": "dc1" },
+    { "from": "srv2", "to": "dc1" },
+    { "from": "srv3", "to": "dc1" },
+    { "from": "dc1", "to": "db1" }
+  ],
+  "autoScaleIds": [],
+  "traffic": {
+    "intensity": 60,
+    "composition": {
+      "writeRatio": 0.2,
+      "authRatio": 0,
+      "streamRatio": 0,
+      "largeRatio": 0,
+      "asyncRatio": 0
+    },
+    "keyDistribution": { "kind": "zipf", "alpha": 1.3, "spaceSize": 200 }
+  }
+}

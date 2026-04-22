@@ -43,6 +43,7 @@ import type { ChatRequest } from "./chatbot/chat-client";
 import type { ComponentId, ConnectionId, PortId } from "@core/types/ids";
 import type { PhysicsCampaignController } from "./physics-td/campaign-controller";
 import type { DiagnoseLevel } from "./diagnose/diagnose-level";
+import { computeTopologyLayout } from "./layout/topology-layout";
 
 // Re-exported for callers/tests.
 export { readDiagnoseLevelFromUrl, resolveDiagnoseLevel } from "./diagnose/url";
@@ -51,71 +52,19 @@ const CLIENT_ID = "client" as ComponentId;
 const DRAIN_SECONDS = 4;
 
 /**
- * Topology-aware layout for diagnose levels. Uses BFS from the entry
- * point to assign depth (x-axis) and spreads siblings vertically (y-axis)
- * so parallel paths fan out visually. Much clearer than the old tier-based
- * column approach which ignored actual wiring and stacked unrelated
- * components on top of each other.
+ * Topology-aware layout for diagnose levels. Uses the shared subtree-aware
+ * DAG layout from src/layout/topology-layout.ts.
  */
 function buildLayout(
   level: DiagnoseLevel,
 ): (topologyId: string, index: number) => { x: number; y: number } {
   const topo = level.startingTopology;
-  const COL_SPACING = 3;
-  const ROW_SPACING = 4;
-
-  // Build adjacency list from forward connections.
-  const children = new Map<string, string[]>();
-  for (const c of topo.components) children.set(c.id, []);
-  for (const e of topo.connections) {
-    children.get(e.from)?.push(e.to);
-  }
-
-  // BFS from entry to assign depth (column). Components not reachable
-  // from entry get a fallback depth at the end.
-  const depth = new Map<string, number>();
-  const queue: string[] = [topo.entryTargetId];
-  depth.set(topo.entryTargetId, 0);
-  while (queue.length > 0) {
-    const id = queue.shift()!;
-    const d = depth.get(id)!;
-    for (const child of children.get(id) ?? []) {
-      if (!depth.has(child)) {
-        depth.set(child, d + 1);
-        queue.push(child);
-      }
-    }
-  }
-  // Assign unreachable components to a column past the deepest.
-  const maxDepth = Math.max(0, ...depth.values());
-  for (const c of topo.components) {
-    if (!depth.has(c.id)) depth.set(c.id, maxDepth + 1);
-  }
-
-  // Group components by depth column, preserving definition order
-  // (which tends to follow a logical grouping by the content author).
-  const byCol = new Map<number, string[]>();
-  for (const c of topo.components) {
-    const col = depth.get(c.id)!;
-    if (!byCol.has(col)) byCol.set(col, []);
-    byCol.get(col)!.push(c.id);
-  }
-
-  // Assign positions: center each column's stack around y=0.
-  const maxCol = Math.max(0, ...byCol.keys());
-  const midCol = maxCol / 2;
-  const assigned = new Map<string, { x: number; y: number }>();
-  for (const [col, ids] of byCol) {
-    for (let i = 0; i < ids.length; i++) {
-      const centeredRow = i - (ids.length - 1) / 2;
-      assigned.set(ids[i]!, {
-        x: Math.round((col - midCol) * COL_SPACING),
-        y: Math.round(centeredRow * ROW_SPACING),
-      });
-    }
-  }
-
-  return (topologyId: string) => assigned.get(topologyId) ?? { x: 4, y: 0 };
+  const layout = computeTopologyLayout({
+    entryId: topo.entryTargetId,
+    components: topo.components,
+    connections: topo.connections,
+  });
+  return (topologyId: string) => layout.positions.get(topologyId) ?? { x: 4, y: 0 };
 }
 
 async function waitForHudController(): Promise<CyberpunkHudController> {

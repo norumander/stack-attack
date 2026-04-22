@@ -588,8 +588,13 @@ function paletteCell(entry: PaletteEntry): HTMLElement {
     `.td-palette-btn[data-type="${entry.type}"]`,
   );
   if (classicBtn) {
-    const match = classicBtn.textContent?.match(/\$\d+/);
-    if (match) cost.textContent = match[0];
+    // Hide costs in sandbox mode (budget mirror shows "∞").
+    const budgetMirror = document.getElementById("td-hud-budget");
+    const isSandbox = budgetMirror?.textContent?.trim() === "∞";
+    if (!isSandbox) {
+      const match = classicBtn.textContent?.match(/\$\d+/);
+      if (match) cost.textContent = match[0];
+    }
     syncPaletteState(cell, classicBtn);
     const observer = new MutationObserver(() => syncPaletteState(cell, classicBtn));
     observer.observe(classicBtn, { attributes: true, attributeFilter: ["disabled", "class"] });

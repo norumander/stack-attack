@@ -1,0 +1,39 @@
+{
+  "label": "Multi-Zone Global",
+  "entryTargetId": "dns1",
+  "components": [
+    { "type": "dns_gtm", "id": "dns1", "label": "DNS/GTM" },
+    { "type": "edge_cache", "id": "ec_na", "label": "Edge Cache NA", "zone": "zone_na" },
+    { "type": "server", "id": "srv_na", "label": "Server NA", "zone": "zone_na" },
+    { "type": "database", "id": "db_na", "label": "DB NA", "zone": "zone_na" },
+    { "type": "edge_cache", "id": "ec_eu", "label": "Edge Cache EU", "zone": "zone_eu" },
+    { "type": "server", "id": "srv_eu", "label": "Server EU", "zone": "zone_eu" },
+    { "type": "database", "id": "db_eu", "label": "DB EU", "zone": "zone_eu" },
+    { "type": "edge_cache", "id": "ec_ap", "label": "Edge Cache AP", "zone": "zone_ap" },
+    { "type": "server", "id": "srv_ap", "label": "Server AP", "zone": "zone_ap" },
+    { "type": "database", "id": "db_ap", "label": "DB AP", "zone": "zone_ap" }
+  ],
+  "connections": [
+    { "from": "dns1", "to": "ec_na" },
+    { "from": "dns1", "to": "ec_eu" },
+    { "from": "dns1", "to": "ec_ap" },
+    { "from": "ec_na", "to": "srv_na" },
+    { "from": "srv_na", "to": "db_na" },
+    { "from": "ec_eu", "to": "srv_eu" },
+    { "from": "srv_eu", "to": "db_eu" },
+    { "from": "ec_ap", "to": "srv_ap" },
+    { "from": "srv_ap", "to": "db_ap" }
+  ],
+  "autoScaleIds": [],
+  "traffic": {
+    "intensity": 90,
+    "composition": {
+      "writeRatio": 0.15,
+      "authRatio": 0,
+      "streamRatio": 0,
+      "largeRatio": 0,
+      "asyncRatio": 0
+    },
+    "keyDistribution": { "kind": "zipf", "alpha": 1.5, "spaceSize": 200 }
+  }
+}
