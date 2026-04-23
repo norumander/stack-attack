@@ -7,6 +7,7 @@
 
 import type { TopologyDef } from "../playtest/topology-builder";
 import type { WaveComposition, WaveKeyDistribution } from "@sim/wave";
+import { toHCL, fromHCL } from "./hcl";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -111,17 +112,44 @@ function createModal(title: string): { overlay: HTMLDivElement; modal: HTMLDivEl
 }
 
 /**
- * Show a read-only export modal with COPY and CLOSE buttons.
+ * Show a read-only export modal with JSON/HCL format toggle.
  */
-export function showExportModal(json: string): Promise<void> {
+export function showExportModal(json: string, topology?: TopologyDef, traffic?: SandboxTrafficSettings): Promise<void> {
+  const hcl = topology ? toHCL(topology, traffic) : "";
+
   return new Promise((resolve) => {
     const { overlay, modal } = createModal("Export Topology");
+
+    // Format toggle
+    let activeFormat: "json" | "hcl" = "json";
+    const tabRow = document.createElement("div");
+    tabRow.className = "cp-sandbox-modal-buttons";
+    tabRow.style.marginBottom = "8px";
+    const jsonTab = document.createElement("button");
+    jsonTab.className = "cp-win-cta";
+    jsonTab.textContent = "JSON";
+    const hclTab = document.createElement("button");
+    hclTab.className = "cp-win-cta cp-win-cta--secondary";
+    hclTab.textContent = "TERRAFORM";
+    if (!topology) hclTab.disabled = true;
+    tabRow.appendChild(jsonTab);
+    tabRow.appendChild(hclTab);
+    modal.appendChild(tabRow);
 
     const textarea = document.createElement("textarea");
     textarea.className = "cp-sandbox-modal-textarea";
     textarea.readOnly = true;
     textarea.value = json;
     modal.appendChild(textarea);
+
+    function setFormat(fmt: "json" | "hcl"): void {
+      activeFormat = fmt;
+      textarea.value = fmt === "json" ? json : hcl;
+      jsonTab.className = fmt === "json" ? "cp-win-cta" : "cp-win-cta cp-win-cta--secondary";
+      hclTab.className = fmt === "hcl" ? "cp-win-cta" : "cp-win-cta cp-win-cta--secondary";
+    }
+    jsonTab.addEventListener("click", () => setFormat("json"));
+    hclTab.addEventListener("click", () => setFormat("hcl"));
 
     const buttons = document.createElement("div");
     buttons.className = "cp-sandbox-modal-buttons";
@@ -130,7 +158,7 @@ export function showExportModal(json: string): Promise<void> {
     copyBtn.className = "cp-win-cta";
     copyBtn.textContent = "COPY";
     copyBtn.addEventListener("click", () => {
-      void navigator.clipboard.writeText(json).catch(() => {
+      void navigator.clipboard.writeText(textarea.value).catch(() => {
         textarea.select();
         document.execCommand("copy");
       });
@@ -140,11 +168,12 @@ export function showExportModal(json: string): Promise<void> {
     saveFileBtn.className = "cp-win-cta cp-win-cta--secondary";
     saveFileBtn.textContent = "SAVE FILE";
     saveFileBtn.addEventListener("click", () => {
-      const blob = new Blob([json], { type: "application/json" });
+      const isHcl = activeFormat === "hcl";
+      const blob = new Blob([textarea.value], { type: isHcl ? "text/plain" : "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "stack-attack-topology.json";
+      a.download = isHcl ? "stack-attack-topology.tf" : "stack-attack-topology.json";
       a.click();
       URL.revokeObjectURL(url);
     });
@@ -164,7 +193,6 @@ export function showExportModal(json: string): Promise<void> {
 
     document.body.appendChild(overlay);
 
-    // Also close on overlay click
     overlay.addEventListener("click", (e) => {
       if (e.target === overlay) {
         document.body.removeChild(overlay);
@@ -184,13 +212,22 @@ export function showImportModal(): Promise<SandboxImportResult | null> {
 
     const textarea = document.createElement("textarea");
     textarea.className = "cp-sandbox-modal-textarea";
-    textarea.placeholder = "Paste exported JSON here…";
+    textarea.placeholder = "Paste JSON or Terraform HCL here…";
     modal.appendChild(textarea);
 
     const errorEl = document.createElement("p");
     errorEl.className = "cp-sandbox-modal-error";
     errorEl.style.display = "none";
     modal.appendChild(errorEl);
+
+    /** Try parsing as JSON first, then HCL. */
+    function tryParse(text: string): SandboxImportResult | null {
+      const jsonResult = importTopology(text);
+      if (jsonResult) return jsonResult;
+      const hclResult = fromHCL(text);
+      if (hclResult) return hclResult;
+      return null;
+    }
 
     const buttons = document.createElement("div");
     buttons.className = "cp-sandbox-modal-buttons";
@@ -199,9 +236,9 @@ export function showImportModal(): Promise<SandboxImportResult | null> {
     loadBtn.className = "cp-win-cta";
     loadBtn.textContent = "LOAD";
     loadBtn.addEventListener("click", () => {
-      const result = importTopology(textarea.value);
+      const result = tryParse(textarea.value);
       if (result === null) {
-        errorEl.textContent = "Invalid topology JSON — check the format and try again.";
+        errorEl.textContent = "Invalid format — accepts JSON or Terraform HCL.";
         errorEl.style.display = "";
         return;
       }
@@ -215,7 +252,7 @@ export function showImportModal(): Promise<SandboxImportResult | null> {
     loadFileBtn.addEventListener("click", () => {
       const fileInput = document.createElement("input");
       fileInput.type = "file";
-      fileInput.accept = ".json";
+      fileInput.accept = ".json,.tf";
       fileInput.addEventListener("change", () => {
         const file = fileInput.files?.[0];
         if (!file) return;
@@ -224,9 +261,9 @@ export function showImportModal(): Promise<SandboxImportResult | null> {
           const text = reader.result as string;
           textarea.value = text;
           errorEl.style.display = "none";
-          const result = importTopology(text);
+          const result = tryParse(text);
           if (result === null) {
-            errorEl.textContent = "Invalid topology JSON — check the format and try again.";
+            errorEl.textContent = "Invalid format — accepts JSON or Terraform HCL.";
             errorEl.style.display = "";
             return;
           }

@@ -506,7 +506,7 @@ async function main(): Promise<void> {
     };
 
     const json = exportTopology(topology, traffic);
-    void showExportModal(json);
+    void showExportModal(json, topology, traffic);
   });
 
   // ─── Shared import logic (used by both Import and Reset) ─────────────
