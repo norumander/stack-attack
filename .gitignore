@@ -10,3 +10,4 @@ coverage/
 .claude/settings.local.json
 .mcp.json
 .rejects/
+.claude/worktrees/
