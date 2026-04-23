@@ -28,13 +28,18 @@ async function boot(): Promise<void> {
     return; // dev bypass: let user navigate freely without Supabase
   }
 
+  // Block the CTA up-front while the session resolves. If Supabase restores
+  // a saved session we hide the overlay; otherwise the user stays blocked
+  // until they sign in. This prevents a race where the user clicks PLAY
+  // before resolveInitialSession() returns and gets bounced back by
+  // levels-boot's auth gate.
+  showLoginOverlay();
   const user = await resolveInitialSession();
 
   if (!user) {
-    showLoginOverlay();
     await waitForAuth();
-    hideLoginOverlay();
   }
+  hideLoginOverlay();
 
   // Profile fetch runs in the background (auth-state.ts emits profile_ready
   // separately from signed_in). Wait for it here so we don't flash the

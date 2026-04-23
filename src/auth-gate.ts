@@ -1,5 +1,5 @@
 import type { User } from "@supabase/supabase-js";
-import { getUser, onAuthChange } from "./auth/index";
+import { getUser, onAuthChange, supabase } from "./auth/index";
 
 /**
  * Resolve the initial Supabase session on page load.
@@ -16,14 +16,24 @@ import { getUser, onAuthChange } from "./auth/index";
  * exceeding the ceiling means Supabase isn't going to respond at all, so we
  * resolve null and let the boot-script redirect to the landing page.
  */
-export function resolveInitialSession(timeoutMs = 3000): Promise<User | null> {
-  return new Promise((resolve) => {
-    const existing = getUser();
-    if (existing) {
-      resolve(existing);
-      return;
-    }
+export async function resolveInitialSession(
+  timeoutMs = 3000,
+): Promise<User | null> {
+  // Fast path: Supabase's in-memory/localStorage session (set by the URL-hash
+  // processor after OAuth redirects). Avoids a race where INITIAL_SESSION
+  // fires through onAuthStateChange before downstream code subscribes to our
+  // internal pub/sub — symptom: login overlay stays up after a successful
+  // Google sign-in on production.
+  const existingUser = getUser();
+  if (existingUser) return existingUser;
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.user) return data.session.user;
+  } catch {
+    // fall through to event-based wait
+  }
 
+  return new Promise((resolve) => {
     let settled = false;
     const finish = (user: User | null) => {
       if (settled) return;
