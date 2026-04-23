@@ -188,7 +188,11 @@
       letter-spacing: 0.04em;
     }
     .meta .record--cleared {
-      color: var(--pi-lime);
+      color: #FFF1E8;
+      background: var(--pi-dkgreen);
+      display: inline-block;
+      padding: 2px 8px;
+      margin-top: 8px;
     }
     .meta .record--progress {
       color: var(--pi-cyan);
@@ -207,6 +211,16 @@
     .meta .reset-btn:hover {
       background: var(--pi-red);
       color: var(--pi-cream);
+    }
+    .card .cleared-star {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      font-size: 60px;
+      line-height: 1;
+      filter: drop-shadow(0 0 6px rgba(255, 236, 39, 0.6));
+      z-index: 2;
+      pointer-events: none;
     }
 
     .tag {
@@ -290,7 +304,7 @@
           <div class="name">URL SHORTENER</div>
           <span class="badge badge--easy">EASY</span>
           <div class="desc">bit.ly-style redirects. 95%+ reads, viral hot keys. 4 waves: launch → Reddit front page → analytics → global. Edge Cache is the star.</div>
-          <div class="record">⭐ no record · target 99.5%</div>
+          <div class="record">no record · target 99.5%</div>
         </div>
         <span class="tag">GO</span>
       </a>
@@ -303,7 +317,7 @@
           <div class="name">BUILD NETFLIX</div>
           <span class="badge badge--hard">HARD</span>
           <div class="desc">Peak-hour streaming. Writes, reads, and viewers all want the same hot titles. Scale before the SLA drops.</div>
-          <div class="record">⭐ no record · target 99.5%</div>
+          <div class="record">no record · target 99.5%</div>
         </div>
         <span class="tag">GO</span>
       </a>
@@ -319,7 +333,7 @@
           <div class="name">CELEBRITY POST</div>
           <span class="badge badge--easy">DIAG 01</span>
           <div class="desc">A celebrity just posted. Hot traffic is hammering one profile. Find the bottleneck, fix it before the SLA breaks.</div>
-          <div class="record">⭐ no record · target 99.5%</div>
+          <div class="record">no record · target 99.5%</div>
         </div>
         <span class="tag">FIX</span>
       </a>
@@ -332,7 +346,7 @@
           <div class="name">SUNSET UPLOAD WAVE</div>
           <span class="badge badge--medium">DIAG 02</span>
           <div class="desc">Golden hour = mass uploads. Your Streaming Server is idle while API Servers drown. What's the rewire?</div>
-          <div class="record">⭐ no record · target 99.5%</div>
+          <div class="record">no record · target 99.5%</div>
         </div>
         <span class="tag">FIX</span>
       </a>
@@ -345,7 +359,7 @@
           <div class="name">NOTIFICATIONS AVALANCHE</div>
           <span class="badge badge--medium">DIAG 03</span>
           <div class="desc">Breaking news event → likes + notifications flood. Queues backing up. Workers can't keep up.</div>
-          <div class="record">⭐ no record · target 99.5%</div>
+          <div class="record">no record · target 99.5%</div>
         </div>
         <span class="tag">FIX</span>
       </a>
@@ -358,7 +372,7 @@
           <div class="name">COLD ZONE SYNDROME</div>
           <span class="badge badge--hard">DIAG 04</span>
           <div class="desc">Growing in Asia. Pings from Tokyo take 800ms. Stand up an APAC replica and route with DNS/GTM.</div>
-          <div class="record">⭐ no record · target 99.5%</div>
+          <div class="record">no record · target 99.5%</div>
         </div>
         <span class="tag">FIX</span>
       </a>
@@ -371,7 +385,7 @@
           <div class="name">THE CASCADIA EVENT</div>
           <span class="badge badge--hard">DIAG 05</span>
           <div class="desc">Major event viral moment. Infrastructure stressed, chaos events incoming. This is what you've been training for.</div>
-          <div class="record">⭐ no record · target 99.5%</div>
+          <div class="record">no record · target 99.5%</div>
         </div>
         <span class="tag">FIX</span>
       </a>
@@ -384,7 +398,7 @@
           <div class="name">MEMBER HOME PAGE</div>
           <span class="badge badge--easy">DIAG 06</span>
           <div class="desc">Netflix members loading their personalized home page. Millions of concurrent sessions. One database is drowning.</div>
-          <div class="record">⭐ no record · target 99.5%</div>
+          <div class="record">no record · target 99.5%</div>
         </div>
         <span class="tag">FIX</span>
       </a>
@@ -397,7 +411,7 @@
           <div class="name">TRENDING TITLE</div>
           <span class="badge badge--medium">DIAG 07</span>
           <div class="desc">A new series just dropped and it's trending. Your CDN has never seen this content before. Every miss slams your origin.</div>
-          <div class="record">⭐ no record · target 99.5%</div>
+          <div class="record">no record · target 99.5%</div>
         </div>
         <span class="tag">FIX</span>
       </a>
@@ -410,7 +424,7 @@
           <div class="name">LIVE EVENT</div>
           <span class="badge badge--medium">DIAG 08</span>
           <div class="desc">Live-streamed boxing match starts in 60 seconds. Your streaming pipeline was sized for lazy VOD traffic.</div>
-          <div class="record">⭐ no record · target 99.5%</div>
+          <div class="record">no record · target 99.5%</div>
         </div>
         <span class="tag">FIX</span>
       </a>
@@ -423,7 +437,7 @@
           <div class="name">ASIAN EXPANSION</div>
           <span class="badge badge--hard">DIAG 09</span>
           <div class="desc">Netflix launched in Singapore. 150 million subscribers 12,000 miles from your US servers. Speed of light is a hard limit.</div>
-          <div class="record">⭐ no record · target 99.5%</div>
+          <div class="record">no record · target 99.5%</div>
         </div>
         <span class="tag">FIX</span>
       </a>
@@ -436,13 +450,12 @@
           <div class="name">THE SQUID GAME EVENT</div>
           <span class="badge badge--hard">DIAG 10</span>
           <div class="desc">Squid Game drops globally. Viewers 10x normal. Chaos events incoming. The next 15 seconds decide whether Netflix survives the night.</div>
-          <div class="record">⭐ no record · target 99.5%</div>
+          <div class="record">no record · target 99.5%</div>
         </div>
         <span class="tag">FIX</span>
       </a>
     </nav>
   </div>
-  <script type="module" src="./crt-overlay.ts"></script>
   <script type="module" src="./levels-boot.ts"></script>
   <script>
     // Show completion and in-progress state for campaign levels
@@ -461,6 +474,14 @@
           }
           var tag = card.querySelector(".tag");
           if (tag) tag.textContent = "REPLAY";
+          // Add big star in upper right corner
+          if (!card.querySelector(".cleared-star")) {
+            var star = document.createElement("span");
+            star.className = "cleared-star";
+            star.textContent = "\u2B50";
+            star.setAttribute("aria-label", "Cleared");
+            card.appendChild(star);
+          }
         } catch (e) { /* ignore bad data */ }
       }
 

@@ -1,11 +1,13 @@
 /**
- * Campaign progress save/restore via localStorage.
+ * Campaign progress save/restore via localStorage + Supabase cloud sync.
  *
- * Saves after each wave win. Restores on page load if saved progress
- * exists for this level. Cleared on viability death (campaign fail).
+ * Saves to localStorage immediately (fast, works offline). If Supabase is
+ * configured and a user is signed in, also upserts to the cloud table.
+ * On load, checks cloud first (last write wins), falls back to local.
  */
 
 import type { ComponentId } from "@core/types/ids";
+import { supabase, isAuthConfigured } from "../auth/supabase-client";
 
 export interface SavedTopologyComponent {
   type: string;
@@ -35,6 +37,87 @@ export interface CampaignSave {
 function storageKey(levelId: string): string {
   return `stackattack:campaign:${levelId}`;
 }
+
+// ── Cloud helpers ────────────────────────────────────────────────────
+
+async function getAuthUserId(): Promise<string | null> {
+  if (!isAuthConfigured) return null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    return data.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function cloudSave(userId: string, save: CampaignSave): Promise<void> {
+  try {
+    await supabase.from("campaign_progress").upsert(
+      {
+        user_id: userId,
+        level_id: save.levelId,
+        wave_index: save.waveIndex,
+        budget: save.budget,
+        viability: save.viability,
+        topology: {
+          components: save.components,
+          connections: save.connections,
+          clientPos: save.clientPos,
+          clientEntryIndex: save.clientEntryIndex,
+        },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,level_id" },
+    );
+  } catch (err) {
+    console.warn("[progress-save] cloud save failed:", err);
+  }
+}
+
+async function cloudLoad(userId: string, levelId: string): Promise<CampaignSave | null> {
+  try {
+    const { data } = await supabase
+      .from("campaign_progress")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("level_id", levelId)
+      .single();
+    if (!data) return null;
+    const topo = data.topology as {
+      components?: SavedTopologyComponent[];
+      connections?: SavedConnection[];
+      clientPos?: { x: number; y: number };
+      clientEntryIndex?: number;
+    };
+    const result: CampaignSave = {
+      levelId: data.level_id,
+      waveIndex: data.wave_index,
+      budget: data.budget,
+      viability: data.viability ?? 100,
+      components: topo.components ?? [],
+      connections: topo.connections ?? [],
+    };
+    if (topo.clientPos) result.clientPos = topo.clientPos;
+    if (topo.clientEntryIndex !== undefined) result.clientEntryIndex = topo.clientEntryIndex;
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+async function cloudDelete(userId: string, levelId: string): Promise<void> {
+  try {
+    await supabase
+      .from("campaign_progress")
+      .delete()
+      .eq("user_id", userId)
+      .eq("level_id", levelId);
+  } catch (err) {
+    console.warn("[progress-save] cloud delete failed:", err);
+  }
+}
+
+// ── Public API ───────────────────────────────────────────────────────
 
 export function saveCampaignProgress(
   levelId: string,
@@ -76,7 +159,6 @@ export function saveCampaignProgress(
     const fromStr = conn.from.componentId as unknown as string;
     const toStr = conn.to.componentId as unknown as string;
     if (fromStr === (clientId as unknown as string)) {
-      // Save which component the client connects to.
       const toIdx = idToIndex.get(toStr);
       if (toIdx !== undefined) clientEntryIndex = toIdx;
       continue;
@@ -106,10 +188,50 @@ export function saveCampaignProgress(
     clientEntryIndex,
   };
 
+  // Save to localStorage immediately.
   localStorage.setItem(storageKey(levelId), JSON.stringify(save));
+
+  // Fire-and-forget cloud save if authenticated.
+  void getAuthUserId().then((userId) => {
+    if (userId) void cloudSave(userId, save);
+  });
 }
 
-export function loadCampaignProgress(levelId: string): CampaignSave | null {
+/**
+ * Load campaign progress. Checks cloud first (last write wins),
+ * falls back to localStorage.
+ */
+export async function loadCampaignProgress(levelId: string): Promise<CampaignSave | null> {
+  // Try cloud first if authenticated.
+  const userId = await getAuthUserId();
+  if (userId) {
+    const cloudData = await cloudLoad(userId, levelId);
+    if (cloudData) {
+      // Sync to localStorage so offline access works.
+      localStorage.setItem(storageKey(levelId), JSON.stringify(cloudData));
+      return cloudData;
+    }
+  }
+
+  // Fall back to localStorage.
+  const raw = localStorage.getItem(storageKey(levelId));
+  if (!raw) return null;
+  try {
+    const save = JSON.parse(raw) as CampaignSave;
+    if (!save.levelId || save.waveIndex === undefined || !Array.isArray(save.components)) {
+      return null;
+    }
+    return save;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Synchronous localStorage-only load. Used in places that can't await
+ * (e.g., death modal checking for wave-start save).
+ */
+export function loadCampaignProgressSync(levelId: string): CampaignSave | null {
   const raw = localStorage.getItem(storageKey(levelId));
   if (!raw) return null;
   try {
@@ -125,4 +247,9 @@ export function loadCampaignProgress(levelId: string): CampaignSave | null {
 
 export function clearCampaignProgress(levelId: string): void {
   localStorage.removeItem(storageKey(levelId));
+
+  // Fire-and-forget cloud delete if authenticated.
+  void getAuthUserId().then((userId) => {
+    if (userId) void cloudDelete(userId, levelId);
+  });
 }

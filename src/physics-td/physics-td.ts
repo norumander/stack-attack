@@ -16,7 +16,7 @@ import { CAMPAIGN_WAVES, computeBriefingForCampaignWave, type CampaignWave } fro
 import { BITLY_WAVES } from "./bitly-waves";
 import { PlacementUX } from "./placement-ux";
 import { ConnectUX } from "./connect-ux";
-import { saveCampaignProgress, loadCampaignProgress, clearCampaignProgress, type CampaignSave } from "./progress-save";
+import { saveCampaignProgress, loadCampaignProgress, loadCampaignProgressSync, clearCampaignProgress, type CampaignSave } from "./progress-save";
 import { wireWorkers } from "./wire-workers";
 import { wireContentRouters } from "./wire-content-routers";
 import * as hud from "./hud-bridge";
@@ -641,47 +641,34 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     title.textContent = `WAVE ${waveIndex + 1} CLEARED`;
     modal.appendChild(title);
 
+    // ─── Performance summary ───────────────────────────────────────────
     const stats = document.createElement("div");
-    stats.className = "cp-win-stats";
-    const earnedRow = document.createElement("div");
-    earnedRow.className = "cp-win-stat";
-    earnedRow.textContent = `Earned  $${Math.round(metrics.revenue)}`;
-    stats.appendChild(earnedRow);
-    const slaRow = document.createElement("div");
-    slaRow.className = "cp-win-stat";
-    slaRow.textContent = `Avail   ${(lastWaveAvailability * 100).toFixed(1)}%`;
-    stats.appendChild(slaRow);
-    const latRow = document.createElement("div");
-    latRow.className = "cp-win-stat";
-    latRow.textContent = `Latency ${lastWaveAvgLatency.toFixed(2)}s`;
-    stats.appendChild(latRow);
+    stats.className = "cp-win-preview";
+    stats.appendChild(winPreviewRow("Availability", `${(lastWaveAvailability * 100).toFixed(1)}%`));
+    stats.appendChild(winPreviewRow("Avg Latency", `${lastWaveAvgLatency.toFixed(2)}s`));
+    stats.appendChild(winPreviewRow("Revenue", `$${Math.round(metrics.revenue)}`));
     if (lastWavePenalty > 0) {
-      const penaltyRow = document.createElement("div");
-      penaltyRow.className = "cp-win-stat";
-      const causes: string[] = [];
-      if (lastWaveAvailShortfall > 0) causes.push(`avail −${lastWaveAvailShortfall.toFixed(1)}pt`);
-      if (lastWaveLatencyOvershoot > 0) causes.push(`lat +${lastWaveLatencyOvershoot.toFixed(0)}%`);
-      const cause = causes.length > 0 ? ` (${causes.join(", ")})` : "";
-      penaltyRow.textContent = `Penalty −$${lastWavePenalty}${cause}`;
-      stats.appendChild(penaltyRow);
+      stats.appendChild(winPreviewRow("SLA Penalty", `−$${lastWavePenalty}`));
     }
-    const budgetRow = document.createElement("div");
-    budgetRow.className = "cp-win-stat";
-    budgetRow.textContent = `Budget  $${controller.budget}`;
-    stats.appendChild(budgetRow);
+    stats.appendChild(winPreviewRow("Budget", `$${controller.budget}`));
+    stats.appendChild(winPreviewRow("Viability", `${viability.value}%`));
     modal.appendChild(stats);
 
-    // Per-component "served requests" breakdown (shows whether cache/CDN actually absorbed traffic).
+    // ─── Requests handled per component ──────────────────────────────
     if (lastWaveProcessedByComponent.size > 0) {
       const servedHeader = document.createElement("div");
       servedHeader.className = "cp-win-next-header";
-      servedHeader.textContent = "SERVED BY";
+      servedHeader.textContent = "REQUESTS HANDLED";
       modal.appendChild(servedHeader);
       const servedList = document.createElement("div");
-      servedList.className = "cp-win-preview-rows";
-      for (const [compId, count] of lastWaveProcessedByComponent) {
-        const type = componentTypes.get(compId) ?? (compId as unknown as string);
-        servedList.appendChild(winPreviewRow(type, String(count)));
+      servedList.className = "cp-win-preview";
+      // Sort by count descending and use labels.
+      const sorted = [...lastWaveProcessedByComponent.entries()]
+        .filter(([id]) => (id as unknown as string) !== (CLIENT_ID as unknown as string))
+        .sort((a, b) => b[1] - a[1]);
+      for (const [compId, count] of sorted) {
+        const label = componentLabels.get(compId) ?? componentTypes.get(compId) ?? "?";
+        servedList.appendChild(winPreviewRow(label, `${count} reqs`));
       }
       modal.appendChild(servedList);
     }
@@ -929,7 +916,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     // (= the save from winning the previous wave).
     const deathLvl = (window as unknown as { __stackAttackLevelId?: StackAttackLevelId | null })
       .__stackAttackLevelId;
-    const waveStartSave = deathLvl ? loadCampaignProgress(deathLvl) : null;
+    const waveStartSave = deathLvl ? loadCampaignProgressSync(deathLvl) : null;
     if (waveStartSave) {
       const resetWaveBtn = document.createElement("button");
       resetWaveBtn.type = "button";
@@ -1127,7 +1114,7 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
   // ─── Check for saved progress ──────────────────────────────────────
   const savedLevelId = (window as unknown as { __stackAttackLevelId?: StackAttackLevelId | null })
     .__stackAttackLevelId;
-  const savedProgress = savedLevelId ? loadCampaignProgress(savedLevelId) : null;
+  const savedProgress = savedLevelId ? await loadCampaignProgress(savedLevelId) : null;
 
   if (savedProgress && savedProgress.waveIndex > 0 && savedProgress.waveIndex < waves.length) {
     // Show resume modal.
