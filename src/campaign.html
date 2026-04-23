@@ -63,31 +63,39 @@
       gap: 20px;
     }
 
+    /* Card is a static panel — only the action buttons are clickable. */
     .card {
       position: relative;
-      display: grid;
-      grid-template-columns: 72px 1fr auto;
-      gap: 16px;
-      align-items: center;
-      padding: 20px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 20px 22px 22px;
+      min-height: 260px;
       background: var(--pi-cyan);
       color: var(--pi-bg-2);
       border: 3px solid var(--pi-ink);
       box-shadow: 6px 6px 0 var(--pi-magenta);
-      text-decoration: none;
-      transition: transform 80ms steps(2), filter 80ms steps(2);
     }
-    .card:hover { transform: translate(-2px, -2px); filter: brightness(1.05); }
-    .card:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--pi-magenta); }
-    .card:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
+    /* Equal-height cards across each grid row so the action row at the
+       bottom of each card lines up visually. */
+    .grid { grid-auto-rows: 1fr; }
+
+    /* Icon + title + difficulty badge in a single row, vertically centered. */
+    .card-head {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 14px;
+    }
 
     .portrait {
-      width: 72px; height: 72px;
+      width: 64px; height: 64px;
       background: var(--pi-cream);
       border: 3px solid var(--pi-bg-2);
       display: grid;
       place-items: center;
       overflow: hidden;
+      flex: 0 0 auto;
     }
     .portrait--brand {
       padding: 0;
@@ -98,30 +106,30 @@
     .portrait--bitly {
       background: #ee6123;
       color: var(--pi-cream);
-      font-size: 10px;
+      font-size: 8px;
       letter-spacing: 0;
-      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.35);
     }
     .portrait--bitly .brand { display: block; padding: 0 2px; white-space: nowrap; }
     .portrait--netflix {
       background: var(--pi-ink);
       color: #e50914;
-      font-size: 44px;
+      font-size: 42px;
       font-weight: 700;
       letter-spacing: -0.05em;
-      text-shadow: 3px 3px 0 #8a0008, 5px 5px 0 rgba(0, 0, 0, 0.9);
+      text-shadow: 3px 3px 0 #8a0008, 4px 4px 0 rgba(0, 0, 0, 0.9);
     }
 
-    .meta .name {
+    .name {
       font-family: var(--pi-font-display);
       font-size: 16px;
       color: var(--pi-bg-2);
       letter-spacing: 0.04em;
+      flex: 1;
     }
 
     .badge {
       display: inline-block;
-      margin-top: 10px;
       padding: 5px 9px;
       font-family: var(--pi-font-display);
       font-size: 9px;
@@ -130,44 +138,101 @@
       box-shadow: 3px 3px 0 var(--pi-bg-2);
       letter-spacing: 0.16em;
     }
-    .badge--easy { background: var(--pi-lime); }
-    .badge--hard { background: var(--pi-red); color: var(--pi-cream); }
+    .badge--easy   { background: var(--pi-lime); }
+    .badge--medium { background: var(--pi-orange); }
+    .badge--hard   { background: var(--pi-red); color: var(--pi-cream); }
 
-    .meta .desc {
+    .desc {
       font-family: var(--pi-font-body);
       font-size: 18px;
       color: var(--pi-bg-2);
-      margin-top: 8px;
+      margin: 0;
       letter-spacing: 0.02em;
       line-height: 1.3;
     }
-    .meta .record {
+    .record {
       font-family: var(--pi-font-body);
       font-size: 15px;
       color: var(--pi-magenta);
-      margin-top: 8px;
       letter-spacing: 0.04em;
     }
-    .meta .record--cleared {
+    .record--cleared {
       color: #FFF1E8;
       background: var(--pi-dkgreen);
       display: inline-block;
       padding: 2px 8px;
-      margin-top: 8px;
     }
-    .meta .record--progress { color: var(--pi-cyan); }
-    .meta .reset-btn {
-      margin-top: 6px;
-      padding: 4px 10px;
+    .record--progress { color: var(--pi-bg-2); font-weight: 700; }
+
+    /* Action row — primary GO/CONTINUE, optional RESET in matching pico-8
+       style. Pinned to the bottom of the card via `margin-top: auto` so the
+       buttons sit at a fixed offset from the card's bottom edge regardless
+       of description length. RESET goes to the LEFT of CONTINUE. */
+    .card-actions {
+      display: flex;
+      flex-direction: row;
+      gap: 12px;
+      align-items: center;
+      justify-content: center;
+      margin-top: auto;
+    }
+    .card-btn {
       font-family: var(--pi-font-display);
-      font-size: 8px;
-      letter-spacing: 0.15em;
-      color: var(--pi-red);
-      background: transparent;
-      border: 1px solid var(--pi-red);
+      font-size: 11px;
+      padding: 10px 16px;
+      letter-spacing: 0.12em;
+      text-decoration: none;
       cursor: pointer;
+      border: 3px solid var(--pi-bg-2);
+      box-shadow: 3px 3px 0 var(--pi-bg-2);
+      transition: transform 80ms steps(2), filter 80ms steps(2);
     }
-    .meta .reset-btn:hover { background: var(--pi-red); color: var(--pi-cream); }
+    .card-btn:hover { filter: brightness(1.08); transform: translate(-1px, -1px); }
+    .card-btn:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--pi-bg-2); }
+    .card-btn:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
+    .card-btn--primary { background: var(--pi-lime); color: var(--pi-bg-2); }
+    .card-btn--reset   { background: var(--pi-red);  color: var(--pi-cream); }
+    .card-btn--locked  {
+      background: var(--pi-lavender);
+      color: var(--pi-bg-2);
+      cursor: not-allowed;
+    }
+    .card-btn--locked:hover { filter: none; transform: none; }
+    .card-btn--locked:active { transform: none; box-shadow: 3px 3px 0 var(--pi-bg-2); }
+
+    /* Locked / coming-soon cards: dimmed via a single grayscale + brightness
+       filter (the original approach). Now that .badge--medium has its own
+       background rule (orange), the badge keeps its color identity through
+       the filter — what previously read as "blue" was the badge being
+       transparent and showing the cyan card through it. */
+    .card--locked { filter: grayscale(0.6) brightness(0.78); }
+
+    /* Brand portraits for upcoming interview-style levels. */
+    .portrait--x {
+      background: var(--pi-ink);
+      color: var(--pi-cream);
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+    }
+    .portrait--uber {
+      background: var(--pi-ink);
+      color: var(--pi-cream);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
+    }
+    .portrait--whatsapp {
+      background: #25D366;
+      color: var(--pi-cream);
+      font-size: 21px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+    }
+
     .card .cleared-star {
       position: absolute;
       top: -8px;
@@ -179,26 +244,62 @@
       pointer-events: none;
     }
 
-    .tag {
-      font-family: var(--pi-font-display);
-      font-size: 11px;
-      padding: 10px 14px;
-      background: var(--pi-lime);
-      color: var(--pi-bg-2);
-      border: 3px solid var(--pi-bg-2);
-      box-shadow: 3px 3px 0 var(--pi-bg-2);
-      letter-spacing: 0.12em;
-    }
-
     @media (prefers-reduced-motion: reduce) {
-      .card, .card:hover, .card:focus-visible, .card:active {
+      .card-btn, .card-btn:hover, .card-btn:focus-visible, .card-btn:active {
         transition: none !important;
         transform: none !important;
       }
     }
+
+    /* Loading screen — covers the page until fonts + boot finish so the user
+       isn't staring at unstyled-text reflow during the auth gate. Fades out
+       once everything's ready. Uses system monospace for the label so it
+       renders the instant the page paints. */
+    .loading-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: var(--pi-bg-2);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      transition: opacity 240ms ease-out;
+    }
+    .loading-screen.is-ready { opacity: 0; pointer-events: none; }
+    .loading-text {
+      font-family: "Press Start 2P", "Courier New", monospace;
+      font-size: 14px;
+      letter-spacing: 0.24em;
+      color: var(--pi-cream);
+    }
+    .loading-bar {
+      width: 260px;
+      height: 18px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 3px solid var(--pi-ink);
+      box-shadow: 4px 4px 0 var(--pi-magenta);
+      overflow: hidden;
+    }
+    .loading-bar-fill {
+      height: 100%;
+      width: 0;
+      background: var(--pi-orange);
+      animation: cp-load-fill 1.4s steps(20, end) forwards;
+    }
+    @keyframes cp-load-fill {
+      0%   { width: 0; }
+      100% { width: 100%; }
+    }
   </style>
 </head>
 <body>
+  <div id="loading-screen" class="loading-screen" aria-hidden="true">
+    <div class="loading-text">LOADING…</div>
+    <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+  </div>
+
   <div class="page">
     <div class="top">
       <a class="back" href="./levels.html">&lt; BACK</a>
@@ -207,36 +308,103 @@
     <h1 class="title">CAMPAIGN</h1>
     <p class="tagline">BUILD FROM SCRATCH</p>
 
-    <nav class="grid" aria-label="Campaign levels">
-      <a class="card" href="./game.html?level=url-shortener" data-level="url-shortener">
-        <div class="portrait portrait--brand portrait--bitly" aria-label="bit.ly">
-          <span class="brand">bit.ly</span>
-        </div>
-        <div class="meta">
+    <section class="grid" aria-label="Campaign levels">
+      <article class="card" data-level="url-shortener">
+        <header class="card-head">
+          <div class="portrait portrait--brand portrait--bitly" aria-label="bit.ly">
+            <span class="brand">bit.ly</span>
+          </div>
           <div class="name">URL SHORTENER</div>
           <span class="badge badge--easy">EASY</span>
-          <div class="desc">bit.ly-style redirects. 95%+ reads, viral hot keys. 4 waves: launch → Reddit front page → analytics → global. Edge Cache is the star.</div>
-          <div class="record">no record · target 99.5%</div>
+        </header>
+        <p class="desc">bit.ly-style redirects. 95%+ reads, viral hot keys. 4 waves: launch → Reddit front page → analytics → global. Edge Cache is the star.</p>
+        <div class="record">no record · target 99.5%</div>
+        <div class="card-actions">
+          <a class="card-btn card-btn--primary" href="./game.html?level=url-shortener">GO</a>
         </div>
-        <span class="tag">GO</span>
-      </a>
+      </article>
 
-      <a class="card" href="./game.html?level=netflix" data-level="netflix">
-        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix">
-          <span class="brand">N</span>
+      <article class="card card--locked" aria-label="Build X — coming soon">
+        <header class="card-head">
+          <div class="portrait portrait--brand portrait--x" aria-label="X">
+            <span class="brand">X</span>
+          </div>
+          <div class="name">BUILD X</div>
+          <span class="badge badge--medium">MEDIUM</span>
+        </header>
+        <p class="desc">Fan-out vs pull. A celebrity post means millions of timeline writes. Cache the timelines, batch the inserts, keep reads cheap.</p>
+        <div class="record">interview classic</div>
+        <div class="card-actions">
+          <span class="card-btn card-btn--locked">COMING SOON</span>
         </div>
-        <div class="meta">
+      </article>
+
+      <article class="card" data-level="netflix">
+        <header class="card-head">
+          <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix">
+            <span class="brand">N</span>
+          </div>
           <div class="name">BUILD NETFLIX</div>
           <span class="badge badge--hard">HARD</span>
-          <div class="desc">Peak-hour streaming. Writes, reads, and viewers all want the same hot titles. Scale before the SLA drops.</div>
-          <div class="record">no record · target 99.5%</div>
+        </header>
+        <p class="desc">Peak-hour streaming. Writes, reads, and viewers all want the same hot titles. Scale before the SLA drops.</p>
+        <div class="record">no record · target 99.5%</div>
+        <div class="card-actions">
+          <a class="card-btn card-btn--primary" href="./game.html?level=netflix">GO</a>
         </div>
-        <span class="tag">GO</span>
-      </a>
-    </nav>
+      </article>
+
+      <article class="card card--locked" aria-label="Build Uber — coming soon">
+        <header class="card-head">
+          <div class="portrait portrait--brand portrait--uber" aria-label="Uber">
+            <span class="brand">UBER</span>
+          </div>
+          <div class="name">BUILD UBER</div>
+          <span class="badge badge--hard">HARD</span>
+        </header>
+        <p class="desc">Real-time location updates and driver-rider matching. Geospatial index, low-latency dispatch, surge pricing under load.</p>
+        <div class="record">interview classic</div>
+        <div class="card-actions">
+          <span class="card-btn card-btn--locked">COMING SOON</span>
+        </div>
+      </article>
+
+      <article class="card card--locked" aria-label="Build WhatsApp — coming soon">
+        <header class="card-head">
+          <div class="portrait portrait--brand portrait--whatsapp" aria-label="WhatsApp">
+            <span class="brand">WA</span>
+          </div>
+          <div class="name">BUILD WHATSAPP</div>
+          <span class="badge badge--hard">HARD</span>
+        </header>
+        <p class="desc">Messaging at scale. Group chats, presence, delivery receipts, fan-out to millions of devices without melting the queue.</p>
+        <div class="record">interview classic</div>
+        <div class="card-actions">
+          <span class="card-btn card-btn--locked">COMING SOON</span>
+        </div>
+      </article>
+    </section>
   </div>
   <script type="module" src="./crt-overlay.ts"></script>
   <script type="module" src="./campaign-boot.ts"></script>
+  <script>
+    // Dismiss the loading screen once fonts have loaded AND the page has
+    // settled. Minimum 1.4s so the loading-bar fill animation completes
+    // before we fade out — looks intentional, not a flash.
+    (function () {
+      var screen = document.getElementById("loading-screen");
+      if (!screen) return;
+      var minDelay = new Promise(function (r) { setTimeout(r, 1400); });
+      var fontsReady = (document.fonts && document.fonts.ready) || Promise.resolve();
+      var pageLoaded = document.readyState === "complete"
+        ? Promise.resolve()
+        : new Promise(function (r) { window.addEventListener("load", function () { r(); }, { once: true }); });
+      Promise.all([minDelay, fontsReady, pageLoaded]).then(function () {
+        screen.classList.add("is-ready");
+        setTimeout(function () { screen.remove(); }, 280);
+      });
+    })();
+  </script>
   <script>
     // Show completion and in-progress state for campaign levels
     document.querySelectorAll("[data-level]").forEach(function(card) {
@@ -252,8 +420,8 @@
             record.className = "record record--cleared";
             record.textContent = "CLEARED · viability " + (data.viabilityRemaining ?? "?") + "% · " + (data.waves ?? "?") + " waves";
           }
-          var tag = card.querySelector(".tag");
-          if (tag) tag.textContent = "REPLAY";
+          var primary = card.querySelector(".card-btn--primary");
+          if (primary) primary.textContent = "REPLAY";
           if (!card.querySelector(".cleared-star")) {
             var star = document.createElement("span");
             star.className = "cleared-star";
@@ -274,15 +442,15 @@
             record.className = "record record--progress";
             record.textContent = "IN PROGRESS · Wave " + (save.waveIndex + 1);
           }
-          var tag = card.querySelector(".tag");
-          if (tag && !completedRaw) tag.textContent = "CONTINUE";
+          var primary = card.querySelector(".card-btn--primary");
+          if (primary && !completedRaw) primary.textContent = "CONTINUE";
 
-          var meta = card.querySelector(".meta");
-          if (meta && !meta.querySelector(".reset-btn")) {
+          var actions = card.querySelector(".card-actions");
+          if (actions && !actions.querySelector(".card-btn--reset")) {
             var resetBtn = document.createElement("button");
             resetBtn.type = "button";
-            resetBtn.className = "reset-btn";
-            resetBtn.textContent = "RESET PROGRESS";
+            resetBtn.className = "card-btn card-btn--reset";
+            resetBtn.textContent = "RESET";
             resetBtn.addEventListener("click", function(e) {
               e.preventDefault();
               e.stopPropagation();
@@ -320,7 +488,8 @@
               document.body.appendChild(overlay);
               noBtn.focus();
             });
-            meta.appendChild(resetBtn);
+            // Place RESET to the LEFT of the primary CONTINUE button.
+            actions.insertBefore(resetBtn, actions.firstChild);
           }
         } catch (e) { /* ignore bad data */ }
       }

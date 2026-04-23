@@ -33,9 +33,75 @@
       z-index: 10;
       pointer-events: none;
     }
+
+    /* Loading screen — matches the campaign game.html overlay. Scanning
+       orange chunk + cycling pico-8 flavor text. Dismissed by diagnose-boot.ts
+       once the renderer is ready via `stackattack:ready`; safety timeout 12s. */
+    .loading-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #1D2B53;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      transition: opacity 240ms ease-out;
+    }
+    .loading-screen.is-ready { opacity: 0; pointer-events: none; }
+    .loading-text {
+      font-family: "Press Start 2P", "Courier New", monospace;
+      font-size: 14px;
+      letter-spacing: 0.24em;
+      color: #FFF1E8;
+    }
+    .loading-bar {
+      position: relative;
+      width: 280px;
+      height: 18px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 3px solid #000;
+      box-shadow: 4px 4px 0 #7E2553;
+      overflow: hidden;
+    }
+    .loading-bar-fill {
+      position: absolute;
+      top: 0;
+      left: -28%;
+      width: 28%;
+      height: 100%;
+      background: #FFA300;
+      animation: cp-load-scan 1.6s steps(16, end) infinite;
+    }
+    @keyframes cp-load-scan {
+      0%   { left: -28%; }
+      50%  { left: 100%; }
+      100% { left: -28%; }
+    }
+    .loading-bar.is-final .loading-bar-fill {
+      animation: cp-load-finish 280ms ease-out forwards;
+    }
+    @keyframes cp-load-finish { to { left: 0; width: 100%; } }
+    .loading-flavor {
+      font-family: "Silkscreen", "VT323", "Courier New", monospace;
+      font-size: 16px;
+      color: #29ADFF;
+      letter-spacing: 0.06em;
+      margin-top: 2px;
+      height: 22px;
+      text-transform: uppercase;
+      opacity: 0.92;
+    }
   </style>
 </head>
 <body>
+  <div id="loading-screen" class="loading-screen" aria-hidden="true">
+    <div class="loading-text">LOADING…</div>
+    <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+    <div class="loading-flavor"></div>
+  </div>
+
   <div id="canvas-host"></div>
 
   <!-- Inherited-system briefing card (distinct from campaign's build-from-scratch briefing). -->
@@ -84,5 +150,66 @@
 
   <script type="module" src="./crt-overlay.ts"></script>
   <script type="module" src="./diagnose-boot.ts"></script>
+  <script>
+    // Dismiss the loading screen when diagnose-boot dispatches `stackattack:ready`,
+    // OR after a 12s safety timeout. Cycles randomly-ordered flavor lines so
+    // the variable boot time feels less dead.
+    (function () {
+      var screen = document.getElementById("loading-screen");
+      if (!screen) return;
+      var flavorEl = screen.querySelector(".loading-flavor");
+      var bar = screen.querySelector(".loading-bar");
+
+      var phrases = [
+        "Inheriting the broken topology…",
+        "Auditing the wires…",
+        "Scanning for hot keys…",
+        "Replaying the on-call ticket…",
+        "Drawing iso tiles…",
+        "Priming the cache…",
+        "Diagnosing the bottleneck…",
+        "Sharding databases…",
+        "Waking up workers…",
+        "Flushing DNS…",
+        "Tuning the queue…",
+        "Booting the CDN…",
+        "Reconciling state…",
+        "Buffering stream…",
+        "Deploying edge nodes…",
+        "Negotiating TLS…",
+        "Replicating zones…",
+        "Routing new traffic…",
+        "Reticulating splines…",
+        "Pinging the origin…",
+      ];
+      for (var i = phrases.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = phrases[i]; phrases[i] = phrases[j]; phrases[j] = tmp;
+      }
+      var pi = 0;
+      if (flavorEl) flavorEl.textContent = phrases[0];
+      var cycleInterval = setInterval(function () {
+        pi = (pi + 1) % phrases.length;
+        if (flavorEl) flavorEl.textContent = phrases[pi];
+      }, 1300);
+
+      var minDelay = new Promise(function (r) { setTimeout(r, 600); });
+      var ready = new Promise(function (r) {
+        var fired = false;
+        function done() { if (!fired) { fired = true; r(); } }
+        window.addEventListener("stackattack:ready", done, { once: true });
+        setTimeout(done, 12000);
+      });
+      Promise.all([minDelay, ready]).then(function () {
+        clearInterval(cycleInterval);
+        if (flavorEl) flavorEl.textContent = "Ready!";
+        if (bar) bar.classList.add("is-final");
+        setTimeout(function () {
+          screen.classList.add("is-ready");
+          setTimeout(function () { screen.remove(); }, 280);
+        }, 360);
+      });
+    })();
+  </script>
 </body>
 </html>

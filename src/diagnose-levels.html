@@ -72,31 +72,39 @@
       }
     }
 
+    /* Card is a static panel — only the action buttons are clickable. */
     .card {
       position: relative;
-      display: grid;
-      grid-template-columns: 72px 1fr auto;
-      gap: 16px;
-      align-items: center;
-      padding: 20px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 20px 22px 22px;
+      min-height: 260px;
       background: #ffb454;
       color: var(--pi-bg-2);
       border: 3px solid var(--pi-ink);
       box-shadow: 6px 6px 0 var(--pi-magenta);
-      text-decoration: none;
-      transition: transform 80ms steps(2), filter 80ms steps(2);
     }
-    .card:hover { transform: translate(-2px, -2px); filter: brightness(1.05); }
-    .card:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--pi-magenta); }
-    .card:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
+    /* Equal-height cards across each grid row so the action buttons line
+       up at the same y on every card. */
+    .grid { grid-auto-rows: 1fr; }
+
+    /* Icon + title + difficulty badge in a single row, vertically centered. */
+    .card-head {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 14px;
+    }
 
     .portrait {
-      width: 72px; height: 72px;
+      width: 64px; height: 64px;
       background: var(--pi-cream);
       border: 3px solid var(--pi-bg-2);
       display: grid;
       place-items: center;
       overflow: hidden;
+      flex: 0 0 auto;
     }
     .portrait--brand {
       padding: 0;
@@ -105,38 +113,29 @@
       line-height: 1;
       background: linear-gradient(135deg, #feda75 0%, #fa7e1e 25%, #d62976 50%, #962fbf 75%, #4f5bd5 100%);
       color: var(--pi-cream);
-      font-size: 22px;
+      font-size: 21px;
       letter-spacing: -0.02em;
       text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
     }
     .portrait--netflix {
       background: var(--pi-ink);
       color: #e50914;
-      font-size: 44px;
+      font-size: 42px;
       font-weight: 700;
       letter-spacing: -0.05em;
-      text-shadow: 3px 3px 0 #8a0008, 5px 5px 0 rgba(0, 0, 0, 0.9);
-    }
-    .card--netflix { }
-    .card--netflix .portrait--brand.portrait--netflix {
-      background: var(--pi-ink);
-      color: #e50914;
-      font-size: 44px;
-      font-weight: 700;
-      letter-spacing: -0.05em;
-      text-shadow: 3px 3px 0 #8a0008, 5px 5px 0 rgba(0, 0, 0, 0.9);
+      text-shadow: 3px 3px 0 #8a0008, 4px 4px 0 rgba(0, 0, 0, 0.9);
     }
 
-    .meta .name {
+    .name {
       font-family: var(--pi-font-display);
       font-size: 16px;
       color: var(--pi-bg-2);
       letter-spacing: 0.04em;
+      flex: 1;
     }
 
     .badge {
       display: inline-block;
-      margin-top: 10px;
       padding: 5px 9px;
       font-family: var(--pi-font-display);
       font-size: 9px;
@@ -149,35 +148,51 @@
     .badge--medium { background: var(--pi-orange); }
     .badge--hard { background: var(--pi-red); color: var(--pi-cream); }
 
-    .meta .desc {
+    .desc {
       font-family: var(--pi-font-body);
       font-size: 18px;
       color: var(--pi-bg-2);
-      margin-top: 8px;
+      margin: 0;
       letter-spacing: 0.02em;
       line-height: 1.3;
     }
-    .meta .record {
+    .record {
       font-family: var(--pi-font-body);
       font-size: 15px;
       color: var(--pi-magenta);
-      margin-top: 8px;
       letter-spacing: 0.04em;
     }
 
-    .tag {
+    /* Action row — primary FIX button, centered and pinned to the bottom
+       of the card (margin-top: auto) so position is fixed regardless of
+       description length. */
+    .card-actions {
+      display: flex;
+      flex-direction: row;
+      gap: 12px;
+      align-items: center;
+      justify-content: center;
+      margin-top: auto;
+    }
+    .card-btn {
       font-family: var(--pi-font-display);
       font-size: 11px;
-      padding: 10px 14px;
-      background: var(--pi-lime);
-      color: var(--pi-bg-2);
+      padding: 10px 16px;
+      letter-spacing: 0.12em;
+      text-decoration: none;
+      cursor: pointer;
       border: 3px solid var(--pi-bg-2);
       box-shadow: 3px 3px 0 var(--pi-bg-2);
-      letter-spacing: 0.12em;
+      transition: transform 80ms steps(2), filter 80ms steps(2);
     }
+    .card-btn:hover { filter: brightness(1.08); transform: translate(-1px, -1px); }
+    .card-btn:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--pi-bg-2); }
+    .card-btn:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
+    .card-btn--primary { background: var(--pi-lime); color: var(--pi-bg-2); }
+    .card-btn--reset   { background: var(--pi-red);  color: var(--pi-cream); }
 
     @media (prefers-reduced-motion: reduce) {
-      .card, .card:hover, .card:focus-visible, .card:active {
+      .card-btn, .card-btn:hover, .card-btn:focus-visible, .card-btn:active {
         transition: none !important;
         transform: none !important;
       }
@@ -193,117 +208,137 @@
     <h1 class="title">DIAGNOSE</h1>
     <p class="tagline">INHERIT &amp; FIX</p>
 
-    <nav class="grid" aria-label="Diagnose levels">
-      <a class="card" href="./diagnose.html?level=instagram-1">
-        <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
-        <div class="meta">
+    <section class="grid" aria-label="Diagnose levels">
+      <article class="card">
+        <header class="card-head">
+          <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
           <div class="name">CELEBRITY POST</div>
           <span class="badge badge--easy">DIAG 01</span>
-          <div class="desc">A celebrity just posted. Hot traffic is hammering one profile. Find the bottleneck, fix it before the SLA breaks.</div>
-          <div class="record">no record · target 99.5%</div>
+        </header>
+        <p class="desc">A celebrity just posted. Hot traffic is hammering one profile. Find the bottleneck, fix it before the SLA breaks.</p>
+        <div class="record">no record · target 99.5%</div>
+        <div class="card-actions">
+          <a class="card-btn card-btn--primary" href="./diagnose.html?level=instagram-1">FIX</a>
         </div>
-        <span class="tag">FIX</span>
-      </a>
+      </article>
 
-      <a class="card" href="./diagnose.html?level=instagram-2">
-        <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
-        <div class="meta">
+      <article class="card">
+        <header class="card-head">
+          <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
           <div class="name">SUNSET UPLOAD WAVE</div>
           <span class="badge badge--medium">DIAG 02</span>
-          <div class="desc">Golden hour = mass uploads. Your Streaming Server is idle while API Servers drown. What's the rewire?</div>
-          <div class="record">no record · target 99.5%</div>
+        </header>
+        <p class="desc">Golden hour = mass uploads. Your Streaming Server is idle while API Servers drown. What's the rewire?</p>
+        <div class="record">no record · target 99.5%</div>
+        <div class="card-actions">
+          <a class="card-btn card-btn--primary" href="./diagnose.html?level=instagram-2">FIX</a>
         </div>
-        <span class="tag">FIX</span>
-      </a>
+      </article>
 
-      <a class="card" href="./diagnose.html?level=instagram-3">
-        <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
-        <div class="meta">
+      <article class="card">
+        <header class="card-head">
+          <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
           <div class="name">NOTIFICATIONS AVALANCHE</div>
           <span class="badge badge--medium">DIAG 03</span>
-          <div class="desc">Breaking news event → likes + notifications flood. Queues backing up. Workers can't keep up.</div>
-          <div class="record">no record · target 99.5%</div>
+        </header>
+        <p class="desc">Breaking news event → likes + notifications flood. Queues backing up. Workers can't keep up.</p>
+        <div class="record">no record · target 99.5%</div>
+        <div class="card-actions">
+          <a class="card-btn card-btn--primary" href="./diagnose.html?level=instagram-3">FIX</a>
         </div>
-        <span class="tag">FIX</span>
-      </a>
+      </article>
 
-      <a class="card" href="./diagnose.html?level=instagram-4">
-        <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
-        <div class="meta">
+      <article class="card">
+        <header class="card-head">
+          <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
           <div class="name">COLD ZONE SYNDROME</div>
           <span class="badge badge--hard">DIAG 04</span>
-          <div class="desc">Growing in Asia. Pings from Tokyo take 800ms. Stand up an APAC replica and route with DNS/GTM.</div>
-          <div class="record">no record · target 99.5%</div>
+        </header>
+        <p class="desc">Growing in Asia. Pings from Tokyo take 800ms. Stand up an APAC replica and route with DNS/GTM.</p>
+        <div class="record">no record · target 99.5%</div>
+        <div class="card-actions">
+          <a class="card-btn card-btn--primary" href="./diagnose.html?level=instagram-4">FIX</a>
         </div>
-        <span class="tag">FIX</span>
-      </a>
+      </article>
 
-      <a class="card" href="./diagnose.html?level=instagram-5">
-        <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
-        <div class="meta">
+      <article class="card">
+        <header class="card-head">
+          <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
           <div class="name">THE CASCADIA EVENT</div>
           <span class="badge badge--hard">DIAG 05</span>
-          <div class="desc">Major event viral moment. Infrastructure stressed, chaos events incoming. This is what you've been training for.</div>
-          <div class="record">no record · target 99.5%</div>
+        </header>
+        <p class="desc">Major event viral moment. Infrastructure stressed, chaos events incoming. This is what you've been training for.</p>
+        <div class="record">no record · target 99.5%</div>
+        <div class="card-actions">
+          <a class="card-btn card-btn--primary" href="./diagnose.html?level=instagram-5">FIX</a>
         </div>
-        <span class="tag">FIX</span>
-      </a>
+      </article>
 
-      <a class="card card--netflix" href="./diagnose.html?level=netflix-1">
-        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
-        <div class="meta">
+      <article class="card card--netflix">
+        <header class="card-head">
+          <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
           <div class="name">MEMBER HOME PAGE</div>
           <span class="badge badge--easy">DIAG 06</span>
-          <div class="desc">Netflix members loading their personalized home page. Millions of concurrent sessions. One database is drowning.</div>
-          <div class="record">no record · target 99.5%</div>
+        </header>
+        <p class="desc">Netflix members loading their personalized home page. Millions of concurrent sessions. One database is drowning.</p>
+        <div class="record">no record · target 99.5%</div>
+        <div class="card-actions">
+          <a class="card-btn card-btn--primary" href="./diagnose.html?level=netflix-1">FIX</a>
         </div>
-        <span class="tag">FIX</span>
-      </a>
+      </article>
 
-      <a class="card card--netflix" href="./diagnose.html?level=netflix-2">
-        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
-        <div class="meta">
+      <article class="card card--netflix">
+        <header class="card-head">
+          <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
           <div class="name">TRENDING TITLE</div>
           <span class="badge badge--medium">DIAG 07</span>
-          <div class="desc">A new series just dropped and it's trending. Your CDN has never seen this content before. Every miss slams your origin.</div>
-          <div class="record">no record · target 99.5%</div>
+        </header>
+        <p class="desc">A new series just dropped and it's trending. Your CDN has never seen this content before. Every miss slams your origin.</p>
+        <div class="record">no record · target 99.5%</div>
+        <div class="card-actions">
+          <a class="card-btn card-btn--primary" href="./diagnose.html?level=netflix-2">FIX</a>
         </div>
-        <span class="tag">FIX</span>
-      </a>
+      </article>
 
-      <a class="card card--netflix" href="./diagnose.html?level=netflix-3">
-        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
-        <div class="meta">
+      <article class="card card--netflix">
+        <header class="card-head">
+          <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
           <div class="name">LIVE EVENT</div>
           <span class="badge badge--medium">DIAG 08</span>
-          <div class="desc">Live-streamed boxing match starts in 60 seconds. Your streaming pipeline was sized for lazy VOD traffic.</div>
-          <div class="record">no record · target 99.5%</div>
+        </header>
+        <p class="desc">Live-streamed boxing match starts in 60 seconds. Your streaming pipeline was sized for lazy VOD traffic.</p>
+        <div class="record">no record · target 99.5%</div>
+        <div class="card-actions">
+          <a class="card-btn card-btn--primary" href="./diagnose.html?level=netflix-3">FIX</a>
         </div>
-        <span class="tag">FIX</span>
-      </a>
+      </article>
 
-      <a class="card card--netflix" href="./diagnose.html?level=netflix-4">
-        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
-        <div class="meta">
+      <article class="card card--netflix">
+        <header class="card-head">
+          <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
           <div class="name">ASIAN EXPANSION</div>
           <span class="badge badge--hard">DIAG 09</span>
-          <div class="desc">Netflix launched in Singapore. 150 million subscribers 12,000 miles from your US servers. Speed of light is a hard limit.</div>
-          <div class="record">no record · target 99.5%</div>
+        </header>
+        <p class="desc">Netflix launched in Singapore. 150 million subscribers 12,000 miles from your US servers. Speed of light is a hard limit.</p>
+        <div class="record">no record · target 99.5%</div>
+        <div class="card-actions">
+          <a class="card-btn card-btn--primary" href="./diagnose.html?level=netflix-4">FIX</a>
         </div>
-        <span class="tag">FIX</span>
-      </a>
+      </article>
 
-      <a class="card card--netflix" href="./diagnose.html?level=netflix-5">
-        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
-        <div class="meta">
+      <article class="card card--netflix">
+        <header class="card-head">
+          <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
           <div class="name">THE SQUID GAME EVENT</div>
           <span class="badge badge--hard">DIAG 10</span>
-          <div class="desc">Squid Game drops globally. Viewers 10x normal. Chaos events incoming. The next 15 seconds decide whether Netflix survives the night.</div>
-          <div class="record">no record · target 99.5%</div>
+        </header>
+        <p class="desc">Squid Game drops globally. Viewers 10x normal. Chaos events incoming. The next 15 seconds decide whether Netflix survives the night.</p>
+        <div class="record">no record · target 99.5%</div>
+        <div class="card-actions">
+          <a class="card-btn card-btn--primary" href="./diagnose.html?level=netflix-5">FIX</a>
         </div>
-        <span class="tag">FIX</span>
-      </a>
-    </nav>
+      </article>
+    </section>
   </div>
   <script type="module" src="./crt-overlay.ts"></script>
   <script type="module" src="./diagnose-levels-boot.ts"></script>

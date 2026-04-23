@@ -90,6 +90,9 @@ function buildWaveDef(settings: TrafficSettings): WaveDef {
 
 async function main(): Promise<void> {
   activateCyberpunkHud();
+  // Sandbox mode flag — CSS hides wave-based controls (READY button) since
+  // sandbox uses the traffic-panel START/STOP toggle instead.
+  document.body.classList.add("cp-mode-sandbox");
   const hudCtrl = await waitForHudController();
 
   const host = document.getElementById("canvas-host");

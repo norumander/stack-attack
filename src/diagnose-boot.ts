@@ -671,6 +671,10 @@ async function boot(): Promise<void> {
   }
   if (user) injectNavBar();
   await main();
+  // Signal the loading-screen overlay (in diagnose.html) that the renderer
+  // is up and the level is wired. The overlay listens for this event and
+  // also has a 12s safety timeout in case main() throws.
+  window.dispatchEvent(new Event("stackattack:ready"));
 }
 
 // Skip auto-boot during tests (jsdom) — tests exercise the pure helpers.

@@ -14,9 +14,82 @@
     /* Hidden mirror divs that cyberpunk-hud.ts observes — physics-td.ts writes
        to these, the HUD reflects them to its visible cyberpunk-styled DOM. */
     .td-hud-mirror { display: none; }
+
+    /* Loading screen — covers the page while Pixi initializes, textures load,
+       and the renderer mounts. Dismissed by physics-td.ts once the game is
+       ready via a `stackattack:ready` window event. Safety timeout at 12s in
+       case the boot script throws before dispatching. */
+    .loading-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #1D2B53;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      transition: opacity 240ms ease-out;
+    }
+    .loading-screen.is-ready { opacity: 0; pointer-events: none; }
+    .loading-text {
+      font-family: "Press Start 2P", "Courier New", monospace;
+      font-size: 14px;
+      letter-spacing: 0.24em;
+      color: #FFF1E8;
+    }
+    .loading-bar {
+      position: relative;
+      width: 280px;
+      height: 18px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 3px solid #000;
+      box-shadow: 4px 4px 0 #7E2553;
+      overflow: hidden;
+    }
+    /* Scanning fill — orange chunk slides back and forth so the bar conveys
+       "working" rather than "almost done" during a variable-length boot.
+       When the boot dispatches `stackattack:ready`, JS adds .is-final and
+       the chunk snaps to fill the whole bar before we fade out. */
+    .loading-bar-fill {
+      position: absolute;
+      top: 0;
+      left: -28%;
+      width: 28%;
+      height: 100%;
+      background: #FFA300;
+      animation: cp-load-scan 1.6s steps(16, end) infinite;
+    }
+    @keyframes cp-load-scan {
+      0%   { left: -28%; }
+      50%  { left: 100%; }
+      100% { left: -28%; }
+    }
+    .loading-bar.is-final .loading-bar-fill {
+      animation: cp-load-finish 280ms ease-out forwards;
+    }
+    @keyframes cp-load-finish {
+      to { left: 0; width: 100%; }
+    }
+    .loading-flavor {
+      font-family: "Silkscreen", "VT323", "Courier New", monospace;
+      font-size: 16px;
+      color: #29ADFF;
+      letter-spacing: 0.06em;
+      margin-top: 2px;
+      height: 22px;
+      text-transform: uppercase;
+      opacity: 0.92;
+    }
   </style>
 </head>
 <body>
+  <div id="loading-screen" class="loading-screen" aria-hidden="true">
+    <div class="loading-text">LOADING…</div>
+    <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+    <div class="loading-flavor"></div>
+  </div>
+
   <div id="canvas-host"></div>
 
   <!-- Mirror divs observed by cyberpunk-hud.ts. Writing to these updates the
@@ -70,5 +143,68 @@
 
   <script type="module" src="./crt-overlay.ts"></script>
   <script type="module" src="./physics-td/physics-td.ts"></script>
+  <script>
+    // Dismiss the loading screen when the game's boot dispatches
+    // `stackattack:ready` OR after a 12s safety timeout. While we wait, a
+    // randomly-shuffled set of flavor lines cycles below the scanning bar so
+    // the variable boot time feels less dead.
+    (function () {
+      var screen = document.getElementById("loading-screen");
+      if (!screen) return;
+      var flavorEl = screen.querySelector(".loading-flavor");
+      var bar = screen.querySelector(".loading-bar");
+
+      var phrases = [
+        "Warming up the packets…",
+        "Provisioning servers…",
+        "Drawing iso tiles…",
+        "Wiring the load balancer…",
+        "Priming the cache…",
+        "Sharding databases…",
+        "Waking up workers…",
+        "Flushing DNS…",
+        "Tuning the queue…",
+        "Booting the CDN…",
+        "Reconciling state…",
+        "Buffering stream…",
+        "Deploying edge nodes…",
+        "Negotiating TLS…",
+        "Replicating zones…",
+        "Compressing timelines…",
+        "Routing new traffic…",
+        "Spinning up workers…",
+        "Reticulating splines…",
+        "Pinging the origin…",
+      ];
+      // Fisher-Yates so each load uses a different order.
+      for (var i = phrases.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = phrases[i]; phrases[i] = phrases[j]; phrases[j] = tmp;
+      }
+      var pi = 0;
+      if (flavorEl) flavorEl.textContent = phrases[0];
+      var cycleInterval = setInterval(function () {
+        pi = (pi + 1) % phrases.length;
+        if (flavorEl) flavorEl.textContent = phrases[pi];
+      }, 1300);
+
+      var minDelay = new Promise(function (r) { setTimeout(r, 600); });
+      var ready = new Promise(function (r) {
+        var fired = false;
+        function done() { if (!fired) { fired = true; r(); } }
+        window.addEventListener("stackattack:ready", done, { once: true });
+        setTimeout(done, 12000); // safety net
+      });
+      Promise.all([minDelay, ready]).then(function () {
+        clearInterval(cycleInterval);
+        if (flavorEl) flavorEl.textContent = "Ready!";
+        if (bar) bar.classList.add("is-final");
+        setTimeout(function () {
+          screen.classList.add("is-ready");
+          setTimeout(function () { screen.remove(); }, 280);
+        }, 360);
+      });
+    })();
+  </script>
 </body>
 </html>

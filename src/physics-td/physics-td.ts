@@ -1188,6 +1188,10 @@ async function boot(): Promise<void> {
   if (user) injectNavBar();
   const waves = levelId === "url-shortener" ? BITLY_WAVES : CAMPAIGN_WAVES;
   await main(waves);
+  // Signal the loading-screen overlay (in game.html) that the renderer is up
+  // and the first wave's UI is wired. The overlay listens for this event and
+  // also has a 12s safety timeout in case main() throws.
+  window.dispatchEvent(new Event("stackattack:ready"));
 }
 
 void boot();

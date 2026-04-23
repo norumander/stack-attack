@@ -190,12 +190,21 @@ body.renderer-iso .cp-back-btn:focus-visible {
   justify-content: center;
 }
 .cp-back-modal {
+  position: relative; /* override .cp-panel's absolute positioning inside the flex overlay */
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  min-width: 300px;
+  gap: 14px;
+  min-width: 320px;
+  max-width: 420px;
+  padding: 24px 28px;
   text-align: center;
+}
+.cp-back-buttons {
+  display: flex;
+  gap: 14px;
+  margin-top: 10px;
+  justify-content: center;
 }
 .cp-back-title {
   font-family: "Press Start 2P", monospace;
@@ -207,11 +216,7 @@ body.renderer-iso .cp-back-btn:focus-visible {
   font-family: "Silkscreen", "VT323", monospace;
   font-size: 16px;
   color: #FFF1E8;
-}
-.cp-back-buttons {
-  display: flex;
-  gap: 10px;
-  margin-top: 8px;
+  line-height: 1.4;
 }
 
 body.renderer-iso .cp-wave-value {
@@ -414,11 +419,16 @@ body.renderer-iso .cp-info-panel {
   max-height: calc(100vh - 490px);
   display: flex;
   flex-direction: column;
+  /* `#cp-hud-root` sets pointer-events:none so the canvas underneath stays
+     interactive. The info panel needs to opt back in so wheel/drag events
+     reach the inner scroll wrapper — without this the panel can't scroll. */
+  pointer-events: auto;
 }
 
 body.renderer-iso .cp-info-scroll {
   flex: 1 1 auto;
   overflow-y: auto;
+  pointer-events: auto;
   margin-right: -4px;
   padding-right: 4px;
   scrollbar-width: thin;
@@ -1502,30 +1512,39 @@ body.renderer-iso .cp-win-preview-key {
 body.renderer-iso .cp-win-preview-val {
   color: var(--cp-text, #FFF1E8);
 }
+/* Modal action buttons (resume/leave/win/loss popups). Chunky pico-8
+   treatment: solid fill, ink border, block shadow, Press Start 2P, stepped
+   transitions — matches the campaign card buttons + speed/ready bar. */
 body.renderer-iso .cp-win-cta {
-  align-self: flex-end;
+  align-self: center;
   margin-top: 8px;
-  padding: 10px 20px;
-  background: var(--cp-accent, #29ADFF);
+  padding: 11px 22px;
+  background: #00E436; /* pi-lime */
   color: #1D2B53;
-  border: none;
-  font-family: var(--cp-mono, ui-monospace, monospace);
+  border: 3px solid #000;
+  box-shadow: 4px 4px 0 #7E2553;
+  font-family: "Press Start 2P", monospace;
   font-size: 12px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   cursor: pointer;
+  transition: transform 80ms steps(2), box-shadow 80ms steps(2), filter 80ms steps(2);
 }
 body.renderer-iso .cp-win-cta:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.08);
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 #7E2553;
+}
+body.renderer-iso .cp-win-cta:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #7E2553;
+}
+body.renderer-iso .cp-win-cta:focus-visible {
+  outline: none;
 }
 body.renderer-iso .cp-win-cta--secondary {
-  background: transparent;
-  color: var(--sc-ink-dim);
-  border: 1px solid var(--sc-border);
-  margin-top: 4px;
-}
-body.renderer-iso .cp-win-cta--secondary:hover {
-  border-color: var(--sc-border-bright);
-  color: var(--sc-ink);
+  background: #83769C; /* pi-lavender — muted, reads as "secondary" */
+  color: #FFF1E8;
 }
 
 body.renderer-iso .cp-info-details-btn {
@@ -1878,15 +1897,44 @@ body.renderer-iso .cp-traffic-select {
   cursor: pointer;
 }
 
+/* Sandbox traffic START / STOP toggle — chunky pico-8 button matching the
+   campaign card-btn / win-cta treatment. Lime green when idle (start),
+   pico-8 red when traffic is running (stop). */
 body.renderer-iso .cp-traffic-toggle {
   width: 100%;
   margin-bottom: 12px;
+  padding: 11px 18px;
+  background: #00E436;          /* pi-lime */
+  color: #1D2B53;
+  border: 3px solid #000;
+  box-shadow: 4px 4px 0 #7E2553;
+  font-family: "Press Start 2P", monospace;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 80ms steps(2), box-shadow 80ms steps(2), filter 80ms steps(2);
 }
-
+body.renderer-iso .cp-traffic-toggle:hover {
+  filter: brightness(1.08);
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 #7E2553;
+}
+body.renderer-iso .cp-traffic-toggle:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #7E2553;
+}
+body.renderer-iso .cp-traffic-toggle:focus-visible {
+  outline: none;
+}
 body.renderer-iso .cp-traffic-toggle--running {
-  background: #FF004D !important;
+  background: #FF004D !important; /* pi-red */
   color: #FFF1E8 !important;
 }
+
+/* Sandbox mode: hide the wave-based READY button — sandbox uses the
+   traffic-panel START / STOP toggle instead, so READY is unwired. */
+body.renderer-iso.cp-mode-sandbox .cp-ready-btn { display: none; }
 
 body.renderer-iso .cp-traffic-chaos {
   display: flex;
