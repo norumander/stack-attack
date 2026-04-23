@@ -31,7 +31,16 @@ describe("asset presence — every sprite referenced by the renderer exists on d
 });
 
 describe("HTML pages — every entry point exists", () => {
-  const PAGES = ["index.html", "levels.html", "game.html", "diagnose.html", "sandbox.html"];
+  const PAGES = [
+    "index.html",
+    "levels.html",
+    "campaign.html",
+    "diagnose-levels.html",
+    "game.html",
+    "diagnose.html",
+    "sandbox.html",
+    "credits.html",
+  ];
   it.each(PAGES)("src/%s exists", (name) => {
     expect(existsSync(`src/${name}`)).toBe(true);
   });

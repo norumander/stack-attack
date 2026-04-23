@@ -68,16 +68,14 @@ export function mountChatbotDrawer(
   root.className = "cp-chatbot cp-chatbot--closed";
   root.setAttribute("data-testid", "cp-chatbot");
 
-  // ── collapsed tab ──
+  // ── collapsed-state button ──
   const tab = document.createElement("button");
   tab.type = "button";
   tab.className = "cp-chatbot-tab";
   tab.setAttribute("aria-label", "Open Stack Attack tutor");
   tab.setAttribute("data-testid", "cp-chatbot-tab");
-  tab.innerHTML =
-    '<span class="cp-chatbot-tab-icon" aria-hidden="true">&#x25B8;</span>' +
-    '<span class="cp-chatbot-tab-label">TUTOR</span>';
-  tab.addEventListener("click", () => setOpen(true));
+  tab.textContent = "TUTOR";
+  tab.addEventListener("click", () => setOpen(!state.open));
 
   // ── panel ──
   const panel = document.createElement("div");
@@ -93,25 +91,88 @@ export function mountChatbotDrawer(
   title.textContent = "STACK ATTACK TUTOR";
   header.appendChild(title);
 
-  const hintSelect = document.createElement("select");
-  hintSelect.className = "cp-chatbot-hint";
-  hintSelect.setAttribute("data-testid", "cp-chatbot-hint");
-  hintSelect.setAttribute("aria-label", "Hint level");
-  for (const [value, label] of [
-    ["explorer", "Explorer"],
-    ["coach", "Coach"],
-    ["mentor", "Mentor"],
-  ] as const) {
-    const opt = document.createElement("option");
-    opt.value = value;
-    opt.textContent = label;
-    if (value === state.hintLevel) opt.selected = true;
-    hintSelect.appendChild(opt);
+  // Custom hint-level dropdown — replaces the native <select> so the popup
+  // matches the pico-8 chrome instead of the OS chrome. The trigger button
+  // shows the active level in caps; clicking opens a small panel of option
+  // buttons below it. Click outside to close.
+  const HINT_LEVELS: ReadonlyArray<{ value: HintLevel; label: string }> = [
+    { value: "explorer", label: "EXPLORER" },
+    { value: "coach", label: "COACH" },
+    { value: "mentor", label: "MENTOR" },
+  ];
+  const hintWrap = document.createElement("div");
+  hintWrap.className = "cp-chatbot-hint-wrap";
+
+  const hintTrigger = document.createElement("button");
+  hintTrigger.type = "button";
+  hintTrigger.className = "cp-chatbot-hint";
+  hintTrigger.setAttribute("data-testid", "cp-chatbot-hint");
+  hintTrigger.setAttribute("aria-label", "Hint level");
+  hintTrigger.setAttribute("aria-haspopup", "listbox");
+  const triggerLabelOf = (value: HintLevel): string =>
+    HINT_LEVELS.find((l) => l.value === value)?.label ?? value.toUpperCase();
+  hintTrigger.textContent = triggerLabelOf(state.hintLevel);
+
+  const hintMenu = document.createElement("div");
+  hintMenu.className = "cp-chatbot-hint-menu cp-chatbot-hint-menu--closed";
+  hintMenu.setAttribute("role", "listbox");
+  for (const opt of HINT_LEVELS) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "cp-chatbot-hint-option";
+    item.setAttribute("role", "option");
+    item.dataset.value = opt.value;
+    item.textContent = opt.label;
+    item.addEventListener("click", () => {
+      setHintLevel(opt.value);
+      closeHintMenu();
+    });
+    hintMenu.appendChild(item);
   }
-  hintSelect.addEventListener("change", () => {
-    state.hintLevel = hintSelect.value as HintLevel;
+
+  function refreshHintActive(): void {
+    const items = Array.from(
+      hintMenu.querySelectorAll<HTMLButtonElement>(".cp-chatbot-hint-option"),
+    );
+    for (const item of items) {
+      item.classList.toggle(
+        "cp-chatbot-hint-option--active",
+        item.dataset.value === state.hintLevel,
+      );
+    }
+  }
+  function setHintLevel(value: HintLevel): void {
+    state.hintLevel = value;
+    hintTrigger.textContent = triggerLabelOf(value);
+    refreshHintActive();
+  }
+  function openHintMenu(): void {
+    hintMenu.classList.remove("cp-chatbot-hint-menu--closed");
+    hintTrigger.setAttribute("aria-expanded", "true");
+    refreshHintActive();
+    setTimeout(() => document.addEventListener("click", outsideHintClick), 0);
+  }
+  function closeHintMenu(): void {
+    hintMenu.classList.add("cp-chatbot-hint-menu--closed");
+    hintTrigger.setAttribute("aria-expanded", "false");
+    document.removeEventListener("click", outsideHintClick);
+  }
+  function outsideHintClick(ev: MouseEvent): void {
+    if (!hintWrap.contains(ev.target as Node)) closeHintMenu();
+  }
+
+  hintTrigger.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (hintMenu.classList.contains("cp-chatbot-hint-menu--closed")) {
+      openHintMenu();
+    } else {
+      closeHintMenu();
+    }
   });
-  header.appendChild(hintSelect);
+
+  hintWrap.appendChild(hintTrigger);
+  hintWrap.appendChild(hintMenu);
+  header.appendChild(hintWrap);
 
   const clearBtn = document.createElement("button");
   clearBtn.type = "button";
@@ -138,7 +199,7 @@ export function mountChatbotDrawer(
   messages.setAttribute("data-testid", "cp-chatbot-messages");
   panel.appendChild(messages);
 
-  // Quick-send chips
+  // Quick-send chips with a dismiss × that hides the row for the session.
   const chipsRow = document.createElement("div");
   chipsRow.className = "cp-chatbot-chips";
   for (const chip of QUICK_CHIPS) {
@@ -152,6 +213,16 @@ export function mountChatbotDrawer(
     });
     chipsRow.appendChild(b);
   }
+  const dismissChips = document.createElement("button");
+  dismissChips.type = "button";
+  dismissChips.className = "cp-chatbot-chips-dismiss";
+  dismissChips.setAttribute("aria-label", "Hide suggestions");
+  dismissChips.title = "Hide suggestions";
+  dismissChips.textContent = "\u00D7"; // ×
+  dismissChips.addEventListener("click", () => {
+    chipsRow.style.display = "none";
+  });
+  chipsRow.appendChild(dismissChips);
   panel.appendChild(chipsRow);
 
   // Input
@@ -356,10 +427,7 @@ export function mountChatbotDrawer(
     isOpen: () => state.open,
     send,
     clear: clearConversation,
-    setHintLevel: (level: HintLevel) => {
-      state.hintLevel = level;
-      hintSelect.value = level;
-    },
+    setHintLevel,
     getHintLevel: () => state.hintLevel,
     destroy: () => {
       root.remove();

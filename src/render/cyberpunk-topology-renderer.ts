@@ -11,11 +11,19 @@ import type { ComponentId, ConnectionId, RequestId } from "@core/types/ids.js";
 import { gridToWorld, worldToGrid } from "./cyberpunk/iso-projection.js";
 
 /**
- * Game-view zoom factor. Applied to the world container so the iso board
- * and all sprites scale together; HUD (DOM overlay) is unaffected. All
- * screen→world conversions must divide by this to invert the scale.
+ * Default game-view zoom factor. Applied to the world container so the iso
+ * board and all sprites scale together; HUD (DOM overlay) is unaffected.
+ * Mouse-wheel over the canvas updates `this.currentZoom` at runtime, clamped
+ * to [ZOOM_MIN, ZOOM_MAX]. All screen→world conversions must divide by the
+ * live zoom so hit-tests and pan math stay consistent.
  */
 const GAME_VIEW_ZOOM = 1.2;
+const ZOOM_MIN = GAME_VIEW_ZOOM * 0.5;   // 0.6 — zoomed out 50%
+const ZOOM_MAX = GAME_VIEW_ZOOM * 1.5;   // 1.8 — zoomed in 50%
+/** Fixed zoom step per wheel tick. Tuned so a full traversal of the zoom
+ *  range takes ~30 wheel ticks; small enough to feel controlled on both
+ *  mice and trackpads without masking the user's intent. */
+const ZOOM_STEP = 0.02;
 import { CYBERPUNK_TOKENS } from "./cyberpunk/tokens.js";
 import { createBoard, loadBoardTextures, type BoardTextures } from "./cyberpunk/board.js";
 import {
@@ -62,6 +70,7 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
   private componentLayer: ComponentLayer | null = null;
   private componentTextures: ComponentTextureMap | null = null;
   private clientTypingTextures: ClientTypingTextures | null = null;
+  private currentZoom: number = GAME_VIEW_ZOOM;
   private connectionLayer: ConnectionLayer | null = null;
   private packetLayer: PacketLayer | null = null;
   private packetTextures: PacketTextureMap | null = null;
@@ -119,9 +128,41 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     this.app = app;
 
     const world = new Container();
-    world.scale.set(GAME_VIEW_ZOOM);
+    world.scale.set(this.currentZoom);
     app.stage.addChild(world);
     this.world = world;
+
+    // Mouse-wheel zoom — clamped ±50% around the base game-view zoom.
+    // Anchors the zoom at the cursor position so the board tile under the
+    // pointer stays under the pointer across the scale change.
+    app.canvas.addEventListener(
+      "wheel",
+      (ev: WheelEvent) => {
+        ev.preventDefault();
+        const direction = ev.deltaY > 0 ? -1 : 1;
+        const next = Math.max(
+          ZOOM_MIN,
+          Math.min(ZOOM_MAX, this.currentZoom + direction * ZOOM_STEP),
+        );
+        if (next === this.currentZoom) return;
+
+        // Pivot math: find the world point under the cursor BEFORE the scale
+        // change, then adjust worldCenter so that same point lands under the
+        // cursor AFTER. Keeps the mouse-focal tile stationary on screen.
+        const rect = app.canvas.getBoundingClientRect();
+        const cx = ev.clientX - rect.left;
+        const cy = ev.clientY - rect.top;
+        const worldX = (cx - this.worldCenterX) / this.currentZoom;
+        const worldY = (cy - this.worldCenterY) / this.currentZoom;
+        this.currentZoom = next;
+        world.scale.set(next);
+        this.worldCenterX = cx - worldX * next;
+        this.worldCenterY = cy - worldY * next;
+        world.x = this.worldCenterX;
+        world.y = this.worldCenterY;
+      },
+      { passive: false },
+    );
 
     // Load all textures before constructing layers.
     this.boardTextures = await loadBoardTextures();
@@ -383,8 +424,8 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
 
   private screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
     return {
-      x: (screenX - this.worldCenterX) / GAME_VIEW_ZOOM,
-      y: (screenY - this.worldCenterY) / GAME_VIEW_ZOOM,
+      x: (screenX - this.worldCenterX) / this.currentZoom,
+      y: (screenY - this.worldCenterY) / this.currentZoom,
     };
   }
 
@@ -555,9 +596,9 @@ export class CyberpunkTopologyRenderer implements TopologyRenderer {
     // Pre-convert screen pos into world coords (accounting for zoom) so
     // placement-ghost doesn't need to know about the world scale.
     const worldPos = screenPos
-      ? { x: screenPos.x / GAME_VIEW_ZOOM, y: screenPos.y / GAME_VIEW_ZOOM }
+      ? { x: screenPos.x / this.currentZoom, y: screenPos.y / this.currentZoom }
       : null;
-    const worldCenterScaled = { x: this.worldCenterX / GAME_VIEW_ZOOM, y: this.worldCenterY / GAME_VIEW_ZOOM };
+    const worldCenterScaled = { x: this.worldCenterX / this.currentZoom, y: this.worldCenterY / this.currentZoom };
     this.placementGhost?.set(type, worldPos, worldCenterScaled.x, worldCenterScaled.y);
     this.placingActive = type !== null;
   }

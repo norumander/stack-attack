@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stack Attack — Diagnose</title>
+  <link rel="stylesheet" href="./auth/auth.css" />
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: var(--pi-bg-2);
+      color: var(--pi-cream);
+      font-family: var(--pi-font-display);
+    }
+    .page {
+      position: relative;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 40px 28px 56px;
+    }
+
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-family: var(--pi-font-display);
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      color: var(--pi-pink);
+    }
+    .top .back { color: var(--pi-cream); text-decoration: none; font-size: 16px; }
+    .top .back:hover { color: var(--pi-yellow); }
+    .top .back:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
+
+    h1.title {
+      font-family: var(--pi-font-display);
+      font-size: clamp(22px, 4.2vw, 36px);
+      color: var(--pi-yellow);
+      margin: 32px 0 0;
+      text-shadow: 3px 3px 0 var(--pi-magenta), 5px 5px 0 var(--pi-ink);
+      letter-spacing: 0.06em;
+    }
+
+    .tagline {
+      font-family: var(--pi-font-display);
+      font-size: 16px;
+      letter-spacing: 0.28em;
+      color: var(--pi-pink);
+      text-transform: uppercase;
+      margin: 20px 0 28px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(5, auto);
+      grid-auto-flow: column;
+      gap: 20px;
+    }
+    @media (max-width: 720px) {
+      .grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        grid-auto-flow: row;
+      }
+    }
+
+    .card {
+      position: relative;
+      display: grid;
+      grid-template-columns: 72px 1fr auto;
+      gap: 16px;
+      align-items: center;
+      padding: 20px 22px;
+      background: #ffb454;
+      color: var(--pi-bg-2);
+      border: 3px solid var(--pi-ink);
+      box-shadow: 6px 6px 0 var(--pi-magenta);
+      text-decoration: none;
+      transition: transform 80ms steps(2), filter 80ms steps(2);
+    }
+    .card:hover { transform: translate(-2px, -2px); filter: brightness(1.05); }
+    .card:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--pi-magenta); }
+    .card:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
+
+    .portrait {
+      width: 72px; height: 72px;
+      background: var(--pi-cream);
+      border: 3px solid var(--pi-bg-2);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    .portrait--brand {
+      padding: 0;
+      font-family: var(--pi-font-display);
+      text-align: center;
+      line-height: 1;
+      background: linear-gradient(135deg, #feda75 0%, #fa7e1e 25%, #d62976 50%, #962fbf 75%, #4f5bd5 100%);
+      color: var(--pi-cream);
+      font-size: 22px;
+      letter-spacing: -0.02em;
+      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+    }
+    .portrait--netflix {
+      background: var(--pi-ink);
+      color: #e50914;
+      font-size: 44px;
+      font-weight: 700;
+      letter-spacing: -0.05em;
+      text-shadow: 3px 3px 0 #8a0008, 5px 5px 0 rgba(0, 0, 0, 0.9);
+    }
+    .card--netflix { }
+    .card--netflix .portrait--brand.portrait--netflix {
+      background: var(--pi-ink);
+      color: #e50914;
+      font-size: 44px;
+      font-weight: 700;
+      letter-spacing: -0.05em;
+      text-shadow: 3px 3px 0 #8a0008, 5px 5px 0 rgba(0, 0, 0, 0.9);
+    }
+
+    .meta .name {
+      font-family: var(--pi-font-display);
+      font-size: 16px;
+      color: var(--pi-bg-2);
+      letter-spacing: 0.04em;
+    }
+
+    .badge {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 5px 9px;
+      font-family: var(--pi-font-display);
+      font-size: 9px;
+      color: var(--pi-ink);
+      border: 3px solid var(--pi-ink);
+      box-shadow: 3px 3px 0 var(--pi-bg-2);
+      letter-spacing: 0.16em;
+    }
+    .badge--easy { background: var(--pi-lime); }
+    .badge--medium { background: var(--pi-orange); }
+    .badge--hard { background: var(--pi-red); color: var(--pi-cream); }
+
+    .meta .desc {
+      font-family: var(--pi-font-body);
+      font-size: 18px;
+      color: var(--pi-bg-2);
+      margin-top: 8px;
+      letter-spacing: 0.02em;
+      line-height: 1.3;
+    }
+    .meta .record {
+      font-family: var(--pi-font-body);
+      font-size: 15px;
+      color: var(--pi-magenta);
+      margin-top: 8px;
+      letter-spacing: 0.04em;
+    }
+
+    .tag {
+      font-family: var(--pi-font-display);
+      font-size: 11px;
+      padding: 10px 14px;
+      background: var(--pi-lime);
+      color: var(--pi-bg-2);
+      border: 3px solid var(--pi-bg-2);
+      box-shadow: 3px 3px 0 var(--pi-bg-2);
+      letter-spacing: 0.12em;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .card, .card:hover, .card:focus-visible, .card:active {
+        transition: none !important;
+        transform: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="top">
+      <a class="back" href="./levels.html">&lt; BACK</a>
+    </div>
+
+    <h1 class="title">DIAGNOSE</h1>
+    <p class="tagline">INHERIT &amp; FIX</p>
+
+    <nav class="grid" aria-label="Diagnose levels">
+      <a class="card" href="./diagnose.html?level=instagram-1">
+        <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
+        <div class="meta">
+          <div class="name">CELEBRITY POST</div>
+          <span class="badge badge--easy">DIAG 01</span>
+          <div class="desc">A celebrity just posted. Hot traffic is hammering one profile. Find the bottleneck, fix it before the SLA breaks.</div>
+          <div class="record">no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX</span>
+      </a>
+
+      <a class="card" href="./diagnose.html?level=instagram-2">
+        <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
+        <div class="meta">
+          <div class="name">SUNSET UPLOAD WAVE</div>
+          <span class="badge badge--medium">DIAG 02</span>
+          <div class="desc">Golden hour = mass uploads. Your Streaming Server is idle while API Servers drown. What's the rewire?</div>
+          <div class="record">no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX</span>
+      </a>
+
+      <a class="card" href="./diagnose.html?level=instagram-3">
+        <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
+        <div class="meta">
+          <div class="name">NOTIFICATIONS AVALANCHE</div>
+          <span class="badge badge--medium">DIAG 03</span>
+          <div class="desc">Breaking news event → likes + notifications flood. Queues backing up. Workers can't keep up.</div>
+          <div class="record">no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX</span>
+      </a>
+
+      <a class="card" href="./diagnose.html?level=instagram-4">
+        <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
+        <div class="meta">
+          <div class="name">COLD ZONE SYNDROME</div>
+          <span class="badge badge--hard">DIAG 04</span>
+          <div class="desc">Growing in Asia. Pings from Tokyo take 800ms. Stand up an APAC replica and route with DNS/GTM.</div>
+          <div class="record">no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX</span>
+      </a>
+
+      <a class="card" href="./diagnose.html?level=instagram-5">
+        <div class="portrait portrait--brand" aria-label="Instagram"><span class="brand">IG</span></div>
+        <div class="meta">
+          <div class="name">THE CASCADIA EVENT</div>
+          <span class="badge badge--hard">DIAG 05</span>
+          <div class="desc">Major event viral moment. Infrastructure stressed, chaos events incoming. This is what you've been training for.</div>
+          <div class="record">no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX</span>
+      </a>
+
+      <a class="card card--netflix" href="./diagnose.html?level=netflix-1">
+        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
+        <div class="meta">
+          <div class="name">MEMBER HOME PAGE</div>
+          <span class="badge badge--easy">DIAG 06</span>
+          <div class="desc">Netflix members loading their personalized home page. Millions of concurrent sessions. One database is drowning.</div>
+          <div class="record">no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX</span>
+      </a>
+
+      <a class="card card--netflix" href="./diagnose.html?level=netflix-2">
+        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
+        <div class="meta">
+          <div class="name">TRENDING TITLE</div>
+          <span class="badge badge--medium">DIAG 07</span>
+          <div class="desc">A new series just dropped and it's trending. Your CDN has never seen this content before. Every miss slams your origin.</div>
+          <div class="record">no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX</span>
+      </a>
+
+      <a class="card card--netflix" href="./diagnose.html?level=netflix-3">
+        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
+        <div class="meta">
+          <div class="name">LIVE EVENT</div>
+          <span class="badge badge--medium">DIAG 08</span>
+          <div class="desc">Live-streamed boxing match starts in 60 seconds. Your streaming pipeline was sized for lazy VOD traffic.</div>
+          <div class="record">no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX</span>
+      </a>
+
+      <a class="card card--netflix" href="./diagnose.html?level=netflix-4">
+        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
+        <div class="meta">
+          <div class="name">ASIAN EXPANSION</div>
+          <span class="badge badge--hard">DIAG 09</span>
+          <div class="desc">Netflix launched in Singapore. 150 million subscribers 12,000 miles from your US servers. Speed of light is a hard limit.</div>
+          <div class="record">no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX</span>
+      </a>
+
+      <a class="card card--netflix" href="./diagnose.html?level=netflix-5">
+        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix"><span class="brand">N</span></div>
+        <div class="meta">
+          <div class="name">THE SQUID GAME EVENT</div>
+          <span class="badge badge--hard">DIAG 10</span>
+          <div class="desc">Squid Game drops globally. Viewers 10x normal. Chaos events incoming. The next 15 seconds decide whether Netflix survives the night.</div>
+          <div class="record">no record · target 99.5%</div>
+        </div>
+        <span class="tag">FIX</span>
+      </a>
+    </nav>
+  </div>
+  <script type="module" src="./crt-overlay.ts"></script>
+  <script type="module" src="./diagnose-levels-boot.ts"></script>
+</body>
+</html>

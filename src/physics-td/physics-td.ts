@@ -282,14 +282,6 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     hudCtrl.showToast(`Zone → ${zoneName}`);
   });
 
-  // ─── Dev +$100 button (testing aid; remove before ship) ────────────
-  const devGrantBtn = document.getElementById("td-dev-grant-btn");
-  if (devGrantBtn) {
-    devGrantBtn.addEventListener("click", () => {
-      controller.devGrant(100);
-    });
-  }
-
   // ─── Dev wave-jump selector ─────────────────────────────────────────
   const devSelect = document.getElementById("td-dev-wave-select") as HTMLSelectElement | null;
   if (devSelect) {

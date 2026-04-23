@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Stack Attack — Select Level</title>
+  <title>Stack Attack — Select Mode</title>
   <link rel="stylesheet" href="./auth/auth.css" />
   <style>
     *, *::before, *::after {
@@ -21,7 +21,7 @@
     }
     .page {
       position: relative;
-      max-width: 960px;
+      max-width: 1200px;
       margin: 0 auto;
       padding: 40px 28px 56px;
     }
@@ -35,10 +35,7 @@
       letter-spacing: 0.22em;
       color: var(--pi-pink);
     }
-    .top .back {
-      color: var(--pi-cream);
-      text-decoration: none;
-    }
+    .top .back { color: var(--pi-cream); text-decoration: none; font-size: 16px; }
     .top .back:hover { color: var(--pi-yellow); }
     .top .back:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
 
@@ -47,507 +44,148 @@
       font-size: clamp(22px, 4.2vw, 36px);
       color: var(--pi-yellow);
       margin: 32px 0 32px;
-      text-shadow:
-        3px 3px 0 var(--pi-magenta),
-        5px 5px 0 var(--pi-ink);
+      text-shadow: 3px 3px 0 var(--pi-magenta), 5px 5px 0 var(--pi-ink);
       letter-spacing: 0.06em;
     }
 
-    .grid {
+    .tagline {
+      font-family: var(--pi-font-display);
+      font-size: 16px;
+      letter-spacing: 0.28em;
+      color: var(--pi-pink);
+      text-transform: uppercase;
+      margin: 0 0 28px;
+    }
+
+    .mode-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 28px;
+    }
+    @media (max-width: 900px) {
+      .mode-grid { grid-template-columns: 1fr; }
     }
 
-    .grid--diagnose {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      grid-template-rows: repeat(5, auto);
-      grid-auto-flow: column;
-    }
-
-    @media (max-width: 720px) {
-      .grid--diagnose {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto;
-        grid-auto-flow: row;
-      }
-    }
-
-    .card {
-      position: relative;
-      display: grid;
-      grid-template-columns: 72px 1fr auto;
-      gap: 16px;
+    .mode-card {
+      display: flex;
+      flex-direction: column;
       align-items: center;
-      padding: 20px 22px;
-      background: var(--pi-cyan);
-      color: var(--pi-bg-2);
+      padding: 28px 22px 26px;
+      background: var(--pi-navy);
       border: 3px solid var(--pi-ink);
-      box-shadow: 6px 6px 0 var(--pi-magenta);
+      box-shadow: 8px 8px 0 var(--pi-magenta);
       text-decoration: none;
+      color: var(--pi-cream);
       transition: transform 80ms steps(2), filter 80ms steps(2);
     }
-    .card:hover {
-      transform: translate(-2px, -2px);
-      filter: brightness(1.05);
-    }
-    .card:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--pi-magenta); }
-    .card:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
+    .mode-card:hover { transform: translate(-2px, -2px); filter: brightness(1.05); }
+    .mode-card:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--pi-magenta); }
+    .mode-card:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
 
-    .card--locked {
-      opacity: 0.45;
-      filter: grayscale(0.4);
-      pointer-events: none;
-      cursor: not-allowed;
-    }
-
-    .portrait {
-      width: 72px; height: 72px;
-      background: var(--pi-cream);
-      border: 3px solid var(--pi-bg-2);
+    .mode-icon {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      background: var(--pi-bg-3);
+      border: 3px solid var(--pi-ink);
       display: grid;
       place-items: center;
       overflow: hidden;
     }
-    .portrait img { width: 96px; height: 96px; margin-top: 6px; }
-
-    .portrait--brand {
-      padding: 0;
+    .mode-icon img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .mode-icon-glyph {
       font-family: var(--pi-font-display);
-      text-align: center;
+      font-size: clamp(54px, 10vw, 96px);
       line-height: 1;
-    }
-    .portrait--bitly {
-      background: #ee6123;
       color: var(--pi-cream);
-      font-size: 10px;
-      letter-spacing: 0;
-      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+      text-shadow: 3px 3px 0 var(--pi-ink);
     }
-    .portrait--bitly .brand {
-      display: block;
-      padding: 0 2px;
-      white-space: nowrap;
-    }
-    .portrait--netflix {
-      background: var(--pi-ink);
-      color: #e50914;
-      font-size: 44px;
-      font-weight: 700;
-      letter-spacing: -0.05em;
-      text-shadow:
-        3px 3px 0 #8a0008,
-        5px 5px 0 rgba(0, 0, 0, 0.9);
-    }
-    .portrait--instagram {
-      background: linear-gradient(135deg, #feda75 0%, #fa7e1e 25%, #d62976 50%, #962fbf 75%, #4f5bd5 100%);
-      color: var(--pi-cream);
-      font-size: 24px;
-      letter-spacing: -0.02em;
-      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
-    }
-    .portrait--instagram .brand {
-      display: block;
-      padding: 0 4px;
-    }
-
-    .meta .name {
-      font-family: var(--pi-font-display);
-      font-size: 16px;
-      color: var(--pi-bg-2);
-      letter-spacing: 0.04em;
-    }
-
-    .badge {
+    /* Press Start 2P draws `+` narrower and lower than `?`, so scale it
+       up to match the optical size of the other mode glyphs. */
+    .mode-icon-glyph--plus {
+      transform: scale(1.5);
+      transform-origin: center center;
       display: inline-block;
-      margin-top: 10px;
-      padding: 5px 9px;
-      font-family: var(--pi-font-display);
-      font-size: 9px;
-      color: var(--pi-ink);
-      border: 3px solid var(--pi-ink);
-      box-shadow: 3px 3px 0 var(--pi-bg-2);
-      letter-spacing: 0.16em;
     }
-    .badge--easy { background: var(--pi-lime); }
-    .badge--medium { background: var(--pi-orange); }
-    .badge--hard { background: var(--pi-red); color: var(--pi-cream); }
-    .meta .desc {
+
+    .mode-card--campaign .mode-icon { background: var(--pi-cyan); }
+    .mode-card--diagnose .mode-icon { background: var(--pi-orange); }
+    .mode-card--sandbox  .mode-icon { background: var(--pi-peach); }
+
+    .mode-name {
+      margin-top: 22px;
+      padding: 10px 18px;
+      font-family: var(--pi-font-display);
+      font-size: 18px;
+      color: var(--pi-navy);
+      background: var(--pi-peach);
+      border: 3px solid var(--pi-ink);
+      box-shadow: 4px 4px 0 var(--pi-magenta);
+      letter-spacing: 0.08em;
+    }
+    .mode-card--campaign .mode-name { background: var(--pi-cyan); }
+    .mode-card--diagnose .mode-name { background: var(--pi-orange); }
+    .mode-card--sandbox  .mode-name { background: var(--pi-peach); }
+
+    .mode-desc {
       font-family: var(--pi-font-body);
       font-size: 18px;
-      color: var(--pi-bg-2);
-      margin-top: 8px;
+      color: var(--pi-cream);
+      margin-top: 16px;
       letter-spacing: 0.02em;
       line-height: 1.3;
-    }
-    .meta .record {
-      font-family: var(--pi-font-body);
-      font-size: 15px;
-      color: var(--pi-magenta);
-      margin-top: 8px;
-      letter-spacing: 0.04em;
-    }
-    .meta .record--cleared {
-      color: #FFF1E8;
-      background: var(--pi-dkgreen);
-      display: inline-block;
-      padding: 2px 8px;
-      margin-top: 8px;
-    }
-    .meta .record--progress {
-      color: var(--pi-cyan);
-    }
-    .meta .reset-btn {
-      margin-top: 6px;
-      padding: 4px 10px;
-      font-family: var(--pi-font-display);
-      font-size: 8px;
-      letter-spacing: 0.15em;
-      color: var(--pi-red);
-      background: transparent;
-      border: 1px solid var(--pi-red);
-      cursor: pointer;
-    }
-    .meta .reset-btn:hover {
-      background: var(--pi-red);
-      color: var(--pi-cream);
-    }
-    .card .cleared-star {
-      position: absolute;
-      top: -8px;
-      right: -8px;
-      font-size: 60px;
-      line-height: 1;
-      filter: drop-shadow(0 0 6px rgba(255, 236, 39, 0.6));
-      z-index: 2;
-      pointer-events: none;
-    }
-
-    .tag {
-      font-family: var(--pi-font-display);
-      font-size: 11px;
-      padding: 10px 14px;
-      background: var(--pi-lime);
-      color: var(--pi-bg-2);
-      border: 3px solid var(--pi-bg-2);
-      box-shadow: 3px 3px 0 var(--pi-bg-2);
-      letter-spacing: 0.12em;
-    }
-    .tag--soon {
-      background: transparent;
-      box-shadow: none;
-      font-size: 9px;
-      letter-spacing: 0.14em;
+      text-align: center;
+      opacity: 0.9;
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .card,
-      .card:hover,
-      .card:focus-visible,
-      .card:active {
+      .mode-card, .mode-card:hover, .mode-card:focus-visible, .mode-card:active {
         transition: none !important;
         transform: none !important;
       }
-    }
-    .section-header {
-      font-family: var(--pi-font-display);
-      font-size: 11px;
-      letter-spacing: 0.28em;
-      color: var(--pi-pink);
-      text-transform: uppercase;
-      margin: 40px 0 18px;
-    }
-    .section-header::before {
-      content: "▸ ";
-      color: var(--pi-orange);
-    }
-    .section-header:first-of-type { margin-top: 8px; }
-
-    .card--diagnose {
-      background: #ffb454;
-    }
-    .card--diagnose .portrait--brand {
-      background: linear-gradient(135deg, #feda75 0%, #fa7e1e 25%, #d62976 50%, #962fbf 75%, #4f5bd5 100%);
-      color: var(--pi-cream);
-      font-size: 22px;
-      letter-spacing: -0.02em;
-      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
-    }
-    .card--diagnose-netflix .portrait--brand.portrait--netflix {
-      background: var(--pi-ink);
-      color: #e50914;
-      font-size: 44px;
-      font-weight: 700;
-      letter-spacing: -0.05em;
-      text-shadow:
-        3px 3px 0 #8a0008,
-        5px 5px 0 rgba(0, 0, 0, 0.9);
     }
   </style>
 </head>
 <body>
   <div class="page">
     <div class="top">
-      <a class="back" href="./index.html">◂ BACK</a>
-      <span>WORLD 1-1</span>
+      <a class="back" href="./index.html">&lt; BACK</a>
     </div>
 
-    <h1 class="title">SELECT LEVEL</h1>
+    <h1 class="title">STACK ATTACK</h1>
+    <p class="tagline">SELECT MODE</p>
 
-    <p class="section-header">Campaign · Build From Scratch</p>
-    <nav class="grid" aria-label="Campaign levels">
-      <a class="card" href="./game.html?level=url-shortener" data-level="url-shortener">
-        <div class="portrait portrait--brand portrait--bitly" aria-label="bit.ly">
-          <span class="brand">bit.ly</span>
+    <nav class="mode-grid" aria-label="Game modes">
+      <a class="mode-card mode-card--campaign" href="./campaign.html" aria-label="Campaign mode">
+        <div class="mode-icon">
+          <img src="./assets/stack-attack/client-typing.gif" alt="" aria-hidden="true" />
         </div>
-        <div class="meta">
-          <div class="name">URL SHORTENER</div>
-          <span class="badge badge--easy">EASY</span>
-          <div class="desc">bit.ly-style redirects. 95%+ reads, viral hot keys. 4 waves: launch → Reddit front page → analytics → global. Edge Cache is the star.</div>
-          <div class="record">no record · target 99.5%</div>
-        </div>
-        <span class="tag">GO</span>
+        <div class="mode-name">CAMPAIGN</div>
+        <p class="mode-desc">Build from scratch. Survive launch day, the viral moment, global scale.</p>
       </a>
 
-      <a class="card" href="./game.html?level=netflix" data-level="netflix">
-        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix">
-          <span class="brand">N</span>
+      <a class="mode-card mode-card--diagnose" href="./diagnose-levels.html" aria-label="Diagnose mode">
+        <div class="mode-icon">
+          <span class="mode-icon-glyph">?</span>
         </div>
-        <div class="meta">
-          <div class="name">BUILD NETFLIX</div>
-          <span class="badge badge--hard">HARD</span>
-          <div class="desc">Peak-hour streaming. Writes, reads, and viewers all want the same hot titles. Scale before the SLA drops.</div>
-          <div class="record">no record · target 99.5%</div>
-        </div>
-        <span class="tag">GO</span>
-      </a>
-    </nav>
-
-    <p class="section-header">Diagnose Mode · Inherit &amp; Fix</p>
-    <nav class="grid grid--diagnose" aria-label="Diagnose levels">
-      <a class="card card--diagnose" href="./diagnose.html?level=instagram-1">
-        <div class="portrait portrait--brand" aria-label="Instagram">
-          <span class="brand">IG</span>
-        </div>
-        <div class="meta">
-          <div class="name">CELEBRITY POST</div>
-          <span class="badge badge--easy">DIAG 01</span>
-          <div class="desc">A celebrity just posted. Hot traffic is hammering one profile. Find the bottleneck, fix it before the SLA breaks.</div>
-          <div class="record">no record · target 99.5%</div>
-        </div>
-        <span class="tag">FIX</span>
+        <div class="mode-name">DIAGNOSE</div>
+        <p class="mode-desc">Inherit a broken system. Find the bottleneck before the SLA breaks.</p>
       </a>
 
-      <a class="card card--diagnose" href="./diagnose.html?level=instagram-2">
-        <div class="portrait portrait--brand" aria-label="Instagram">
-          <span class="brand">IG</span>
+      <a class="mode-card mode-card--sandbox" href="./sandbox.html" aria-label="Sandbox mode">
+        <div class="mode-icon">
+          <span class="mode-icon-glyph mode-icon-glyph--plus">+</span>
         </div>
-        <div class="meta">
-          <div class="name">SUNSET UPLOAD WAVE</div>
-          <span class="badge badge--medium">DIAG 02</span>
-          <div class="desc">Golden hour = mass uploads. Your Streaming Server is idle while API Servers drown. What's the rewire?</div>
-          <div class="record">no record · target 99.5%</div>
-        </div>
-        <span class="tag">FIX</span>
-      </a>
-
-      <a class="card card--diagnose" href="./diagnose.html?level=instagram-3">
-        <div class="portrait portrait--brand" aria-label="Instagram">
-          <span class="brand">IG</span>
-        </div>
-        <div class="meta">
-          <div class="name">NOTIFICATIONS AVALANCHE</div>
-          <span class="badge badge--medium">DIAG 03</span>
-          <div class="desc">Breaking news event → likes + notifications flood. Queues backing up. Workers can't keep up.</div>
-          <div class="record">no record · target 99.5%</div>
-        </div>
-        <span class="tag">FIX</span>
-      </a>
-
-      <a class="card card--diagnose" href="./diagnose.html?level=instagram-4">
-        <div class="portrait portrait--brand" aria-label="Instagram">
-          <span class="brand">IG</span>
-        </div>
-        <div class="meta">
-          <div class="name">COLD ZONE SYNDROME</div>
-          <span class="badge badge--hard">DIAG 04</span>
-          <div class="desc">Growing in Asia. Pings from Tokyo take 800ms. Stand up an APAC replica and route with DNS/GTM.</div>
-          <div class="record">no record · target 99.5%</div>
-        </div>
-        <span class="tag">FIX</span>
-      </a>
-
-      <a class="card card--diagnose" href="./diagnose.html?level=instagram-5">
-        <div class="portrait portrait--brand" aria-label="Instagram">
-          <span class="brand">IG</span>
-        </div>
-        <div class="meta">
-          <div class="name">THE CASCADIA EVENT</div>
-          <span class="badge badge--hard">DIAG 05</span>
-          <div class="desc">Major event viral moment. Infrastructure stressed, chaos events incoming. This is what you've been training for.</div>
-          <div class="record">no record · target 99.5%</div>
-        </div>
-        <span class="tag">FIX</span>
-      </a>
-
-      <a class="card card--diagnose card--diagnose-netflix" href="./diagnose.html?level=netflix-1">
-        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix">
-          <span class="brand">N</span>
-        </div>
-        <div class="meta">
-          <div class="name">MEMBER HOME PAGE</div>
-          <span class="badge badge--easy">DIAG 06</span>
-          <div class="desc">Netflix members loading their personalized home page. Millions of concurrent sessions. One database is drowning.</div>
-          <div class="record">no record · target 99.5%</div>
-        </div>
-        <span class="tag">FIX</span>
-      </a>
-
-      <a class="card card--diagnose card--diagnose-netflix" href="./diagnose.html?level=netflix-2">
-        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix">
-          <span class="brand">N</span>
-        </div>
-        <div class="meta">
-          <div class="name">TRENDING TITLE</div>
-          <span class="badge badge--medium">DIAG 07</span>
-          <div class="desc">A new series just dropped and it's trending. Your CDN has never seen this content before. Every miss slams your origin.</div>
-          <div class="record">no record · target 99.5%</div>
-        </div>
-        <span class="tag">FIX</span>
-      </a>
-
-      <a class="card card--diagnose card--diagnose-netflix" href="./diagnose.html?level=netflix-3">
-        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix">
-          <span class="brand">N</span>
-        </div>
-        <div class="meta">
-          <div class="name">LIVE EVENT</div>
-          <span class="badge badge--medium">DIAG 08</span>
-          <div class="desc">Live-streamed boxing match starts in 60 seconds. Your streaming pipeline was sized for lazy VOD traffic.</div>
-          <div class="record">no record · target 99.5%</div>
-        </div>
-        <span class="tag">FIX</span>
-      </a>
-
-      <a class="card card--diagnose card--diagnose-netflix" href="./diagnose.html?level=netflix-4">
-        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix">
-          <span class="brand">N</span>
-        </div>
-        <div class="meta">
-          <div class="name">ASIAN EXPANSION</div>
-          <span class="badge badge--hard">DIAG 09</span>
-          <div class="desc">Netflix launched in Singapore. 150 million subscribers 12,000 miles from your US servers. Speed of light is a hard limit.</div>
-          <div class="record">no record · target 99.5%</div>
-        </div>
-        <span class="tag">FIX</span>
-      </a>
-
-      <a class="card card--diagnose card--diagnose-netflix" href="./diagnose.html?level=netflix-5">
-        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix">
-          <span class="brand">N</span>
-        </div>
-        <div class="meta">
-          <div class="name">THE SQUID GAME EVENT</div>
-          <span class="badge badge--hard">DIAG 10</span>
-          <div class="desc">Squid Game drops globally. Viewers 10x normal. Chaos events incoming. The next 15 seconds decide whether Netflix survives the night.</div>
-          <div class="record">no record · target 99.5%</div>
-        </div>
-        <span class="tag">FIX</span>
+        <div class="mode-name">SANDBOX</div>
+        <p class="mode-desc">Unlimited budget, no SLA. Wire anything and watch traffic flow.</p>
       </a>
     </nav>
   </div>
+  <script type="module" src="./crt-overlay.ts"></script>
   <script type="module" src="./levels-boot.ts"></script>
-  <script>
-    // Show completion and in-progress state for campaign levels
-    document.querySelectorAll("[data-level]").forEach(function(card) {
-      var levelId = card.getAttribute("data-level");
-
-      // Check for completed campaign
-      var completedRaw = localStorage.getItem("stackattack:completed:" + levelId);
-      if (completedRaw) {
-        try {
-          var data = JSON.parse(completedRaw);
-          var record = card.querySelector(".record");
-          if (record) {
-            record.className = "record record--cleared";
-            record.textContent = "CLEARED · viability " + (data.viabilityRemaining ?? "?") + "% · " + (data.waves ?? "?") + " waves";
-          }
-          var tag = card.querySelector(".tag");
-          if (tag) tag.textContent = "REPLAY";
-          // Add big star in upper right corner
-          if (!card.querySelector(".cleared-star")) {
-            var star = document.createElement("span");
-            star.className = "cleared-star";
-            star.textContent = "\u2B50";
-            star.setAttribute("aria-label", "Cleared");
-            card.appendChild(star);
-          }
-        } catch (e) { /* ignore bad data */ }
-      }
-
-      // Check for in-progress campaign save
-      var saveRaw = localStorage.getItem("stackattack:campaign:" + levelId);
-      if (saveRaw) {
-        try {
-          var save = JSON.parse(saveRaw);
-          var record = card.querySelector(".record");
-          if (record && !completedRaw) {
-            record.className = "record record--progress";
-            record.textContent = "IN PROGRESS · Wave " + (save.waveIndex + 1);
-          }
-          var tag = card.querySelector(".tag");
-          if (tag && !completedRaw) tag.textContent = "CONTINUE";
-
-          // Add reset button
-          var meta = card.querySelector(".meta");
-          if (meta && !meta.querySelector(".reset-btn")) {
-            var resetBtn = document.createElement("button");
-            resetBtn.type = "button";
-            resetBtn.className = "reset-btn";
-            resetBtn.textContent = "RESET PROGRESS";
-            resetBtn.addEventListener("click", function(e) {
-              e.preventDefault();
-              e.stopPropagation();
-              // Show confirmation modal
-              var overlay = document.createElement("div");
-              overlay.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;";
-              var modal = document.createElement("div");
-              modal.style.cssText = "background:#1D2B53;border:3px solid #000;box-shadow:5px 5px 0 #7E2553;padding:24px;display:flex;flex-direction:column;align-items:center;gap:12px;min-width:300px;text-align:center;";
-              var title = document.createElement("h2");
-              title.style.cssText = "font-family:'Press Start 2P',monospace;font-size:14px;color:#FFEC27;text-shadow:2px 2px 0 #FF77A8,3px 3px 0 #000;margin:0;";
-              title.textContent = "RESET PROGRESS?";
-              var msg = document.createElement("div");
-              msg.style.cssText = "font-family:'Silkscreen','VT323',monospace;font-size:16px;color:#FFF1E8;";
-              msg.textContent = "This will erase all saved progress for this campaign. You will start from Wave 1.";
-              var btnRow = document.createElement("div");
-              btnRow.style.cssText = "display:flex;gap:10px;margin-top:8px;";
-              var yesBtn = document.createElement("button");
-              yesBtn.style.cssText = "padding:10px 20px;background:#FF004D;color:#FFF1E8;border:3px solid #000;font-family:'Press Start 2P',monospace;font-size:12px;cursor:pointer;";
-              yesBtn.textContent = "RESET";
-              yesBtn.addEventListener("click", function() {
-                localStorage.removeItem("stackattack:campaign:" + levelId);
-                localStorage.removeItem("stackattack:completed:" + levelId);
-                overlay.remove();
-                window.location.reload();
-              });
-              var noBtn = document.createElement("button");
-              noBtn.style.cssText = "padding:10px 20px;background:transparent;color:#83769C;border:1px solid #83769C;font-family:'Press Start 2P',monospace;font-size:12px;cursor:pointer;";
-              noBtn.textContent = "CANCEL";
-              noBtn.addEventListener("click", function() { overlay.remove(); });
-              btnRow.appendChild(yesBtn);
-              btnRow.appendChild(noBtn);
-              modal.appendChild(title);
-              modal.appendChild(msg);
-              modal.appendChild(btnRow);
-              overlay.appendChild(modal);
-              document.body.appendChild(overlay);
-              noBtn.focus();
-            });
-            meta.appendChild(resetBtn);
-          }
-        } catch (e) { /* ignore bad data */ }
-      }
-    });
-  </script>
 </body>
 </html>

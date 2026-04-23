@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stack Attack — Campaign</title>
+  <link rel="stylesheet" href="./auth/auth.css" />
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: var(--pi-bg-2);
+      color: var(--pi-cream);
+      font-family: var(--pi-font-display);
+    }
+    .page {
+      position: relative;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 40px 28px 56px;
+    }
+
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-family: var(--pi-font-display);
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      color: var(--pi-pink);
+    }
+    .top .back { color: var(--pi-cream); text-decoration: none; font-size: 16px; }
+    .top .back:hover { color: var(--pi-yellow); }
+    .top .back:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
+
+    h1.title {
+      font-family: var(--pi-font-display);
+      font-size: clamp(22px, 4.2vw, 36px);
+      color: var(--pi-yellow);
+      margin: 32px 0 0;
+      text-shadow: 3px 3px 0 var(--pi-magenta), 5px 5px 0 var(--pi-ink);
+      letter-spacing: 0.06em;
+    }
+
+    .tagline {
+      font-family: var(--pi-font-display);
+      font-size: 16px;
+      letter-spacing: 0.28em;
+      color: var(--pi-pink);
+      text-transform: uppercase;
+      margin: 20px 0 28px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      position: relative;
+      display: grid;
+      grid-template-columns: 72px 1fr auto;
+      gap: 16px;
+      align-items: center;
+      padding: 20px 22px;
+      background: var(--pi-cyan);
+      color: var(--pi-bg-2);
+      border: 3px solid var(--pi-ink);
+      box-shadow: 6px 6px 0 var(--pi-magenta);
+      text-decoration: none;
+      transition: transform 80ms steps(2), filter 80ms steps(2);
+    }
+    .card:hover { transform: translate(-2px, -2px); filter: brightness(1.05); }
+    .card:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--pi-magenta); }
+    .card:focus-visible { outline: 3px solid var(--pi-yellow); outline-offset: 3px; }
+
+    .portrait {
+      width: 72px; height: 72px;
+      background: var(--pi-cream);
+      border: 3px solid var(--pi-bg-2);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    .portrait--brand {
+      padding: 0;
+      font-family: var(--pi-font-display);
+      text-align: center;
+      line-height: 1;
+    }
+    .portrait--bitly {
+      background: #ee6123;
+      color: var(--pi-cream);
+      font-size: 10px;
+      letter-spacing: 0;
+      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+    }
+    .portrait--bitly .brand { display: block; padding: 0 2px; white-space: nowrap; }
+    .portrait--netflix {
+      background: var(--pi-ink);
+      color: #e50914;
+      font-size: 44px;
+      font-weight: 700;
+      letter-spacing: -0.05em;
+      text-shadow: 3px 3px 0 #8a0008, 5px 5px 0 rgba(0, 0, 0, 0.9);
+    }
+
+    .meta .name {
+      font-family: var(--pi-font-display);
+      font-size: 16px;
+      color: var(--pi-bg-2);
+      letter-spacing: 0.04em;
+    }
+
+    .badge {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 5px 9px;
+      font-family: var(--pi-font-display);
+      font-size: 9px;
+      color: var(--pi-ink);
+      border: 3px solid var(--pi-ink);
+      box-shadow: 3px 3px 0 var(--pi-bg-2);
+      letter-spacing: 0.16em;
+    }
+    .badge--easy { background: var(--pi-lime); }
+    .badge--hard { background: var(--pi-red); color: var(--pi-cream); }
+
+    .meta .desc {
+      font-family: var(--pi-font-body);
+      font-size: 18px;
+      color: var(--pi-bg-2);
+      margin-top: 8px;
+      letter-spacing: 0.02em;
+      line-height: 1.3;
+    }
+    .meta .record {
+      font-family: var(--pi-font-body);
+      font-size: 15px;
+      color: var(--pi-magenta);
+      margin-top: 8px;
+      letter-spacing: 0.04em;
+    }
+    .meta .record--cleared {
+      color: #FFF1E8;
+      background: var(--pi-dkgreen);
+      display: inline-block;
+      padding: 2px 8px;
+      margin-top: 8px;
+    }
+    .meta .record--progress { color: var(--pi-cyan); }
+    .meta .reset-btn {
+      margin-top: 6px;
+      padding: 4px 10px;
+      font-family: var(--pi-font-display);
+      font-size: 8px;
+      letter-spacing: 0.15em;
+      color: var(--pi-red);
+      background: transparent;
+      border: 1px solid var(--pi-red);
+      cursor: pointer;
+    }
+    .meta .reset-btn:hover { background: var(--pi-red); color: var(--pi-cream); }
+    .card .cleared-star {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      font-size: 60px;
+      line-height: 1;
+      filter: drop-shadow(0 0 6px rgba(255, 236, 39, 0.6));
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .tag {
+      font-family: var(--pi-font-display);
+      font-size: 11px;
+      padding: 10px 14px;
+      background: var(--pi-lime);
+      color: var(--pi-bg-2);
+      border: 3px solid var(--pi-bg-2);
+      box-shadow: 3px 3px 0 var(--pi-bg-2);
+      letter-spacing: 0.12em;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .card, .card:hover, .card:focus-visible, .card:active {
+        transition: none !important;
+        transform: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="top">
+      <a class="back" href="./levels.html">&lt; BACK</a>
+    </div>
+
+    <h1 class="title">CAMPAIGN</h1>
+    <p class="tagline">BUILD FROM SCRATCH</p>
+
+    <nav class="grid" aria-label="Campaign levels">
+      <a class="card" href="./game.html?level=url-shortener" data-level="url-shortener">
+        <div class="portrait portrait--brand portrait--bitly" aria-label="bit.ly">
+          <span class="brand">bit.ly</span>
+        </div>
+        <div class="meta">
+          <div class="name">URL SHORTENER</div>
+          <span class="badge badge--easy">EASY</span>
+          <div class="desc">bit.ly-style redirects. 95%+ reads, viral hot keys. 4 waves: launch → Reddit front page → analytics → global. Edge Cache is the star.</div>
+          <div class="record">no record · target 99.5%</div>
+        </div>
+        <span class="tag">GO</span>
+      </a>
+
+      <a class="card" href="./game.html?level=netflix" data-level="netflix">
+        <div class="portrait portrait--brand portrait--netflix" aria-label="Netflix">
+          <span class="brand">N</span>
+        </div>
+        <div class="meta">
+          <div class="name">BUILD NETFLIX</div>
+          <span class="badge badge--hard">HARD</span>
+          <div class="desc">Peak-hour streaming. Writes, reads, and viewers all want the same hot titles. Scale before the SLA drops.</div>
+          <div class="record">no record · target 99.5%</div>
+        </div>
+        <span class="tag">GO</span>
+      </a>
+    </nav>
+  </div>
+  <script type="module" src="./crt-overlay.ts"></script>
+  <script type="module" src="./campaign-boot.ts"></script>
+  <script>
+    // Show completion and in-progress state for campaign levels
+    document.querySelectorAll("[data-level]").forEach(function(card) {
+      var levelId = card.getAttribute("data-level");
+
+      // Check for completed campaign
+      var completedRaw = localStorage.getItem("stackattack:completed:" + levelId);
+      if (completedRaw) {
+        try {
+          var data = JSON.parse(completedRaw);
+          var record = card.querySelector(".record");
+          if (record) {
+            record.className = "record record--cleared";
+            record.textContent = "CLEARED · viability " + (data.viabilityRemaining ?? "?") + "% · " + (data.waves ?? "?") + " waves";
+          }
+          var tag = card.querySelector(".tag");
+          if (tag) tag.textContent = "REPLAY";
+          if (!card.querySelector(".cleared-star")) {
+            var star = document.createElement("span");
+            star.className = "cleared-star";
+            star.textContent = "\u2B50";
+            star.setAttribute("aria-label", "Cleared");
+            card.appendChild(star);
+          }
+        } catch (e) { /* ignore bad data */ }
+      }
+
+      // Check for in-progress campaign save
+      var saveRaw = localStorage.getItem("stackattack:campaign:" + levelId);
+      if (saveRaw) {
+        try {
+          var save = JSON.parse(saveRaw);
+          var record = card.querySelector(".record");
+          if (record && !completedRaw) {
+            record.className = "record record--progress";
+            record.textContent = "IN PROGRESS · Wave " + (save.waveIndex + 1);
+          }
+          var tag = card.querySelector(".tag");
+          if (tag && !completedRaw) tag.textContent = "CONTINUE";
+
+          var meta = card.querySelector(".meta");
+          if (meta && !meta.querySelector(".reset-btn")) {
+            var resetBtn = document.createElement("button");
+            resetBtn.type = "button";
+            resetBtn.className = "reset-btn";
+            resetBtn.textContent = "RESET PROGRESS";
+            resetBtn.addEventListener("click", function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              var overlay = document.createElement("div");
+              overlay.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;";
+              var modal = document.createElement("div");
+              modal.style.cssText = "background:#1D2B53;border:3px solid #000;box-shadow:5px 5px 0 #7E2553;padding:24px;display:flex;flex-direction:column;align-items:center;gap:12px;min-width:300px;text-align:center;";
+              var title = document.createElement("h2");
+              title.style.cssText = "font-family:'Press Start 2P',monospace;font-size:14px;color:#FFEC27;text-shadow:2px 2px 0 #FF77A8,3px 3px 0 #000;margin:0;";
+              title.textContent = "RESET PROGRESS?";
+              var msg = document.createElement("div");
+              msg.style.cssText = "font-family:'Silkscreen','VT323',monospace;font-size:16px;color:#FFF1E8;";
+              msg.textContent = "This will erase all saved progress for this campaign. You will start from Wave 1.";
+              var btnRow = document.createElement("div");
+              btnRow.style.cssText = "display:flex;gap:10px;margin-top:8px;";
+              var yesBtn = document.createElement("button");
+              yesBtn.style.cssText = "padding:10px 20px;background:#FF004D;color:#FFF1E8;border:3px solid #000;font-family:'Press Start 2P',monospace;font-size:12px;cursor:pointer;";
+              yesBtn.textContent = "RESET";
+              yesBtn.addEventListener("click", function() {
+                localStorage.removeItem("stackattack:campaign:" + levelId);
+                localStorage.removeItem("stackattack:completed:" + levelId);
+                overlay.remove();
+                window.location.reload();
+              });
+              var noBtn = document.createElement("button");
+              noBtn.style.cssText = "padding:10px 20px;background:transparent;color:#83769C;border:1px solid #83769C;font-family:'Press Start 2P',monospace;font-size:12px;cursor:pointer;";
+              noBtn.textContent = "CANCEL";
+              noBtn.addEventListener("click", function() { overlay.remove(); });
+              btnRow.appendChild(yesBtn);
+              btnRow.appendChild(noBtn);
+              modal.appendChild(title);
+              modal.appendChild(msg);
+              modal.appendChild(btnRow);
+              overlay.appendChild(modal);
+              document.body.appendChild(overlay);
+              noBtn.focus();
+            });
+            meta.appendChild(resetBtn);
+          }
+        } catch (e) { /* ignore bad data */ }
+      }
+    });
+  </script>
+</body>
+</html>

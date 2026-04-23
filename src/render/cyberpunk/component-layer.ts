@@ -293,7 +293,7 @@ export function createComponentLayer(
     // to match its historical hand-tuned placement between center and the
     // south vertex.
     const offsetX = 0;
-    const offsetY = isClient ? 5 : 0;
+    const offsetY = isClient ? 15 : 0;
 
     const baseSprite = new Sprite(tex.base);
     baseSprite.anchor.set(0.5, 0.75);

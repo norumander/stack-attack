@@ -29,9 +29,12 @@ export default defineConfig({
       input: {
         landing: resolve(srcDir, "index.html"),
         levels: resolve(srcDir, "levels.html"),
+        campaign: resolve(srcDir, "campaign.html"),
+        "diagnose-levels": resolve(srcDir, "diagnose-levels.html"),
         game: resolve(srcDir, "game.html"),
         diagnose: resolve(srcDir, "diagnose.html"),
         sandbox: resolve(srcDir, "sandbox.html"),
+        credits: resolve(srcDir, "credits.html"),
       },
     },
   },

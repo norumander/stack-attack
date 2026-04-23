@@ -151,29 +151,33 @@ body.renderer-iso .cp-label::before {
    ================================================================ */
 
 body.renderer-iso .cp-wave-pill {
-  top: 28px;
+  top: 72px;
   left: 28px;
   min-width: 240px;
 }
 
 body.renderer-iso .cp-back-btn {
   position: absolute;
-  top: 180px;
+  top: 28px;
   left: 28px;
-  padding: 6px 14px;
+  padding: 0;
   font-family: "Press Start 2P", monospace;
-  font-size: 9px;
-  letter-spacing: 0.15em;
-  color: var(--sc-ink-dim);
+  font-size: 16px;
+  letter-spacing: 0.22em;
+  color: var(--pi-cream, #fff1e8);
   background: transparent;
-  border: 1px solid var(--sc-border);
+  border: none;
   cursor: pointer;
   pointer-events: auto;
-  transition: color 120ms ease, border-color 120ms ease;
+  text-decoration: none;
+  transition: color 120ms ease;
 }
 body.renderer-iso .cp-back-btn:hover {
-  color: var(--sc-ink);
-  border-color: var(--sc-border-bright);
+  color: var(--pi-yellow, #ffec27);
+}
+body.renderer-iso .cp-back-btn:focus-visible {
+  outline: 3px solid var(--pi-yellow, #ffec27);
+  outline-offset: 3px;
 }
 
 .cp-back-overlay {
@@ -282,9 +286,7 @@ body.renderer-iso .cp-right-col {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 220px;
-  max-height: calc(100vh - 56px);
-  overflow-y: auto;
+  width: 280px;
   pointer-events: none;
 }
 body.renderer-iso .cp-right-col > .cp-panel {
@@ -354,6 +356,25 @@ body.renderer-iso .cp-briefing-body {
   gap: 6px;
 }
 
+/* Scrollable contents beneath the sticky briefing title. Caps the height of
+   the narrative + rows block so long objective text doesn't blow out the
+   right column. */
+body.renderer-iso .cp-briefing-scroll {
+  max-height: 30vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sc-border-bright) transparent;
+}
+body.renderer-iso .cp-briefing-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+body.renderer-iso .cp-briefing-scroll::-webkit-scrollbar-thumb {
+  background: var(--sc-border-bright);
+}
+body.renderer-iso .cp-briefing-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 body.renderer-iso .cp-brief-row {
   display: flex;
   gap: 10px;
@@ -382,11 +403,35 @@ body.renderer-iso .cp-brief-val {
    ================================================================ */
 
 body.renderer-iso .cp-info-panel {
-  top: 190px;
+  top: 270px;
   left: 28px;
   min-width: 320px;
   max-width: 360px;
   padding: 18px 22px 20px;
+  /* Top clears the "Signal · Active" wave pill (bottom lands ~250px including
+     the progress bar + block shadow). Bottom budget reserves room for the
+     tutor button, palette strip, and toast. Body scrolls past the cap. */
+  max-height: calc(100vh - 490px);
+  display: flex;
+  flex-direction: column;
+}
+
+body.renderer-iso .cp-info-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  margin-right: -4px;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sc-border-bright) transparent;
+}
+body.renderer-iso .cp-info-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+body.renderer-iso .cp-info-scroll::-webkit-scrollbar-thumb {
+  background: var(--sc-border-bright);
+}
+body.renderer-iso .cp-info-scroll::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 body.renderer-iso .cp-info-close {
@@ -499,20 +544,58 @@ body.renderer-iso .cp-palette::before {
 
 body.renderer-iso .cp-palette-header {
   position: absolute;
-  top: -9px;
+  top: -14px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.4em;
+  letter-spacing: 0.32em;
   color: var(--sc-ink-dim);
   background: var(--sc-bg);
-  padding: 0 10px;
+  border: 2px solid var(--pi-ink, #000);
+  padding: 5px 14px;
+}
+
+body.renderer-iso .cp-palette-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
 }
 
 body.renderer-iso .cp-palette-cells {
   display: flex;
   gap: 6px;
+}
+
+body.renderer-iso .cp-palette-page-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 0 10px;
+  font-family: "Press Start 2P", monospace;
+  font-size: 18px;
+  color: var(--pi-cream, #fff1e8);
+  background: rgba(29, 43, 83, 0.55);
+  border: 1px solid var(--sc-border);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+body.renderer-iso .cp-palette-page-btn:hover:not(:disabled) {
+  background: var(--sc-panel-hi);
+  border-color: var(--sc-border-bright);
+  color: var(--pi-yellow, #ffec27);
+}
+body.renderer-iso .cp-palette-page-btn:active:not(:disabled) {
+  transform: translate(1px, 1px);
+}
+body.renderer-iso .cp-palette-page-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+body.renderer-iso .cp-palette-page-btn:focus-visible {
+  outline: 2px solid var(--pi-yellow, #ffec27);
+  outline-offset: 2px;
 }
 
 body.renderer-iso .cp-palette-cell {
@@ -685,43 +768,57 @@ body.renderer-iso .cp-zone-btn--active {
    Speed control — bottom-right, above READY
    ================================================================ */
 
-body.renderer-iso .cp-speed-bar {
+/* Action bar — bottom-right layout row for the speed container and the
+   standalone READY button. No background; its children carry their own
+   treatments. align-items: stretch makes the speed box match READY's
+   height exactly. */
+body.renderer-iso .cp-action-bar {
   position: absolute;
-  bottom: 100px;
+  bottom: 28px;
   right: 28px;
   display: flex;
+  align-items: stretch;
+  gap: 16px;
+  pointer-events: auto;
+}
+
+/* Speed container — solid orange pico-8 block, stretches to READY's height. */
+body.renderer-iso .cp-speed-bar {
+  display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  padding: 0 16px;
+  background: var(--pi-orange, #FFA300);
+  border: 3px solid var(--pi-ink, #000);
+  box-shadow: 6px 6px 0 var(--pi-magenta, #7E2553);
   pointer-events: auto;
 }
 body.renderer-iso .cp-speed-label {
   font-family: "Press Start 2P", monospace;
-  font-size: 8px;
+  font-size: 9px;
   letter-spacing: 0.15em;
-  color: var(--sc-ink-dim);
+  color: var(--pi-ink, #000);
 }
 body.renderer-iso .cp-speed-btn-group {
   display: flex;
   gap: 3px;
 }
 body.renderer-iso .cp-speed-btn {
-  padding: 4px 8px;
+  padding: 5px 9px;
   font-family: "Press Start 2P", monospace;
-  font-size: 9px;
-  color: var(--sc-ink-dim);
-  background: transparent;
-  border: 1px solid var(--sc-border);
+  font-size: 10px;
+  color: var(--pi-ink, #000);
+  background: rgba(255, 241, 232, 0.4);
+  border: 2px solid var(--pi-ink, #000);
   cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
 body.renderer-iso .cp-speed-btn:hover {
-  color: var(--sc-ink);
-  border-color: var(--sc-border-bright);
+  background: var(--pi-cream, #FFF1E8);
 }
 body.renderer-iso .cp-speed-btn--active {
-  background: rgba(41, 173, 255, 0.2);
-  border-color: var(--sc-border-bright);
-  color: var(--sc-ink);
+  background: var(--pi-yellow, #FFEC27);
+  color: var(--pi-ink, #000);
 }
 
 /* ================================================================
@@ -729,9 +826,6 @@ body.renderer-iso .cp-speed-btn--active {
    ================================================================ */
 
 body.renderer-iso .cp-ready-btn {
-  position: absolute;
-  bottom: 40px;
-  right: 28px;
   padding: 14px 28px;
   background: rgba(41, 173, 255, 0.14);
   border: 1px solid var(--sc-border-bright);
@@ -1164,14 +1258,20 @@ body.renderer-iso .cp-dossier-cta:hover {
 
 /* ─── Viability meter ───────────────────────────────────────────── */
 body.renderer-iso .cp-viability {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 14px;
 }
+body.renderer-iso .cp-viability-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
 body.renderer-iso .cp-viability-bar {
-  height: 10px;
+  width: 100%;
+  height: 18px;
   background: rgba(255, 241, 232, 0.06);
   border: 1px solid rgba(255, 241, 232, 0.1);
   position: relative;
@@ -1268,24 +1368,31 @@ body.renderer-iso .cp-topology-error-text {
 }
 
 /* ─── Toast ─────────────────────────────────────────────────────── */
+/* Positioned above the component palette (palette sits at bottom: 28px
+   with ~150px of its own height) so messages don't cover the cells.
+   Styled to match the pico-8 chunky chrome: solid navy fill, ink border,
+   maroon block shadow, Press Start 2P caps. */
 body.renderer-iso .cp-toast {
   position: fixed;
-  bottom: 40px;
+  bottom: 220px;
   left: 50%;
   transform: translate(-50%, 20px);
   padding: 12px 22px;
-  background: rgba(29, 43, 83, 0.94);
-  border: 1px solid var(--cp-accent, #29ADFF);
-  color: var(--cp-text, #FFF1E8);
-  font-family: var(--cp-mono, ui-monospace, monospace);
-  font-size: 12px;
-  letter-spacing: 0.08em;
+  background: var(--pi-navy, #1D2B53);
+  border: 3px solid var(--pi-ink, #000);
+  color: var(--pi-cream, #FFF1E8);
+  font-family: "Press Start 2P", "Courier New", monospace;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  box-shadow: 4px 4px 0 var(--pi-magenta, #7E2553);
   opacity: 0;
   pointer-events: none;
   transition: opacity 180ms ease-out, transform 180ms ease-out;
   z-index: 900;
   max-width: 560px;
   text-align: center;
+  line-height: 1.5;
 }
 body.renderer-iso .cp-toast--visible {
   opacity: 1;

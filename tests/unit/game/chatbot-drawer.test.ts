@@ -160,11 +160,10 @@ describe("mountChatbotDrawer", () => {
     });
     handle.open();
 
-    const select = document.querySelector<HTMLSelectElement>(
-      '[data-testid="cp-chatbot-hint"]',
-    )!;
-    select.value = "mentor";
-    select.dispatchEvent(new Event("change"));
+    // The hint control is a custom pico-8 dropdown (not a native <select>).
+    // Exercise it through the public handle so the test doesn't depend on
+    // the drawer's DOM internals.
+    handle.setHintLevel("mentor");
 
     expect(handle.getHintLevel()).toBe("mentor");
 

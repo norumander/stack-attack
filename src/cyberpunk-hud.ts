@@ -85,9 +85,9 @@ function buildHud(): void {
 
   buildInfoPanel(root);
   buildPaletteStrip(root);
-  buildReadyButton(root);
-  buildSpeedControl(root);
+  buildActionBar(root);
   buildToast(root);
+  installLeftPanelMutex();
 
   hudController = {
     updateBriefing,
@@ -168,7 +168,7 @@ function buildBackButton(root: HTMLElement): void {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "cp-back-btn";
-  btn.textContent = "◂ LEVELS";
+  btn.textContent = "< BACK";
   root.append(btn);
 
   btn.addEventListener("click", () => {
@@ -183,7 +183,7 @@ function buildBackButton(root: HTMLElement): void {
 
     const title = document.createElement("h2");
     title.className = "cp-back-title";
-    title.textContent = "LEAVE CAMPAIGN?";
+    title.textContent = "LEAVE GAME?";
     modal.appendChild(title);
 
     const msg = document.createElement("div");
@@ -255,19 +255,22 @@ function buildViabilityPanel(root: HTMLElement): void {
   const p = panel("cp-viability");
   viabilityPanel = p;
 
+  // Header row: VIABILITY label on the left, percentage readout on the right.
+  // Keeps the bar free to span the full panel width below.
+  const header = div("cp-viability-header");
   const label = div("cp-res-key");
   label.textContent = "VIABILITY";
-  p.append(label);
+  header.append(label);
+  viabilityReadout = div("cp-viability-readout cp-mono");
+  viabilityReadout.textContent = "100%";
+  header.append(viabilityReadout);
+  p.append(header);
 
   const bar = div("cp-viability-bar");
   viabilityFill = div("cp-viability-fill cp-viability-fill--green");
   viabilityFill.style.width = "100%";
   bar.append(viabilityFill);
   p.append(bar);
-
-  viabilityReadout = div("cp-viability-readout cp-mono");
-  viabilityReadout.textContent = "100%";
-  p.append(viabilityReadout);
 
   root.append(p);
 }
@@ -282,8 +285,13 @@ function buildBriefingPanel(root: HTMLElement): void {
   briefingTitle.textContent = "";
   p.append(briefingTitle);
 
+  // Scrollable contents — narrative + briefing rows. Title stays anchored
+  // above so "WAVE N — NAME" is always visible even when the objective text
+  // is long enough to overflow the height cap.
+  const scroll = div("cp-briefing-scroll");
+
   briefingNarrative = div("cp-briefing-narrative cp-hidden");
-  p.append(briefingNarrative);
+  scroll.append(briefingNarrative);
 
   const body = div("cp-briefing-body");
 
@@ -296,7 +304,8 @@ function buildBriefingPanel(root: HTMLElement): void {
   briefingObjective = briefingValueRow(body, "Objective");
   briefingReward = briefingValueRow(body, "Reward");
 
-  p.append(body);
+  scroll.append(body);
+  p.append(scroll);
   root.append(p);
 }
 
@@ -430,23 +439,32 @@ function buildInfoPanel(root: HTMLElement): void {
   const header = div("cp-info-header");
   p.append(header);
 
+  // Scrollable contents — description, capabilities, live stats. Title +
+  // close stay fixed above; the DETAILS button stays pinned below. Max-height
+  // on the panel plus flex layout forces this middle region to scroll when
+  // component descriptions are long (keeps the panel from colliding with the
+  // bottom-left tutor drawer or the top-left wave pill).
+  const scroll = div("cp-info-scroll");
+
   const desc = div("cp-info-desc");
-  p.append(desc);
+  scroll.append(desc);
 
   const capsTitle = div("cp-section-title");
   capsTitle.textContent = "Capabilities";
-  p.append(capsTitle);
+  scroll.append(capsTitle);
 
   const caps = document.createElement("ul");
   caps.className = "cp-info-caps";
-  p.append(caps);
+  scroll.append(caps);
 
   const statsTitle = div("cp-section-title");
   statsTitle.textContent = "Live Stats";
-  p.append(statsTitle);
+  scroll.append(statsTitle);
 
   const stats = div("cp-info-stats cp-mono");
-  p.append(stats);
+  scroll.append(stats);
+
+  p.append(scroll);
 
   const details = document.createElement("button");
   details.type = "button";
@@ -543,6 +561,8 @@ function selectZone(zone: string | undefined): void {
 
 const paletteButtons = new Map<string, HTMLButtonElement>();
 
+const PALETTE_PAGE_SIZE = 8;
+
 function buildPaletteStrip(root: HTMLElement): void {
   paletteButtons.clear();
   const strip = div("cp-palette");
@@ -553,14 +573,65 @@ function buildPaletteStrip(root: HTMLElement): void {
 
   buildZoneBar(strip);
 
-  const cells = div("cp-palette-cells");
-  strip.append(cells);
+  // Row = [prev] [cells] [next]. Pagination caps the horizontal width at
+  // PALETTE_PAGE_SIZE cells and cycles the rest behind the arrow buttons.
+  const row = div("cp-palette-row");
+  strip.append(row);
 
+  const prevBtn = document.createElement("button");
+  prevBtn.type = "button";
+  prevBtn.className = "cp-palette-page-btn";
+  prevBtn.textContent = "<";
+  prevBtn.setAttribute("aria-label", "Previous palette page");
+  row.append(prevBtn);
+
+  const cells = div("cp-palette-cells");
+  row.append(cells);
+
+  const nextBtn = document.createElement("button");
+  nextBtn.type = "button";
+  nextBtn.className = "cp-palette-page-btn";
+  nextBtn.textContent = ">";
+  nextBtn.setAttribute("aria-label", "Next palette page");
+  row.append(nextBtn);
+
+  // Build every cell up front so boot-time wiring can look up paletteButtons
+  // by type regardless of which page a cell is on. Cells beyond the first
+  // page are hidden via inline `display: none`; clones from cloneNode inherit
+  // the style so the hidden state survives boot-level `replaceWith` swaps.
   for (const entry of PALETTE) {
     const cell = paletteCell(entry);
     cells.append(cell);
     paletteButtons.set(entry.type, cell as HTMLButtonElement);
   }
+
+  const totalPages = Math.max(1, Math.ceil(PALETTE.length / PALETTE_PAGE_SIZE));
+  let currentPage = 0;
+
+  const renderPage = (): void => {
+    const start = currentPage * PALETTE_PAGE_SIZE;
+    const end = start + PALETTE_PAGE_SIZE;
+    Array.from(cells.children).forEach((child, i) => {
+      (child as HTMLElement).style.display = i >= start && i < end ? "" : "none";
+    });
+    prevBtn.disabled = currentPage === 0;
+    nextBtn.disabled = currentPage >= totalPages - 1;
+  };
+
+  prevBtn.addEventListener("click", () => {
+    if (currentPage > 0) {
+      currentPage -= 1;
+      renderPage();
+    }
+  });
+  nextBtn.addEventListener("click", () => {
+    if (currentPage < totalPages - 1) {
+      currentPage += 1;
+      renderPage();
+    }
+  });
+
+  renderPage();
 
   root.append(strip);
 }
@@ -619,6 +690,16 @@ function syncPaletteState(cell: HTMLElement, classicBtn: HTMLButtonElement): voi
 }
 
 // ─── READY button (bottom-right) ──────────────────────────────────────
+
+// ─── Action bar (bottom-right) — wraps SPEED + READY in one chunky
+// pico-8 orange container so they read as a single "wave controls" unit. ──
+
+function buildActionBar(root: HTMLElement): void {
+  const bar = div("cp-action-bar");
+  buildSpeedControl(bar);
+  buildReadyButton(bar);
+  root.append(bar);
+}
 
 function buildReadyButton(root: HTMLElement): void {
   const btn = document.createElement("button");
@@ -757,6 +838,50 @@ function showToast(message: string): void {
     toastEl.classList.remove("cp-toast--visible");
     toastTimer = null;
   }, 3000);
+}
+
+/**
+ * Left-side panel mutex: the AI tutor drawer (bottom-left) and the component
+ * info panel (left side) share screen space. Whichever opens last closes the
+ * other.
+ *
+ * The tutor is mounted by the host (physics-td / diagnose-boot / sandbox-boot)
+ * after the HUD builds, so we poll briefly for `.cp-chatbot` before attaching
+ * the observer. The info panel lives in the DOM from boot via its mirror div.
+ */
+function installLeftPanelMutex(): void {
+  const classicInfoPanel = document.getElementById("td-info-panel");
+  if (!classicInfoPanel) return;
+
+  const closeInfoPanel = (): void => {
+    // Forward via the classic close button so component-info-panel.ts
+    // runs its own hide path (clears selection, updates state, etc).
+    document.getElementById("td-info-panel-close")?.click();
+  };
+  const closeTutor = (): void => {
+    const tutor = document.querySelector(".cp-chatbot");
+    if (!tutor || !tutor.classList.contains("cp-chatbot--open")) return;
+    tutor.classList.remove("cp-chatbot--open");
+    tutor.classList.add("cp-chatbot--closed");
+  };
+
+  // Wait for the chatbot to mount, then observe its open class.
+  const waitForTutor = (attempts = 40): void => {
+    const tutor = document.querySelector(".cp-chatbot");
+    if (!tutor) {
+      if (attempts > 0) window.setTimeout(() => waitForTutor(attempts - 1), 200);
+      return;
+    }
+    new MutationObserver(() => {
+      if (tutor.classList.contains("cp-chatbot--open")) closeInfoPanel();
+    }).observe(tutor, { attributes: true, attributeFilter: ["class"] });
+  };
+  waitForTutor();
+
+  // When the info panel transitions from hidden → visible, close the tutor.
+  new MutationObserver(() => {
+    if (!classicInfoPanel.hasAttribute("hidden")) closeTutor();
+  }).observe(classicInfoPanel, { attributes: true, attributeFilter: ["hidden"] });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────

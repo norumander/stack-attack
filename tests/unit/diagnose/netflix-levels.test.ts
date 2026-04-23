@@ -124,8 +124,8 @@ describe("Netflix diagnose arc — 5 levels", () => {
     expect(l3.wave.streamConfig).toBeDefined();
   });
 
-  it("levels.html references all 5 Netflix diagnose levels via diagnose.html?level=<id>", () => {
-    const levelsHtmlPath = resolve(__dirname, "../../../src/levels.html");
+  it("diagnose-levels.html references all 5 Netflix diagnose levels via diagnose.html?level=<id>", () => {
+    const levelsHtmlPath = resolve(__dirname, "../../../src/diagnose-levels.html");
     const html = readFileSync(levelsHtmlPath, "utf8");
     for (const level of NETFLIX_LEVELS) {
       expect(html).toContain(`diagnose.html?level=${level.id}`);

@@ -109,8 +109,8 @@ describe("Instagram diagnose arc — 5 levels", () => {
     expect(zones.has("zone_ap")).toBe(true);
   });
 
-  it("levels.html references all 5 Instagram levels via diagnose.html?level=<id>", () => {
-    const levelsHtmlPath = resolve(__dirname, "../../../src/levels.html");
+  it("diagnose-levels.html references all 5 Instagram levels via diagnose.html?level=<id>", () => {
+    const levelsHtmlPath = resolve(__dirname, "../../../src/diagnose-levels.html");
     const html = readFileSync(levelsHtmlPath, "utf8");
     for (const level of INSTAGRAM_LEVELS) {
       expect(html).toContain(`diagnose.html?level=${level.id}`);
