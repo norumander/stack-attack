@@ -21,6 +21,7 @@ RUN npm install -g serve@14
 
 WORKDIR /app
 COPY --from=build /app/src/dist ./dist
+COPY serve.json ./dist/serve.json
 
 ENV PORT=3000
 EXPOSE 3000
