@@ -200,11 +200,12 @@ function bfsForType(
     const current = queue.shift()!;
     deepestReached = current;
     const comp = sim.components.get(current);
-    if (!comp) continue;
-
+    // The entry client lives in sim.clients, not sim.components.
+    // Skip the capability check for it but still enumerate its connections.
     const isEntry = current === entryClientId;
+    if (!comp && !isEntry) continue;
     let isDeadEnd = false;
-    if (!isEntry) {
+    if (!isEntry && comp) {
       let anyTerminal = false;
       let anyForwarder = false;
       const compType = componentTypes?.get(current);
@@ -251,7 +252,7 @@ function bfsForType(
         noEgressErr = {
           requestType: type,
           componentId: current,
-          componentType: componentTypeLabel(comp),
+          componentType: comp ? componentTypeLabel(comp) : "client",
           reason: "no_egress",
         };
       }

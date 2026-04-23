@@ -157,6 +157,9 @@ async function main(waves: ReadonlyArray<CampaignWave> = CAMPAIGN_WAVES): Promis
     }
     const errors = validateTopology(sim, wave.wave, CLIENT_ID, componentTypes);
     controller.lastTopologyErrors = errors;
+    if (errors.length > 0) {
+      console.log("[revalidate]", errors.length, "errors:", errors.map(formatTopologyError));
+    }
     hud.setTopologyErrors(errors.map(formatTopologyError));
   }
 
