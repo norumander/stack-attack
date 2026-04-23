@@ -200,6 +200,9 @@ export function mountChatbotDrawer(
   panel.appendChild(messages);
 
   // Quick-send chips with a dismiss × that hides the row for the session.
+  // NOTE: chips are disabled right now — the LLM API key isn't wired on the
+  // deployed site. The UI is left in place so the eventual hook-up is one
+  // attribute removal away.
   const chipsRow = document.createElement("div");
   chipsRow.className = "cp-chatbot-chips";
   for (const chip of QUICK_CHIPS) {
@@ -207,6 +210,8 @@ export function mountChatbotDrawer(
     b.type = "button";
     b.className = "cp-chatbot-chip";
     b.textContent = chip;
+    b.disabled = true;
+    b.title = "Tutor coming soon";
     b.addEventListener("click", () => {
       if (state.sending) return;
       void send(chip);
@@ -239,7 +244,10 @@ export function mountChatbotDrawer(
   const textarea = document.createElement("textarea");
   textarea.className = "cp-chatbot-input";
   textarea.setAttribute("data-testid", "cp-chatbot-input");
-  textarea.placeholder = "Ask the tutor… (Enter to send, Shift+Enter newline)";
+  // Tutor API isn't wired on the deployed build yet — disable the input
+  // and surface that up-front so visitors don't think the field is broken.
+  textarea.placeholder = "Coming soon — tutor API not wired";
+  textarea.disabled = true;
   textarea.rows = 2;
   textarea.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -254,6 +262,8 @@ export function mountChatbotDrawer(
   sendBtn.className = "cp-chatbot-send";
   sendBtn.setAttribute("data-testid", "cp-chatbot-send");
   sendBtn.textContent = "SEND";
+  sendBtn.disabled = true;
+  sendBtn.title = "Tutor coming soon";
   inputRow.appendChild(sendBtn);
 
   panel.appendChild(inputRow);

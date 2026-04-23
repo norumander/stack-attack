@@ -274,7 +274,21 @@
   cursor: pointer;
   transition: filter 80ms steps(2), transform 80ms steps(2);
 }
-.cp-chatbot-chip:hover {
+.cp-chatbot-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: saturate(0.6);
+}
+.cp-chatbot-chip:disabled:hover {
+  filter: saturate(0.6);
+  transform: none;
+}
+.cp-chatbot-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: rgba(255, 241, 232, 0.7);
+}
+.cp-chatbot-chip:not(:disabled):hover {
   filter: brightness(1.08);
   transform: translate(-1px, -1px);
 }
